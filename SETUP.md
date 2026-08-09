@@ -33,7 +33,7 @@ clasp open
 
 1. En Apps Script, selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Versión 1.0.0`.
+3. Descripción: `Version 1.1.0`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Quién tiene acceso: **Cualquier usuario del dominio** o la opción equivalente de tu organización.
 6. Autoriza los permisos solicitados.
@@ -59,7 +59,7 @@ Cada usuario debe:
 1. Obtener una llave en Google AI Studio o mediante el mecanismo aprobado por la organización.
 2. Abrir el engrane de la app.
 3. Pegar la llave y elegir el modelo.
-4. Pulsar **Validar y guardar**.
+4. Pulsa **Validate and save**.
 
 La pantalla muestra después solo los cuatro últimos caracteres de la llave.
 
@@ -69,12 +69,12 @@ La pantalla muestra después solo los cuatro últimos caracteres de la llave.
 2. Agrega un TXT pequeño como fuente.
 3. Inicia una conversación y formula una pregunta cuya respuesta aparezca en el TXT.
 4. Confirma que la respuesta cite `[S1]`.
-5. Guarda la respuesta como Google Doc.
-6. Exporta la conversación a PDF.
-7. Comparte “Fuentes y documentos” con otro usuario del dominio.
+5. Exporta la conversación a PDF.
+6. Confirma que la tarjeta actualiza los conteos de chats, fuentes y documentos.
+7. Comparte “Sources and documents” con otro usuario del dominio.
 8. Confirma con esa cuenta que no aparece el historial.
 9. Copia manualmente la carpeta del proyecto dentro de la raíz.
-10. Pulsa **Actualizar proyectos** y confirma que aparece como un proyecto independiente.
+10. Pulsa **Refresh projects** y confirma que aparece como un proyecto independiente.
 
 ## Actualizaciones
 
@@ -98,7 +98,7 @@ El registro de la app y los permisos reales de Drive deben coincidir. El owner p
 
 ### Gemini rechaza la llave
 
-Comprueba que la Gemini API esté habilitada para la llave y que el modelo elegido aparezca en **Consultar modelos**. La cuota pertenece a cada llave individual.
+Comprueba que la Gemini API esté habilitada para la llave y que el modelo elegido aparezca al usar **Load models**. La cuota pertenece a cada llave individual.
 
 ### Un PDF o imagen grande no se utiliza
 
@@ -106,4 +106,4 @@ La app omite archivos binarios mayores de 8 MB y limita el conjunto binario a 12
 
 ### La copia de una carpeta no aparece
 
-La carpeta debe estar directamente dentro de la raíz configurada. Pulsa **Actualizar proyectos** con una cuenta que tenga acceso a esa raíz.
+La carpeta debe estar directamente dentro de la raíz configurada. Pulsa **Refresh projects** con una cuenta que tenga acceso a esa raíz.

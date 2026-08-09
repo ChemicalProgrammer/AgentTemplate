@@ -1,6 +1,6 @@
 var APP = Object.freeze({
   NAME: 'Gemini Project Agent',
-  VERSION: '1.0.0',
+  VERSION: '1.1.0',
   ROOT_NAME: 'Agent Projects',
   SYSTEM_FOLDER: '_System',
   REGISTRY_PREFIX: 'PROJECT_',
@@ -22,18 +22,18 @@ function setupApplication(settings) {
   settings = settings || {};
   var identity = getCurrentIdentity_();
   if (!identity.email) {
-    throw new Error('No se pudo identificar tu cuenta. Despliega la app para usuarios de tu organización.');
+    throw new Error('Your account could not be identified. Deploy the app for users in your organization.');
   }
 
   var scriptProps = PropertiesService.getScriptProperties();
   var existingAdmin = scriptProps.getProperty(APP.PROP_ADMIN);
   if (existingAdmin && existingAdmin !== identity.email) {
-    throw new Error('Solo el administrador puede modificar la configuración principal.');
+    throw new Error('Only the administrator can change the main configuration.');
   }
 
   var domain = normalizeDomain_(settings.organizationDomain || identity.email.split('@')[1]);
   if (!domain || identity.email.split('@')[1] !== domain) {
-    throw new Error('El dominio debe coincidir con la cuenta que configura la aplicación.');
+    throw new Error('The domain must match the account configuring the application.');
   }
 
   var root;
@@ -74,7 +74,7 @@ function saveUserGeminiSettings(settings) {
   settings = settings || {};
   var apiKey = String(settings.apiKey || '').trim();
   var model = normalizeModel_(settings.model || APP.DEFAULT_MODEL);
-  if (!apiKey) throw new Error('Escribe una llave de Gemini.');
+  if (!apiKey) throw new Error('Enter a Gemini API key.');
 
   var validation = testGeminiKey_(apiKey, model);
   PropertiesService.getUserProperties().setProperties({
@@ -102,7 +102,7 @@ function getPublicUserGeminiSettings_() {
 function getUserGeminiConfig_() {
   var props = PropertiesService.getUserProperties();
   var key = props.getProperty(APP.USER_API_KEY);
-  if (!key) throw new Error('Configura tu llave personal de Gemini antes de usar el chat.');
+  if (!key) throw new Error('Add your personal Gemini API key before using chat.');
   return {
     apiKey: key,
     model: normalizeModel_(props.getProperty(APP.USER_MODEL) || APP.DEFAULT_MODEL)
@@ -112,7 +112,7 @@ function getUserGeminiConfig_() {
 function getAvailableGeminiModels() {
   assertOrganizationMember_();
   var key = PropertiesService.getUserProperties().getProperty(APP.USER_API_KEY);
-  if (!key) throw new Error('Guarda primero tu llave de Gemini.');
+  if (!key) throw new Error('Save your Gemini API key first.');
   return listGeminiModels_(key);
 }
 

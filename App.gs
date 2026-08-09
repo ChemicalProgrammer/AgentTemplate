@@ -31,11 +31,11 @@ function getCurrentIdentity_() {
   var email = String(Session.getActiveUser().getEmail() || '').toLowerCase();
   return {
     email: email,
-    name: email ? email.split('@')[0].replace(/[._-]+/g, ' ') : 'Usuario'
+    name: email ? email.split('@')[0].replace(/[._-]+/g, ' ') : 'User'
   };
 }
 
 function apiError_(error) {
-  var message = error && error.message ? error.message : String(error || 'Error desconocido');
+  var message = error && error.message ? error.message : String(error || 'Unknown error');
   throw new Error(message);
 }

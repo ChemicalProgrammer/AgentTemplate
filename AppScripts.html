@@ -1,4 +1,15 @@
 <script>
+  const PROJECT_ICONS = Object.freeze({
+    spark: {glyph: '✦', label: 'Spark'},
+    science: {glyph: '⚗', label: 'Science'},
+    insight: {glyph: '◈', label: 'Insights'},
+    code: {glyph: '⌘', label: 'Code'},
+    notes: {glyph: '▤', label: 'Notes'},
+    launch: {glyph: '◆', label: 'Launch'},
+    data: {glyph: '▥', label: 'Data'},
+    idea: {glyph: '☀', label: 'Idea'}
+  });
+
   const state = {
     bootstrap: null,
     projects: [],
@@ -9,10 +20,13 @@
     currentConversationId: null,
     currentConversation: null,
     selectedSources: new Set(),
-    busy: false
+    busy: false,
+    activeRequest: null,
+    iconTargetProjectId: null
   };
 
   document.addEventListener('DOMContentLoaded', () => {
+    renderIconOptions();
     bindStaticEvents();
     startApp();
   });
@@ -38,6 +52,7 @@
       }
       state.projects = data.projects || [];
       document.getElementById('app-shell').classList.remove('hidden');
+      setWorkspaceMode('dashboard');
       applyIdentity();
       renderProjects();
     } catch (error) {
@@ -48,7 +63,7 @@
 
   function applyIdentity() {
     const data = state.bootstrap;
-    const email = data.identity.email || 'Usuario';
+    const email = data.identity.email || 'User';
     document.getElementById('user-avatar').textContent = initials(email.split('@')[0]);
     document.getElementById('user-avatar').title = email;
     document.getElementById('domain-label').textContent = '@' + data.config.organizationDomain;
@@ -58,7 +73,7 @@
   function updateKeyStatus(settings) {
     const box = document.getElementById('key-status');
     box.classList.toggle('ready', Boolean(settings.configured));
-    box.textContent = settings.configured ? `✓ Gemini · ••••${settings.keySuffix} · ${settings.model}` : '⚠ Configura tu llave de Gemini';
+    box.textContent = settings.configured ? `✓ Gemini · ••••${settings.keySuffix} · ${settings.model}` : '⚠ Add your Gemini API key';
   }
 
   function bindStaticEvents() {
@@ -70,14 +85,16 @@
       document.getElementById('status-filter').value = ['active','planning','archived'].includes(state.dashboardFilter) ? state.dashboardFilter : 'all';
       syncNav(); renderProjects();
     }));
-    ['new-project-button','create-project-heading'].forEach(id => document.getElementById(id).addEventListener('click', () => openModal('project-modal')));
+    ['new-project-button','create-project-heading'].forEach(id => document.getElementById(id).addEventListener('click', openNewProjectModal));
     document.getElementById('refresh-projects').addEventListener('click', refreshProjects);
     document.getElementById('settings-button').addEventListener('click', openSettings);
     document.getElementById('menu-toggle').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('open'));
     document.getElementById('back-dashboard').addEventListener('click', showDashboard);
+    document.getElementById('project-header-icon').addEventListener('click', () => openProjectIconPicker(state.currentProjectId));
     document.querySelectorAll('.project-tab').forEach(tab => tab.addEventListener('click', () => showProjectTab(tab.dataset.projectTab)));
-    document.getElementById('new-conversation').addEventListener('click', newConversation);
+    document.getElementById('new-conversation').addEventListener('click', () => newConversation(false));
     document.getElementById('send-message').addEventListener('click', sendMessage);
+    document.getElementById('stop-response').addEventListener('click', stopResponse);
     document.getElementById('chat-input').addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }
     });
@@ -108,8 +125,9 @@
       state.projects = state.bootstrap.projects || [];
       document.getElementById('setup-screen').classList.add('hidden');
       document.getElementById('app-shell').classList.remove('hidden');
+      setWorkspaceMode('dashboard');
       applyIdentity(); renderProjects();
-      showToast('Aplicación configurada.');
+      showToast('Application configured.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
@@ -123,41 +141,57 @@
       else if (state.dashboardFilter !== 'all') matchesFilter = project.status === state.dashboardFilter;
       return matchesText && matchesFilter;
     });
-    grid.innerHTML = projects.map(project => `
-      <article class="project-card" data-project-id="${escapeHtml(project.projectId)}">
-        <div class="card-top"><div class="project-icon">✦</div><button class="favorite-btn ${project.favorite ? 'on' : ''}" data-favorite-id="${escapeHtml(project.projectId)}" title="Favorito">★</button></div>
+    grid.innerHTML = projects.map(project => {
+      const icon = iconInfo(project.icon);
+      const canEdit = project.role && project.role !== 'viewer' && project.scope === 'full';
+      return `<article class="project-card" data-project-id="${escapeHtml(project.projectId)}">
+        <div class="card-top"><div class="project-icon icon-${escapeHtml(project.icon || 'spark')}" title="${escapeHtml(icon.label)}">${icon.glyph}</div><div class="card-top-actions">${canEdit ? `<button class="card-icon-edit" data-icon-id="${escapeHtml(project.projectId)}" title="Change icon" aria-label="Change icon">✎</button>` : ''}<button class="favorite-btn ${project.favorite ? 'on' : ''}" data-favorite-id="${escapeHtml(project.projectId)}" title="Favorite" aria-label="Favorite">★</button></div></div>
         <h3>${escapeHtml(project.title)}</h3>
-        <p class="description">${escapeHtml(project.description || 'Sin descripción')}</p>
-        <div class="card-meta"><span class="status-pill ${escapeHtml(project.status)}">${escapeHtml(project.status)}</span><span>${formatDate(project.createdAt)}</span></div>
-        <div class="card-stats"><span>▤ ${project.sourceCount} fuentes</span><span>✦ ${project.conversationCount} chats</span><span title="Owner">♙ ${escapeHtml(shortEmail(project.owner))}</span></div>
-      </article>`).join('');
+        <p class="description">${escapeHtml(project.description || 'No description')}</p>
+        <div class="card-meta"><span class="status-pill ${escapeHtml(project.status)}">${escapeHtml(statusLabel(project.status))}</span><span>${formatDate(project.createdAt)}</span></div>
+        <div class="card-stats"><span>▤ ${numberValue(project.sourceCount)} sources</span><span>✦ ${numberValue(project.conversationCount)} chats</span><span>▧ ${numberValue(project.documentCount)} documents</span></div>
+        <div class="card-owner" title="Owner">♙ ${escapeHtml(shortEmail(project.owner))}</div>
+      </article>`;
+    }).join('');
     document.getElementById('empty-projects').classList.toggle('hidden', projects.length > 0);
     grid.querySelectorAll('.project-card').forEach(card => card.addEventListener('click', () => openProject(card.dataset.projectId)));
+    grid.querySelectorAll('[data-icon-id]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openProjectIconPicker(button.dataset.iconId); }));
     grid.querySelectorAll('[data-favorite-id]').forEach(button => button.addEventListener('click', async event => {
-      event.stopPropagation();
+      event.stopPropagation(); setBusy(button, true);
       try {
         const result = await server('toggleProjectFavorite', button.dataset.favoriteId);
         const project = state.projects.find(item => item.projectId === result.projectId);
         if (project) project.favorite = result.favorite;
         renderProjects();
       } catch (error) { showToast(error.message, true); }
+      finally { setBusy(button, false); }
     }));
   }
 
   async function refreshProjects() {
     const button = document.getElementById('refresh-projects');
     setBusy(button, true);
-    try { state.projects = await server('refreshProjects'); renderProjects(); showToast('Proyectos actualizados.'); }
+    try { state.projects = await server('refreshProjects'); renderProjects(); showToast('Projects refreshed.'); }
     catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
+  }
+
+  function openNewProjectModal() {
+    document.getElementById('new-project-icon').value = 'spark';
+    syncIconSelection('new-project-icon-options', 'spark');
+    openModal('project-modal');
   }
 
   async function submitProject(event) {
     event.preventDefault(); setBusy(event.target, true);
     try {
-      const project = await server('createProject', {title: document.getElementById('new-project-title').value, description: document.getElementById('new-project-description').value});
+      const project = await server('createProject', {
+        title: document.getElementById('new-project-title').value,
+        description: document.getElementById('new-project-description').value,
+        icon: document.getElementById('new-project-icon').value
+      });
       state.projects.unshift(project); closeModals(); event.target.reset(); renderProjects(); await openProject(project.projectId);
-      showToast('Proyecto creado.');
+      showToast('Project created.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
@@ -166,7 +200,8 @@
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('dashboard-view').classList.add('hidden');
     document.getElementById('project-view').classList.remove('hidden');
-    document.getElementById('project-title').textContent = 'Cargando…';
+    setWorkspaceMode('project');
+    document.getElementById('project-title').textContent = 'Loading…';
     try {
       const details = await server('getProjectDetails', projectId);
       state.projectDetails = details;
@@ -174,6 +209,7 @@
       state.currentConversationId = null;
       state.currentConversation = null;
       state.selectedSources = new Set((details.sources || []).filter(source => source.status === 'active').map(source => source.sourceId));
+      syncProjectSummary(details);
       renderProjectDetails();
       const firstTab = details.permissions.history ? 'chat' : details.permissions.sources ? 'sources' : 'documents';
       showProjectTab(firstTab);
@@ -182,11 +218,22 @@
     } catch (error) { showToast(error.message, true); showDashboard(); }
   }
 
+  function syncProjectSummary(details) {
+    const local = state.projects.find(item => item.projectId === details.project.projectId);
+    if (!local) return;
+    Object.assign(local, details.project);
+    if (details.permissions.sources) local.sourceCount = (details.sources || []).filter(item => item.status !== 'removed').length;
+    if (details.permissions.history) local.conversationCount = (details.conversations || []).filter(item => item.status !== 'archived').length;
+    if (details.permissions.documents && details.permissions.history) local.documentCount = (details.documents || []).length;
+  }
+
   function renderProjectDetails() {
     const details = state.projectDetails;
     const project = details.project;
     document.getElementById('project-title').textContent = project.title;
     document.getElementById('project-description').textContent = project.description || '';
+    setIconElement(document.getElementById('project-header-icon'), project.icon);
+    document.getElementById('project-header-icon').disabled = !details.permissions.edit || !details.permissions.project;
     const folder = document.getElementById('open-project-folder');
     folder.classList.toggle('hidden', !project.folderUrl); folder.href = project.folderUrl || '#';
     document.getElementById('export-pdf-button').classList.toggle('hidden', !details.permissions.history || !details.permissions.edit);
@@ -202,10 +249,18 @@
   }
 
   function showDashboard() {
+    if (state.activeRequest) stopResponse();
     state.currentProjectId = null; state.projectDetails = null;
     document.getElementById('project-view').classList.add('hidden');
     document.getElementById('dashboard-view').classList.remove('hidden');
+    setWorkspaceMode('dashboard');
     renderProjects();
+  }
+
+  function setWorkspaceMode(mode) {
+    const shell = document.getElementById('app-shell');
+    shell.classList.toggle('dashboard-mode', mode === 'dashboard');
+    shell.classList.toggle('project-mode', mode === 'project');
   }
 
   function showProjectTab(name) {
@@ -218,26 +273,34 @@
   function renderConversationList() {
     const list = document.getElementById('conversation-list');
     const conversations = state.projectDetails.conversations || [];
-    list.innerHTML = conversations.map(item => `<button class="conversation-item ${item.conversationId === state.currentConversationId ? 'active' : ''}" data-conversation-id="${escapeHtml(item.conversationId)}"><strong>${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${item.messageCount || 0} mensajes</small></button>`).join('');
-    list.querySelectorAll('[data-conversation-id]').forEach(button => button.addEventListener('click', () => openConversation(button.dataset.conversationId)));
+    list.innerHTML = conversations.map(item => `<button class="conversation-item ${item.conversationId === state.currentConversationId ? 'active' : ''}" data-conversation-id="${escapeHtml(item.conversationId)}"><strong>${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${numberValue(item.messageCount)} messages</small></button>`).join('');
+    list.querySelectorAll('[data-conversation-id]').forEach(button => button.addEventListener('click', () => openConversation(button.dataset.conversationId, button)));
   }
 
-  async function newConversation() {
+  async function newConversation(silent) {
+    const button = document.getElementById('new-conversation');
+    if (!silent) setBusy(button, true);
     try {
-      const conversation = await server('createConversation', state.currentProjectId, 'Nueva conversación');
+      const conversation = await server('createConversation', state.currentProjectId, 'New chat');
       state.projectDetails.conversations.unshift({conversationId: conversation.conversationId, title: conversation.title, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, messageCount: 0});
       state.currentConversationId = conversation.conversationId; state.currentConversation = conversation;
+      updateProjectCount('conversationCount', state.projectDetails.conversations.length);
       renderConversationList(); renderMessages(); document.getElementById('chat-input').focus();
-    } catch (error) { showToast(error.message, true); }
+      return conversation;
+    } catch (error) { showToast(error.message, true); throw error; }
+    finally { if (!silent) setBusy(button, false); }
   }
 
-  async function openConversation(conversationId) {
+  async function openConversation(conversationId, button) {
+    if (state.busy) return;
+    if (button) setBusy(button, true);
     try {
       state.currentConversationId = conversationId;
       renderConversationList();
       state.currentConversation = await server('loadConversation', state.currentProjectId, conversationId);
       renderMessages();
     } catch (error) { showToast(error.message, true); }
+    finally { if (button) setBusy(button, false); }
   }
 
   function renderChatEmpty() {
@@ -246,24 +309,26 @@
     document.getElementById('chat-empty').classList.remove('hidden');
   }
 
-  function renderMessages() {
+  function renderMessages(options = {}) {
     const messages = state.currentConversation ? state.currentConversation.messages || [] : [];
-    document.getElementById('chat-empty').classList.toggle('hidden', messages.length > 0);
+    document.getElementById('chat-empty').classList.toggle('hidden', messages.length > 0 || options.thinking);
     const container = document.getElementById('chat-messages');
-    container.innerHTML = messages.map(message => renderMessage(message)).join('');
-    container.querySelectorAll('[data-save-message]').forEach(button => button.addEventListener('click', () => saveMessageAsDocument(button.dataset.saveMessage)));
-    requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+    container.innerHTML = messages.map(message => renderMessage(message)).join('') + (options.thinking ? renderThinkingMessage(options.stopping) : '');
+    scrollChatToBottom();
   }
 
   function renderMessage(message) {
     const assistant = message.role === 'assistant';
     const sources = (message.sourcesUsed || []).map(source => `[${escapeHtml(source.label)}] ${escapeHtml(source.name)}`).join(' · ');
-    return `<article class="message ${assistant ? 'assistant' : 'user'}">
-      <div class="message-header"><span class="message-avatar">${assistant ? '✦' : escapeHtml(initials(state.bootstrap.identity.email))}</span><span>${assistant ? 'Agente' : 'Tú'}</span></div>
-      <div class="message-body">${formatMarkdown(message.text)}</div>
-      ${sources ? `<div class="message-sources">Fuentes: ${sources}</div>` : ''}
-      ${assistant && state.projectDetails.permissions.documents ? `<div class="message-tools"><button class="text-btn" data-save-message="${escapeHtml(message.messageId)}">▧ Guardar como documento</button></div>` : ''}
+    return `<article class="message ${assistant ? 'assistant' : 'user'}" data-message-id="${escapeHtml(message.messageId)}">
+      <div class="message-header"><span class="message-avatar">${assistant ? '✦' : escapeHtml(initials(state.bootstrap.identity.email))}</span><span>${assistant ? 'Agent' : 'You'}</span></div>
+      <div id="message-body-${escapeHtml(message.messageId)}" class="message-body ${message.isTyping ? 'typing-cursor' : ''}">${formatMarkdown(message.text)}</div>
+      ${sources ? `<div class="message-sources">Sources: ${sources}</div>` : ''}
     </article>`;
+  }
+
+  function renderThinkingMessage(stopping) {
+    return `<article id="agent-thinking" class="message assistant"><div class="message-header"><span class="message-avatar">✦</span><span>Agent</span></div><div class="thinking-body"><span>${stopping ? 'Stopping response…' : 'Gemini received your message and is thinking'}</span><span class="thinking-dots"><i></i><i></i><i></i><i></i></span></div></article>`;
   }
 
   async function sendMessage() {
@@ -271,55 +336,115 @@
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
     if (!text) return;
-    state.busy = true; input.value = ''; autoSizeComposer();
-    const temporary = {messageId: 'temp', role: 'user', text, createdAt: new Date().toISOString()};
-    if (!state.currentConversation) state.currentConversation = {messages: []};
-    state.currentConversation.messages.push(temporary);
-    renderMessages(); document.getElementById('send-message').textContent = '…';
+    state.busy = true;
     try {
-      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId || '', text, Array.from(state.selectedSources));
+      if (!state.currentConversationId) await newConversation(true);
+      input.value = ''; autoSizeComposer();
+      const request = {id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`, cancelled: false, phase: 'waiting', displayedText: ''};
+      state.activeRequest = request;
+      const temporary = {messageId: `temp-${Date.now()}`, role: 'user', text, createdAt: new Date().toISOString()};
+      state.currentConversation.messages.push(temporary);
+      setAgentBusy(true); renderMessages({thinking: true});
+
+      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId, text, Array.from(state.selectedSources), request.id);
+      if (request.cancelled) {
+        await syncCurrentConversation();
+        showToast('Response stopped.');
+        return;
+      }
       state.currentConversationId = result.conversationId;
-      state.currentConversation.messages.pop();
-      state.currentConversation.messages.push(result.userMessage, result.assistantMessage);
+      state.currentConversation.messages = state.currentConversation.messages.filter(item => item.messageId !== temporary.messageId);
+      state.currentConversation.messages.push(result.userMessage);
+      const assistantMessage = Object.assign({}, result.assistantMessage, {text: '', isTyping: true});
+      state.currentConversation.messages.push(assistantMessage);
       state.currentConversation.title = result.title;
       const record = state.projectDetails.conversations.find(item => item.conversationId === result.conversationId);
-      if (record) { record.title = result.title; record.updatedAt = result.assistantMessage.createdAt; record.messageCount = state.currentConversation.messages.length; }
-      else state.projectDetails.conversations.unshift({conversationId: result.conversationId, title: result.title, updatedAt: result.assistantMessage.createdAt, messageCount: 2});
+      if (record) { record.title = result.title; record.updatedAt = result.assistantMessage.createdAt; record.messageCount = result.messageCount; }
+      else state.projectDetails.conversations.unshift({conversationId: result.conversationId, title: result.title, updatedAt: result.assistantMessage.createdAt, messageCount: result.messageCount});
+      renderConversationList(); renderMessages();
+      request.phase = 'typing';
+      const completed = await typeAssistantResponse(assistantMessage, result.assistantMessage.text, request);
+      assistantMessage.isTyping = false;
+      if (!completed) {
+        const stoppedText = request.displayedText.trim() || '[Response stopped]';
+        assistantMessage.text = stoppedText;
+        try { await server('truncateAssistantMessage', state.currentProjectId, state.currentConversationId, assistantMessage.messageId, stoppedText); } catch (_) {}
+        showToast('Response stopped.');
+      }
       renderConversationList(); renderMessages();
     } catch (error) {
-      state.currentConversation.messages = state.currentConversation.messages.filter(item => item.messageId !== 'temp');
-      input.value = text; renderMessages(); showToast(error.message, true);
+      if (state.activeRequest && state.activeRequest.cancelled) {
+        await syncCurrentConversation();
+        showToast('Response stopped.');
+      } else {
+        await syncCurrentConversation();
+        showToast(error.message, true);
+      }
     } finally {
-      state.busy = false; document.getElementById('send-message').textContent = '➤'; input.focus();
+      state.busy = false; state.activeRequest = null; setAgentBusy(false); input.focus();
     }
   }
 
-  async function saveMessageAsDocument(messageId) {
-    const title = prompt('Nombre del documento:', state.currentConversation.title + ' - respuesta');
-    if (!title) return;
+  function stopResponse() {
+    const request = state.activeRequest;
+    if (!request || request.cancelled) return;
+    request.cancelled = true;
+    renderMessages({thinking: request.phase === 'waiting', stopping: request.phase === 'waiting'});
+    if (request.phase === 'waiting') server('cancelChatRequest', request.id).catch(() => {});
+  }
+
+  async function typeAssistantResponse(message, fullText, request) {
+    const chunks = Math.min(190, Math.max(35, Math.ceil(fullText.length / 18)));
+    const step = Math.max(1, Math.ceil(fullText.length / chunks));
+    for (let end = step; end < fullText.length + step; end += step) {
+      if (request.cancelled) return false;
+      request.displayedText = fullText.slice(0, Math.min(end, fullText.length));
+      message.text = request.displayedText;
+      const body = document.getElementById('message-body-' + message.messageId);
+      if (body) body.innerHTML = formatMarkdown(message.text);
+      scrollChatToBottom();
+      await delay(12);
+    }
+    message.text = fullText;
+    return true;
+  }
+
+  async function syncCurrentConversation() {
+    if (!state.currentConversationId) return;
     try {
-      const doc = await server('saveAssistantMessageAsDocument', state.currentProjectId, state.currentConversationId, messageId, title);
-      state.projectDetails.documents.unshift(doc); renderDocuments(); showToast('Documento guardado en Drive.');
-    } catch (error) { showToast(error.message, true); }
+      state.currentConversation = await server('loadConversation', state.currentProjectId, state.currentConversationId);
+      const record = state.projectDetails.conversations.find(item => item.conversationId === state.currentConversationId);
+      if (record) { record.title = state.currentConversation.title; record.updatedAt = state.currentConversation.updatedAt; record.messageCount = (state.currentConversation.messages || []).length; }
+      renderConversationList(); renderMessages();
+    } catch (_) {}
+  }
+
+  function setAgentBusy(busy) {
+    document.getElementById('send-message').classList.toggle('hidden', busy);
+    document.getElementById('stop-response').classList.toggle('hidden', !busy);
+    document.getElementById('chat-input').disabled = busy;
   }
 
   async function exportPdf() {
-    if (!state.currentConversationId) return showToast('Selecciona una conversación para exportar.', true);
+    if (!state.currentConversationId) return showToast('Select a chat to export.', true);
     const button = document.getElementById('export-pdf-button'); setBusy(button, true);
-    try { const pdf = await server('exportConversationToPdf', state.currentProjectId, state.currentConversationId); window.open(pdf.url, '_blank'); showToast('PDF creado en Drive.'); }
-    catch (error) { showToast(error.message, true); }
+    try {
+      const pdf = await server('exportConversationToPdf', state.currentProjectId, state.currentConversationId);
+      if (state.projectDetails.permissions.documents) { state.projectDetails.documents.unshift(pdf); renderDocuments(); updateProjectCount('documentCount', state.projectDetails.documents.length); }
+      window.open(pdf.url, '_blank'); showToast('PDF created in Drive.');
+    } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
 
   function renderSources() {
     const sources = state.projectDetails.sources || [];
-    document.getElementById('chat-source-list').innerHTML = sources.map(source => `<label class="source-check"><input type="checkbox" data-chat-source="${escapeHtml(source.sourceId)}" ${state.selectedSources.has(source.sourceId) ? 'checked' : ''}><span>${escapeHtml(source.name)}</span></label>`).join('') || '<p class="muted">Sin fuentes.</p>';
+    document.getElementById('chat-source-list').innerHTML = sources.map(source => `<label class="source-check"><input type="checkbox" data-chat-source="${escapeHtml(source.sourceId)}" ${state.selectedSources.has(source.sourceId) ? 'checked' : ''}><span>${escapeHtml(source.name)}</span></label>`).join('') || '<p class="muted">No sources yet.</p>';
     document.querySelectorAll('[data-chat-source]').forEach(input => input.addEventListener('change', () => { input.checked ? state.selectedSources.add(input.dataset.chatSource) : state.selectedSources.delete(input.dataset.chatSource); renderSourceChips(); }));
     renderSourceChips();
     const list = document.getElementById('sources-table');
-    list.innerHTML = `<div class="data-row header"><span>Nombre</span><span>Tipo</span><span>Estado</span><span></span></div>` + sources.map(source => `<div class="data-row"><span class="file-name">${escapeHtml(source.name)}</span><span>${escapeHtml(friendlyMime(source.mimeType))}</span><span class="status-pill ${source.status}">${escapeHtml(source.status)}</span><span class="row-actions">${state.projectDetails.permissions.edit ? `<button class="text-btn" data-toggle-source="${escapeHtml(source.sourceId)}">${source.status === 'active' ? 'Desactivar' : 'Activar'}</button><button class="danger-btn" data-remove-source="${escapeHtml(source.sourceId)}">Quitar</button>` : ''}</span></div>`).join('');
-    list.querySelectorAll('[data-toggle-source]').forEach(button => button.addEventListener('click', () => toggleSource(button.dataset.toggleSource)));
-    list.querySelectorAll('[data-remove-source]').forEach(button => button.addEventListener('click', () => removeSourceItem(button.dataset.removeSource)));
+    list.innerHTML = `<div class="data-row header"><span>Name</span><span>Type</span><span>Status</span><span></span></div>` + sources.map(source => `<div class="data-row"><span class="file-name">${escapeHtml(source.name)}</span><span>${escapeHtml(friendlyMime(source.mimeType))}</span><span class="status-pill ${source.status}">${escapeHtml(source.status)}</span><span class="row-actions">${state.projectDetails.permissions.edit ? `<button class="text-btn" data-toggle-source="${escapeHtml(source.sourceId)}">${source.status === 'active' ? 'Deactivate' : 'Activate'}</button><button class="danger-btn" data-remove-source="${escapeHtml(source.sourceId)}">Remove</button>` : ''}</span></div>`).join('');
+    list.querySelectorAll('[data-toggle-source]').forEach(button => button.addEventListener('click', () => toggleSource(button.dataset.toggleSource, button)));
+    list.querySelectorAll('[data-remove-source]').forEach(button => button.addEventListener('click', () => removeSourceItem(button.dataset.removeSource, button)));
   }
 
   function renderSourceChips() {
@@ -338,43 +463,54 @@
     try {
       const result = await server('addSourceFromDrive', state.currentProjectId, document.getElementById('source-drive-url').value);
       state.projectDetails.sources.push(...result.added); result.added.forEach(source => state.selectedSources.add(source.sourceId));
-      closeModals(); event.target.reset(); renderSources(); showToast(`${result.added.length} fuente(s) importada(s).`);
+      updateProjectCount('sourceCount', state.projectDetails.sources.filter(item => item.status !== 'removed').length);
+      closeModals(); event.target.reset(); renderSources(); showToast(`${result.added.length} source(s) imported.`);
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
 
   async function uploadSourceFile(event) {
     const file = event.target.files[0]; if (!file) return;
-    if (file.size > 6 * 1024 * 1024) { event.target.value = ''; return showToast('El archivo excede 6 MB. Impórtalo mediante Drive.', true); }
+    if (file.size > 6 * 1024 * 1024) { event.target.value = ''; return showToast('The file exceeds 6 MB. Import it from Drive instead.', true); }
+    const label = document.querySelector('.file-button'); setBusy(label, true);
     try {
       const base64 = await fileAsBase64(file);
       const source = await server('uploadSource', state.currentProjectId, {name: file.name, mimeType: file.type || 'application/octet-stream', base64});
-      state.projectDetails.sources.push(source); state.selectedSources.add(source.sourceId); renderSources(); showToast('Fuente cargada.');
+      state.projectDetails.sources.push(source); state.selectedSources.add(source.sourceId);
+      updateProjectCount('sourceCount', state.projectDetails.sources.filter(item => item.status !== 'removed').length);
+      renderSources(); showToast('Source uploaded.');
     } catch (error) { showToast(error.message, true); }
-    finally { event.target.value = ''; }
+    finally { event.target.value = ''; setBusy(label, false); }
   }
 
-  async function toggleSource(sourceId) {
-    const source = state.projectDetails.sources.find(item => item.sourceId === sourceId);
+  async function toggleSource(sourceId, button) {
+    const source = state.projectDetails.sources.find(item => item.sourceId === sourceId); setBusy(button, true);
     try { const updated = await server('setSourceActive', state.currentProjectId, sourceId, source.status !== 'active'); Object.assign(source, updated); if (updated.status === 'active') state.selectedSources.add(sourceId); else state.selectedSources.delete(sourceId); renderSources(); }
     catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
   }
 
-  async function removeSourceItem(sourceId) {
-    if (!confirm('La fuente se moverá a la papelera de Drive. ¿Continuar?')) return;
-    try { await server('removeSource', state.currentProjectId, sourceId); state.projectDetails.sources = state.projectDetails.sources.filter(item => item.sourceId !== sourceId); state.selectedSources.delete(sourceId); renderSources(); showToast('Fuente retirada; puede recuperarse desde la papelera.'); }
-    catch (error) { showToast(error.message, true); }
+  async function removeSourceItem(sourceId, button) {
+    if (!confirm('This source will be moved to the Drive trash. Continue?')) return;
+    setBusy(button, true);
+    try {
+      await server('removeSource', state.currentProjectId, sourceId);
+      state.projectDetails.sources = state.projectDetails.sources.filter(item => item.sourceId !== sourceId); state.selectedSources.delete(sourceId);
+      updateProjectCount('sourceCount', state.projectDetails.sources.length);
+      renderSources(); showToast('Source removed. It can still be restored from Drive trash.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
   }
 
   function renderDocuments() {
     const docs = state.projectDetails.documents || [];
-    document.getElementById('documents-table').innerHTML = `<div class="data-row header"><span>Nombre</span><span>Tipo</span><span>Actualizado</span><span></span></div>` + docs.map(doc => `<div class="data-row"><span class="file-name">${escapeHtml(doc.name)}</span><span>${escapeHtml(friendlyMime(doc.mimeType))}</span><span>${formatDate(doc.updatedAt)}</span><span class="row-actions"><a class="text-btn" href="${escapeHtml(doc.url)}" target="_blank">Abrir</a></span></div>`).join('');
+    document.getElementById('documents-table').innerHTML = `<div class="data-row header"><span>Name</span><span>Type</span><span>Updated</span><span></span></div>` + docs.map(doc => `<div class="data-row"><span class="file-name">${escapeHtml(doc.name)}</span><span>${escapeHtml(friendlyMime(doc.mimeType))}</span><span>${formatDate(doc.updatedAt)}</span><span class="row-actions"><a class="text-btn" href="${escapeHtml(doc.url)}" target="_blank">Open</a></span></div>`).join('');
   }
 
   function renderMembers() {
     const members = state.projectDetails.members || [];
-    document.getElementById('members-table').innerHTML = `<div class="data-row header"><span>Usuario</span><span>Rol</span><span>Contenido</span><span></span></div>` + members.map(member => `<div class="data-row"><span class="file-name">${escapeHtml(member.email)}</span><span>${escapeHtml(member.role)}</span><span>${escapeHtml(scopeLabel(member.scope))}</span><span class="row-actions">${member.role !== 'owner' ? `<button class="danger-btn" data-remove-member="${escapeHtml(member.email)}">Retirar</button>` : ''}</span></div>`).join('');
-    document.querySelectorAll('[data-remove-member]').forEach(button => button.addEventListener('click', () => removeMember(button.dataset.removeMember)));
+    document.getElementById('members-table').innerHTML = `<div class="data-row header"><span>User</span><span>Role</span><span>Content</span><span></span></div>` + members.map(member => `<div class="data-row"><span class="file-name">${escapeHtml(member.email)}</span><span>${escapeHtml(member.role)}</span><span>${escapeHtml(scopeLabel(member.scope))}</span><span class="row-actions">${member.role !== 'owner' ? `<button class="danger-btn" data-remove-member="${escapeHtml(member.email)}">Remove</button>` : ''}</span></div>`).join('');
+    document.querySelectorAll('[data-remove-member]').forEach(button => button.addEventListener('click', () => removeMember(button.dataset.removeMember, button)));
   }
 
   async function submitMember(event) {
@@ -383,21 +519,23 @@
     document.querySelectorAll('#custom-permissions input').forEach(input => permissions[input.value] = input.checked);
     try {
       state.projectDetails.members = await server('shareProject', {projectId: state.currentProjectId, email: document.getElementById('member-email').value, role: document.getElementById('member-role').value, scope: document.getElementById('member-scope').value, permissions});
-      closeModals(); event.target.reset(); document.getElementById('custom-permissions').classList.add('hidden'); renderMembers(); showToast('Acceso actualizado.');
+      closeModals(); event.target.reset(); document.getElementById('custom-permissions').classList.add('hidden'); renderMembers(); showToast('Access updated.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
 
-  async function removeMember(email) {
-    if (!confirm(`¿Retirar el acceso de ${email}?`)) return;
-    try { state.projectDetails.members = await server('removeProjectMember', state.currentProjectId, email); renderMembers(); showToast('Acceso retirado.'); }
+  async function removeMember(email, button) {
+    if (!confirm(`Remove access for ${email}?`)) return;
+    setBusy(button, true);
+    try { state.projectDetails.members = await server('removeProjectMember', state.currentProjectId, email); renderMembers(); showToast('Access removed.'); }
     catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
   }
 
   function openSettings() {
     const settings = state.bootstrap.userSettings;
     document.getElementById('gemini-api-key').value = '';
-    document.getElementById('gemini-api-key').placeholder = settings.configured ? `Configurada · ••••${settings.keySuffix}` : 'AIza…';
+    document.getElementById('gemini-api-key').placeholder = settings.configured ? `Configured · ••••${settings.keySuffix}` : 'AIza…';
     document.getElementById('gemini-model').value = settings.model;
     openModal('settings-modal');
   }
@@ -405,20 +543,67 @@
   async function saveGeminiSettings(event) {
     event.preventDefault(); setBusy(event.target, true);
     const key = document.getElementById('gemini-api-key').value.trim();
-    if (!key && state.bootstrap.userSettings.configured) { setBusy(event.target, false); return showToast('Escribe la llave para volver a validarla.', true); }
+    if (!key && state.bootstrap.userSettings.configured) { setBusy(event.target, false); return showToast('Enter the key again to validate it.', true); }
     try {
       const settings = await server('saveUserGeminiSettings', {apiKey: key, model: document.getElementById('gemini-model').value});
-      state.bootstrap.userSettings = settings; updateKeyStatus(settings); closeModals(); showToast('Llave validada y guardada para tu usuario.');
+      state.bootstrap.userSettings = settings; updateKeyStatus(settings); closeModals(); showToast('API key validated and saved for your account.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
 
   async function loadModels() {
+    const button = document.getElementById('load-models'); setBusy(button, true);
     try {
       const models = await server('getAvailableGeminiModels');
       document.getElementById('gemini-model-options').innerHTML = models.map(model => `<option value="${escapeHtml(model.name)}">${escapeHtml(model.displayName)}</option>`).join('');
-      showToast(`${models.length} modelos compatibles encontrados.`);
+      showToast(`${models.length} compatible models found.`);
     } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function renderIconOptions() {
+    const markup = selected => Object.entries(PROJECT_ICONS).map(([key, icon]) => `<button type="button" class="icon-choice icon-${key} ${key === selected ? 'selected' : ''}" data-icon-key="${key}" title="${escapeHtml(icon.label)}" aria-label="${escapeHtml(icon.label)}">${icon.glyph}</button>`).join('');
+    document.getElementById('new-project-icon-options').innerHTML = markup('spark');
+    document.getElementById('project-icon-options').innerHTML = markup('spark');
+    document.getElementById('new-project-icon-options').addEventListener('click', event => {
+      const button = event.target.closest('[data-icon-key]'); if (!button) return;
+      document.getElementById('new-project-icon').value = button.dataset.iconKey; syncIconSelection('new-project-icon-options', button.dataset.iconKey);
+    });
+    document.getElementById('project-icon-options').addEventListener('click', event => {
+      const button = event.target.closest('[data-icon-key]'); if (button) setProjectIcon(button.dataset.iconKey, button);
+    });
+  }
+
+  function openProjectIconPicker(projectId) {
+    if (!projectId) return;
+    const project = state.projects.find(item => item.projectId === projectId) || (state.projectDetails && state.projectDetails.project);
+    if (!project || project.role === 'viewer' || project.scope !== 'full') return;
+    state.iconTargetProjectId = projectId;
+    syncIconSelection('project-icon-options', project.icon || 'spark');
+    openModal('icon-modal');
+  }
+
+  async function setProjectIcon(icon, button) {
+    const projectId = state.iconTargetProjectId; if (!projectId) return;
+    setBusy(button, true);
+    try {
+      const updated = await server('updateProject', projectId, {icon});
+      const local = state.projects.find(item => item.projectId === projectId); if (local) Object.assign(local, updated);
+      if (state.projectDetails && state.projectDetails.project.projectId === projectId) { Object.assign(state.projectDetails.project, updated); setIconElement(document.getElementById('project-header-icon'), icon); }
+      closeModals(); renderProjects(); showToast('Project icon updated.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function syncIconSelection(containerId, selected) {
+    document.querySelectorAll(`#${containerId} [data-icon-key]`).forEach(button => button.classList.toggle('selected', button.dataset.iconKey === selected));
+  }
+
+  function setIconElement(element, key) {
+    const icon = iconInfo(key); const iconKey = PROJECT_ICONS[key] ? key : 'spark';
+    element.textContent = icon.glyph;
+    element.className = `project-icon project-icon-button icon-${iconKey}`;
+    element.title = 'Change project icon';
   }
 
   function openModal(id) {
@@ -429,14 +614,26 @@
   function closeModals() { document.getElementById('modal-backdrop').classList.add('hidden'); document.querySelectorAll('.modal').forEach(modal => modal.classList.add('hidden')); }
   function syncNav() { document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.classList.toggle('active', button.dataset.dashboardFilter === state.dashboardFilter)); }
   function autoSizeComposer() { const el = document.getElementById('chat-input'); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; }
-  function setBusy(element, busy) { if (!element) return; element.classList.toggle('busy', busy); Array.from(element.querySelectorAll ? element.querySelectorAll('button,input,textarea,select') : []).forEach(control => control.disabled = busy); if ('disabled' in element) element.disabled = busy; }
+  function scrollChatToBottom() { const region = document.getElementById('chat-scroll-region'); requestAnimationFrame(() => { region.scrollTop = region.scrollHeight; }); }
+  function setBusy(element, busy) {
+    if (!element) return;
+    const targets = element.matches && element.matches('form') ? Array.from(element.querySelectorAll('button[type="submit"]')) : [element];
+    targets.forEach(target => target.classList.toggle('is-loading', busy));
+    Array.from(element.querySelectorAll ? element.querySelectorAll('button,input,textarea,select') : []).forEach(control => control.disabled = busy);
+    if ('disabled' in element && !(element.matches && element.matches('form'))) element.disabled = busy;
+  }
+  function updateProjectCount(key, value) { const project = state.projects.find(item => item.projectId === state.currentProjectId); if (project) project[key] = value; }
   function fileAsBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); }
+  function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
   function showToast(message, error = false) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.toggle('error', error); toast.classList.remove('hidden'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.add('hidden'), 4200); }
+  function iconInfo(key) { return PROJECT_ICONS[key] || PROJECT_ICONS.spark; }
+  function numberValue(value) { const number = Number(value); return Number.isFinite(number) && number >= 0 ? number : 0; }
+  function statusLabel(status) { return ({active:'Ongoing',planning:'Planning',archived:'Archived'})[status] || status; }
   function initials(value) { return String(value || 'U').split(/[.\s_-]+/).filter(Boolean).slice(0,2).map(part => part[0].toUpperCase()).join('') || 'U'; }
   function shortEmail(email) { return String(email || '').split('@')[0]; }
-  function formatDate(value) { if (!value) return ''; try { return new Intl.DateTimeFormat('es-MX',{dateStyle:'medium'}).format(new Date(value)); } catch (_) { return String(value); } }
-  function friendlyMime(mime) { const map = {'application/vnd.google-apps.document':'Google Docs','application/vnd.google-apps.spreadsheet':'Google Sheets','application/vnd.google-apps.presentation':'Google Slides','application/pdf':'PDF','text/plain':'Texto','text/csv':'CSV'}; return map[mime] || String(mime || 'Archivo').split('/').pop(); }
-  function scopeLabel(scope) { return ({full:'Proyecto completo',sources_documents:'Fuentes y documentos',history:'Solo historial',custom:'Personalizado'})[scope] || scope; }
+  function formatDate(value) { if (!value) return ''; try { return new Intl.DateTimeFormat('en-US',{dateStyle:'medium'}).format(new Date(value)); } catch (_) { return String(value); } }
+  function friendlyMime(mime) { const map = {'application/vnd.google-apps.document':'Google Docs','application/vnd.google-apps.spreadsheet':'Google Sheets','application/vnd.google-apps.presentation':'Google Slides','application/pdf':'PDF','text/plain':'Text','text/csv':'CSV'}; return map[mime] || String(mime || 'File').split('/').pop(); }
+  function scopeLabel(scope) { return ({full:'Full project',sources_documents:'Sources and documents',history:'Chat history only',custom:'Custom'})[scope] || scope; }
   function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[char]); }
   function formatMarkdown(value) {
     let text = escapeHtml(value);

@@ -1,41 +1,49 @@
 <div id="modal-backdrop" class="modal-backdrop hidden">
   <section id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
     <button class="modal-close" data-close-modal>×</button>
-    <p class="eyebrow">CONFIGURACIÓN PERSONAL</p>
+    <p class="eyebrow">PERSONAL SETTINGS</p>
     <h2>Gemini API</h2>
-    <p class="muted">La llave se guarda en tus propiedades de usuario; no aparece en el navegador ni se comparte con otros usuarios.</p>
+    <p class="muted">Your key is stored in your user properties. It is never shown in the browser or shared with other users.</p>
     <form id="gemini-settings-form">
-      <label>Llave de Gemini<input id="gemini-api-key" type="password" autocomplete="off" placeholder="AIza…"></label>
-      <label>Modelo<input id="gemini-model" list="gemini-model-options" placeholder="gemini-3.6-flash"><datalist id="gemini-model-options"></datalist></label>
-      <div class="modal-actions"><button type="button" id="load-models" class="secondary-btn">Consultar modelos</button><button type="submit" class="primary-btn">Validar y guardar</button></div>
+      <label>Gemini API key<input id="gemini-api-key" type="password" autocomplete="off" placeholder="AIza…"></label>
+      <label>Model<input id="gemini-model" list="gemini-model-options" placeholder="gemini-3.6-flash"><datalist id="gemini-model-options"></datalist></label>
+      <div class="modal-actions"><button type="button" id="load-models" class="secondary-btn">Load models</button><button type="submit" class="primary-btn">Validate and save</button></div>
     </form>
   </section>
 
   <section id="project-modal" class="modal hidden" role="dialog" aria-modal="true">
     <button class="modal-close" data-close-modal>×</button>
-    <p class="eyebrow">NUEVO PROYECTO</p><h2>Crear agente de proyecto</h2>
+    <p class="eyebrow">NEW PROJECT</p><h2>Create a project agent</h2>
     <form id="project-form">
-      <label>Título<input id="new-project-title" required maxlength="120"></label>
-      <label>Descripción<textarea id="new-project-description" rows="4" maxlength="800"></textarea></label>
-      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancelar</button><button type="submit" class="primary-btn">Crear proyecto</button></div>
+      <label>Title<input id="new-project-title" required maxlength="120"></label>
+      <label>Description<textarea id="new-project-description" rows="4" maxlength="800"></textarea></label>
+      <fieldset class="icon-fieldset"><legend>Project icon</legend><input id="new-project-icon" type="hidden" value="spark"><div id="new-project-icon-options" class="icon-options"></div></fieldset>
+      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Create project</button></div>
     </form>
+  </section>
+
+  <section id="icon-modal" class="modal icon-modal hidden" role="dialog" aria-modal="true">
+    <button class="modal-close" data-close-modal>×</button>
+    <p class="eyebrow">PROJECT IDENTITY</p><h2>Choose an icon</h2>
+    <p class="muted">The icon helps distinguish this project across the dashboard and workspace.</p>
+    <div id="project-icon-options" class="icon-options large-options"></div>
   </section>
 
   <section id="source-link-modal" class="modal hidden" role="dialog" aria-modal="true">
     <button class="modal-close" data-close-modal>×</button>
-    <p class="eyebrow">IMPORTAR FUENTE</p><h2>Archivo o carpeta de Drive</h2>
-    <p class="muted">Se creará una copia dentro de Sources para mantener una versión controlada y compartirla con el proyecto.</p>
-    <form id="source-link-form"><label>ID o URL de Drive<input id="source-drive-url" required></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancelar</button><button type="submit" class="primary-btn">Importar</button></div></form>
+    <p class="eyebrow">IMPORT SOURCE</p><h2>Drive file or folder</h2>
+    <p class="muted">A copy will be added to Sources to keep a controlled project version.</p>
+    <form id="source-link-form"><label>Drive ID or URL<input id="source-drive-url" required></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Import</button></div></form>
   </section>
 
   <section id="member-modal" class="modal hidden" role="dialog" aria-modal="true">
     <button class="modal-close" data-close-modal>×</button>
-    <p class="eyebrow">COMPARTIR</p><h2>Agregar usuario</h2>
+    <p class="eyebrow">SHARE</p><h2>Add a user</h2>
     <form id="member-form">
-      <label>Correo de la organización<input id="member-email" type="email" required></label>
-      <div class="form-grid"><label>Rol<select id="member-role"><option value="editor">Editor</option><option value="collaborator">Colaborador</option><option value="viewer">Lector</option></select></label><label>Contenido<select id="member-scope"><option value="full">Proyecto completo</option><option value="sources_documents">Fuentes y documentos</option><option value="history">Solo historial</option><option value="custom">Personalizado</option></select></label></div>
-      <div id="custom-permissions" class="checkbox-group hidden"><label><input type="checkbox" value="sources"> Fuentes</label><label><input type="checkbox" value="documents"> Documentos</label><label><input type="checkbox" value="history"> Historial</label></div>
-      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancelar</button><button type="submit" class="primary-btn">Compartir</button></div>
+      <label>Organization email<input id="member-email" type="email" required></label>
+      <div class="form-grid"><label>Role<select id="member-role"><option value="editor">Editor</option><option value="collaborator">Collaborator</option><option value="viewer">Viewer</option></select></label><label>Content<select id="member-scope"><option value="full">Full project</option><option value="sources_documents">Sources and documents</option><option value="history">Chat history only</option><option value="custom">Custom</option></select></label></div>
+      <div id="custom-permissions" class="checkbox-group hidden"><label><input type="checkbox" value="sources"> Sources</label><label><input type="checkbox" value="documents"> Documents</label><label><input type="checkbox" value="history"> Chat history</label></div>
+      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Share</button></div>
     </form>
   </section>
 </div>

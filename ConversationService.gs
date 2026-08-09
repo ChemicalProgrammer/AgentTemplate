@@ -2,7 +2,9 @@ var CONVERSATION_INDEX_FILE = 'Conversations Index.json';
 
 function listConversations(projectId) {
   var access = assertProjectAccess_(projectId, 'history');
-  return readConversationIndex_(access.project).conversations.filter(function(item) { return item.status !== 'archived'; })
+  var index = readConversationIndex_(access.project);
+  repairConversationMessageCounts_(access.project, index);
+  return index.conversations.filter(function(item) { return item.status !== 'archived'; })
     .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 }
 
@@ -13,7 +15,7 @@ function createConversation(projectId, title) {
     schemaVersion: 1,
     conversationId: uuid_(),
     projectId: projectId,
-    title: normalizeName_(title, 'Nueva conversación'),
+    title: normalizeName_(title, 'New chat'),
     createdAt: now,
     updatedAt: now,
     createdBy: access.email,
@@ -33,17 +35,25 @@ function loadConversation(projectId, conversationId) {
   return readConversation_(access.project, conversationId);
 }
 
-function sendChatMessage(projectId, conversationId, message, selectedSourceIds) {
+function sendChatMessage(projectId, conversationId, message, selectedSourceIds, requestId) {
   var access = assertProjectEdit_(projectId, 'history');
   var text = sanitizeText_(message, 20000).trim();
-  if (!text) throw new Error('Escribe un mensaje.');
-  var conversation = conversationId ? readConversation_(access.project, conversationId) : createConversation(projectId, 'Nueva conversación');
-  if (conversation.projectId !== projectId) throw new Error('La conversación no pertenece a este proyecto.');
+  if (!text) throw new Error('Enter a message.');
+  var conversation = conversationId ? readConversation_(access.project, conversationId) : createConversation(projectId, 'New chat');
+  if (conversation.projectId !== projectId) throw new Error('This chat does not belong to the selected project.');
 
   var sourceContext = {text: '', inlineParts: [], sourcesUsed: []};
   if (access.allowed.sources) sourceContext = buildSourceContext_(access.project, text, selectedSourceIds || []);
   var config = getUserGeminiConfig_();
   var prompt = buildGeminiConversation_(access.project, conversation, text, sourceContext);
+  var now = nowIso_();
+  var userMessage = {messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email};
+  conversation.messages.push(userMessage);
+  conversation.updatedAt = nowIso_();
+  var pendingFile = writeConversation_(access.project, conversation);
+  upsertConversationIndex_(access.project, conversation, pendingFile.getId());
+  if (isChatRequestCancelled_(requestId)) throw new Error('Generation stopped.');
+
   var result = generateWithGemini_({
     config: config,
     systemInstruction: prompt.systemInstruction,
@@ -51,31 +61,54 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds) 
     temperature: 0.35,
     maxOutputTokens: 8192
   });
+  if (isChatRequestCancelled_(requestId)) throw new Error('Generation stopped.');
 
-  var now = nowIso_();
-  conversation.messages.push({messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email});
-  conversation.messages.push({
+  var assistantMessage = {
     messageId: uuid_(), role: 'assistant', text: result.text, createdAt: nowIso_(),
     model: result.model, sourcesUsed: sourceContext.sourcesUsed, usage: result.usage
-  });
-  if (conversation.messages.length === 2 || conversation.title === 'Nueva conversación') {
-    conversation.title = normalizeName_(text.slice(0, 70), 'Conversación');
+  };
+  conversation.messages.push(assistantMessage);
+  if (conversation.messages.length === 2 || conversation.title === 'New chat' || conversation.title === 'Nueva conversación') {
+    conversation.title = normalizeName_(text.slice(0, 70), 'Chat');
   }
   conversation.updatedAt = nowIso_();
   try {
     maybeSummarizeConversation_(conversation, config, access.project);
   } catch (summaryError) {
-    console.warn('La respuesta se conservará aunque no se pudo actualizar la memoria: ' + summaryError.message);
+    console.warn('The response was preserved even though memory could not be updated: ' + summaryError.message);
   }
+  if (isChatRequestCancelled_(requestId)) throw new Error('Generation stopped.');
   var file = writeConversation_(access.project, conversation);
   upsertConversationIndex_(access.project, conversation, file.getId());
   touchProjectStats_(projectId, {lastConversationAt: conversation.updatedAt});
+  clearChatRequestCancellation_(requestId);
   return {
     conversationId: conversation.conversationId,
     title: conversation.title,
-    userMessage: conversation.messages[conversation.messages.length - 2],
-    assistantMessage: conversation.messages[conversation.messages.length - 1]
+    userMessage: userMessage,
+    assistantMessage: assistantMessage,
+    messageCount: conversation.messages.length
   };
+}
+
+function cancelChatRequest(requestId) {
+  requestId = normalizeChatRequestId_(requestId);
+  if (!requestId) return {cancelled: false};
+  CacheService.getUserCache().put('CHAT_CANCEL_' + requestId, '1', 600);
+  return {cancelled: true, requestId: requestId};
+}
+
+function truncateAssistantMessage(projectId, conversationId, messageId, text) {
+  var access = assertProjectEdit_(projectId, 'history');
+  var conversation = readConversation_(access.project, conversationId);
+  var message = conversation.messages.filter(function(item) { return item.messageId === messageId && item.role === 'assistant'; })[0];
+  if (!message) throw new Error('The response could not be found.');
+  message.text = sanitizeText_(text, 20000).trim() || '[Response stopped]';
+  message.stopped = true;
+  conversation.updatedAt = nowIso_();
+  var file = writeConversation_(access.project, conversation);
+  upsertConversationIndex_(access.project, conversation, file.getId());
+  return {messageId: messageId, text: message.text, stopped: true};
 }
 
 function renameConversation(projectId, conversationId, title) {
@@ -100,12 +133,13 @@ function archiveConversation(projectId, conversationId) {
 
 function buildGeminiConversation_(project, conversation, newMessage, sourceContext) {
   var system = [
-    'Eres el agente del proyecto "' + project.title + '".',
-    project.description ? 'Descripción del proyecto: ' + project.description : '',
-    'Responde con precisión, distingue hechos de inferencias y no inventes contenido ausente.',
-    'Cuando utilices una fuente proporcionada, cita su etiqueta entre corchetes, por ejemplo [S1].',
-    'La memoria acumulativa resume mensajes antiguos; los mensajes recientes aparecen completos.',
-    conversation.summary ? 'MEMORIA ACUMULATIVA:\n' + conversation.summary : ''
+    'You are the agent for the project "' + project.title + '".',
+    project.description ? 'Project description: ' + project.description : '',
+    'Answer accurately, distinguish facts from inferences, and never invent missing content.',
+    'Reply in the language used by the user.',
+    'When using a provided source, cite its label in brackets, for example [S1].',
+    'Accumulated memory summarizes older messages; recent messages are shown in full.',
+    conversation.summary ? 'ACCUMULATED MEMORY:\n' + conversation.summary : ''
   ].filter(Boolean).join('\n\n');
 
   var start = Math.max(conversation.summaryThrough || 0, conversation.messages.length - APP.RECENT_MESSAGE_LIMIT);
@@ -113,9 +147,9 @@ function buildGeminiConversation_(project, conversation, newMessage, sourceConte
     return {role: message.role === 'assistant' ? 'model' : 'user', parts: [{text: message.text}]};
   });
   var latestParts = [];
-  if (sourceContext.text) latestParts.push({text: 'FUENTES RECUPERADAS PARA ESTA CONSULTA:\n\n' + sourceContext.text});
+  if (sourceContext.text) latestParts.push({text: 'SOURCES RETRIEVED FOR THIS REQUEST:\n\n' + sourceContext.text});
   Array.prototype.push.apply(latestParts, sourceContext.inlineParts || []);
-  latestParts.push({text: 'CONSULTA DEL USUARIO:\n' + newMessage});
+  latestParts.push({text: 'USER REQUEST:\n' + newMessage});
   contents.push({role: 'user', parts: latestParts});
   return {systemInstruction: system, contents: contents};
 }
@@ -127,8 +161,8 @@ function maybeSummarizeConversation_(conversation, config, project) {
   var transcript = pending.map(function(message) { return message.role.toUpperCase() + ': ' + message.text; }).join('\n\n');
   var response = generateWithGemini_({
     config: config,
-    systemInstruction: 'Mantén una memoria factual y compacta del proyecto. Conserva decisiones, requisitos, nombres, cifras, pendientes, preferencias y correcciones. No agregues hechos.',
-    contents: [{role: 'user', parts: [{text: 'Proyecto: ' + project.title + '\n\nMemoria previa:\n' + (conversation.summary || '(ninguna)') + '\n\nNuevos mensajes:\n' + truncate_(transcript, 60000) + '\n\nDevuelve la memoria consolidada.'}]}],
+    systemInstruction: 'Maintain compact, factual project memory. Preserve decisions, requirements, names, figures, open items, preferences, and corrections. Add no facts.',
+    contents: [{role: 'user', parts: [{text: 'Project: ' + project.title + '\n\nPrevious memory:\n' + (conversation.summary || '(none)') + '\n\nNew messages:\n' + truncate_(transcript, 60000) + '\n\nReturn the consolidated memory.'}]}],
     temperature: 0.1,
     maxOutputTokens: 3000
   });
@@ -141,6 +175,37 @@ function readConversationIndex_(project) {
   var data = readJsonFile_(getFirstFileByName_(folder, CONVERSATION_INDEX_FILE), {schemaVersion: 1, conversations: []});
   data.conversations = data.conversations || [];
   return data;
+}
+
+function repairConversationMessageCounts_(project, index) {
+  var changed = false;
+  index.conversations.forEach(function(record) {
+    if (typeof record.messageCount === 'number' && record.messageCount > 0) return;
+    try {
+      var file = record.fileId ? DriveApp.getFileById(record.fileId) : getFirstFileByName_(DriveApp.getFolderById(project.folders.conversations), 'Conversation - ' + record.conversationId + '.json');
+      var conversation = readJsonFile_(file, null);
+      var count = conversation && Array.isArray(conversation.messages) ? conversation.messages.length : 0;
+      if (record.messageCount !== count) { record.messageCount = count; changed = true; }
+    } catch (error) {
+      if (typeof record.messageCount !== 'number') { record.messageCount = 0; changed = true; }
+    }
+  });
+  if (changed) writeJsonFile_(DriveApp.getFolderById(project.folders.conversations), CONVERSATION_INDEX_FILE, index);
+  return index;
+}
+
+function normalizeChatRequestId_(requestId) {
+  return String(requestId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
+}
+
+function isChatRequestCancelled_(requestId) {
+  requestId = normalizeChatRequestId_(requestId);
+  return Boolean(requestId && CacheService.getUserCache().get('CHAT_CANCEL_' + requestId));
+}
+
+function clearChatRequestCancellation_(requestId) {
+  requestId = normalizeChatRequestId_(requestId);
+  if (requestId) CacheService.getUserCache().remove('CHAT_CANCEL_' + requestId);
 }
 
 function upsertConversationIndex_(project, conversation, fileId) {
@@ -169,9 +234,9 @@ function writeConversation_(project, conversation) {
 function readConversation_(project, conversationId) {
   var index = readConversationIndex_(project);
   var record = index.conversations.filter(function(item) { return item.conversationId === conversationId; })[0];
-  if (!record) throw new Error('No se encontró la conversación.');
+  if (!record) throw new Error('Chat not found.');
   var file = record.fileId ? DriveApp.getFileById(record.fileId) : getFirstFileByName_(DriveApp.getFolderById(project.folders.conversations), 'Conversation - ' + conversationId + '.json');
   var conversation = readJsonFile_(file, null);
-  if (!conversation) throw new Error('El archivo de conversación está dañado.');
+  if (!conversation) throw new Error('The chat file is damaged.');
   return conversation;
 }

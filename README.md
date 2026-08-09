@@ -4,7 +4,7 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
 
 ## Funciones incluidas
 
-- Dashboard con búsqueda, estados, favoritos y tarjetas de proyecto.
+- Dashboard inicial con búsqueda, vistas Ongoing, Planning, Favorites y Archived, y tarjetas con icono configurable.
 - Creación y descubrimiento automático de proyectos dentro de una carpeta raíz.
 - Detección de carpetas copiadas con regeneración de `projectId` duplicados.
 - Chat con historial completo en JSON, memoria acumulativa y mensajes recientes.
@@ -13,8 +13,7 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
 - Envío de PDF, imágenes y otros archivos binarios compatibles directamente a Gemini, dentro de los límites configurados.
 - Recuperación léxica por fragmentos para enviar a Gemini únicamente contenido relevante.
 - Citas de fuentes con etiquetas `[S1]`, `[S2]`, etc.
-- Exportación del historial a PDF.
-- Guardado de respuestas como Google Docs.
+- Exportación del historial a PDF y conteo unificado de documentos generados.
 - Compartición con usuarios del mismo dominio en cuatro modalidades:
   - Proyecto completo.
   - Fuentes y documentos.
@@ -22,7 +21,10 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
   - Personalizado.
 - Roles Owner, Editor, Colaborador y Lector.
 - Llave y modelo de Gemini configurados por usuario.
-- Interfaz responsiva inspirada en Drive y Gemini.
+- Interfaz responsiva completamente en inglés, inspirada en Drive y Gemini, con fondos suaves y colores de Google.
+- Vista de proyecto sin la barra lateral del dashboard y con desplazamiento principal dentro de la conversación.
+- Indicador de análisis, control para detener la respuesta y escritura progresiva del contenido recibido.
+- Animaciones de carga en acciones de larga duración.
 
 ## Estructura de Drive
 
@@ -132,6 +134,7 @@ La app vuelve a validar el rol y el alcance en el servidor; ocultar un botón en
 - Una carpeta importada copia como máximo 50 archivos por operación.
 - El contexto de texto recuperado se limita a 90,000 caracteres por consulta.
 - Apps Script y Gemini aplican sus propias cuotas de ejecución, almacenamiento y solicitudes.
+- Apps Script no expone streaming desde `google.script.run`; la app muestra la respuesta de forma progresiva al recibirla. El control Stop usa una señal de cancelación y conserva el mensaje del usuario.
 - Las cuentas deben poder obtener una dirección de correo mediante `Session.getActiveUser().getEmail()`, normalmente disponible dentro del mismo dominio de Google Workspace.
 
 Todos estos límites se concentran en `ConfigService.gs` para poder ajustarlos.
@@ -142,4 +145,4 @@ El valor inicial es `gemini-3.6-flash`. Al guardar la llave, la app consulta los
 
 ## Versión
 
-`1.0.0` — paquete funcional completo.
+`1.1.0` — rediseño de interfaz, iconos de proyecto, contadores reconciliados, carga animada y experiencia de respuesta progresiva con cancelación.

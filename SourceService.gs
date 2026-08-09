@@ -30,18 +30,18 @@ function addSourceFromDrive(projectId, driveUrlOrId) {
     return record;
   });
   writeSourceIndex_(project, index);
-  touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status === 'active'; }).length});
+  touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
   return {added: added, limited: imported.files.length >= APP.MAX_SOURCE_FILES};
 }
 
 function uploadSource(projectId, upload) {
   var access = assertProjectEdit_(projectId, 'sources');
   upload = upload || {};
-  var name = normalizeName_(upload.name, 'Fuente');
+  var name = normalizeName_(upload.name, 'Source');
   var mimeType = String(upload.mimeType || MimeType.PLAIN_TEXT);
   var base64 = String(upload.base64 || '').replace(/^data:[^;]+;base64,/, '');
   var bytes = Utilities.base64Decode(base64);
-  if (bytes.length > APP.MAX_UPLOAD_BYTES) throw new Error('El archivo excede el máximo de 6 MB para carga desde la app. Usa un enlace de Drive para archivos mayores.');
+  if (bytes.length > APP.MAX_UPLOAD_BYTES) throw new Error('The file exceeds the 6 MB in-app upload limit. Use a Drive link for larger files.');
   var folder = DriveApp.getFolderById(access.project.folders.sources);
   var file = folder.createFile(Utilities.newBlob(bytes, mimeType, name));
   var index = readSourceIndex_(access.project);
@@ -53,7 +53,7 @@ function uploadSource(projectId, upload) {
   index.sources.push(record);
   writeSourceIndex_(access.project, index);
   appendControlRow_(access.project, 'Sources', [record.sourceId, record.name, record.mimeType, record.driveId, record.status, record.addedAt, record.addedBy]);
-  touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status === 'active'; }).length});
+  touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
   return record;
 }
 
@@ -61,11 +61,11 @@ function setSourceActive(projectId, sourceId, active) {
   var access = assertProjectEdit_(projectId, 'sources');
   var index = readSourceIndex_(access.project);
   var source = index.sources.filter(function(item) { return item.sourceId === sourceId; })[0];
-  if (!source) throw new Error('No se encontró la fuente.');
+  if (!source) throw new Error('Source not found.');
   source.status = active ? 'active' : 'inactive';
   source.updatedAt = nowIso_();
   writeSourceIndex_(access.project, index);
-  touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status === 'active'; }).length});
+  touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
   return source;
 }
 
@@ -73,12 +73,12 @@ function removeSource(projectId, sourceId) {
   var access = assertProjectEdit_(projectId, 'sources');
   var index = readSourceIndex_(access.project);
   var source = index.sources.filter(function(item) { return item.sourceId === sourceId; })[0];
-  if (!source) throw new Error('No se encontró la fuente.');
+  if (!source) throw new Error('Source not found.');
   source.status = 'removed';
   source.updatedAt = nowIso_();
   try { DriveApp.getFileById(source.driveId).setTrashed(true); } catch (error) { console.warn(error.message); }
   writeSourceIndex_(access.project, index);
-  touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status === 'active'; }).length});
+  touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
   return {removed: true, sourceId: sourceId};
 }
 
@@ -115,13 +115,13 @@ function buildSourceContext_(project, query, selectedSourceIds) {
           candidates.push({source: source, label: label, chunk: chunk, chunkIndex: chunkIndex, score: scoreChunk_(chunk, queryTerms)});
         });
       } else if (extracted.inlineData && inlineBytes + extracted.byteLength <= APP.MAX_INLINE_BYTES) {
-        inlineParts.push({text: '[' + label + '] Archivo binario: ' + source.name});
+        inlineParts.push({text: '[' + label + '] Binary file: ' + source.name});
         inlineParts.push({inlineData: extracted.inlineData});
         inlineBytes += extracted.byteLength;
         used.push({sourceId: source.sourceId, label: label, name: source.name, mimeType: source.mimeType});
       }
     } catch (error) {
-      console.warn('Fuente omitida ' + source.name + ': ' + error.message);
+      console.warn('Source skipped ' + source.name + ': ' + error.message);
     }
   });
 
@@ -131,7 +131,7 @@ function buildSourceContext_(project, query, selectedSourceIds) {
   var textSections = [];
   chosen.forEach(function(item) {
     if (chars >= APP.MAX_TEXT_CONTEXT_CHARS) return;
-    var section = '[' + item.label + '] ' + item.source.name + ' — fragmento ' + (item.chunkIndex + 1) + '\n' + item.chunk;
+    var section = '[' + item.label + '] ' + item.source.name + ' — excerpt ' + (item.chunkIndex + 1) + '\n' + item.chunk;
     section = truncate_(section, APP.MAX_TEXT_CONTEXT_CHARS - chars);
     chars += section.length;
     textSections.push(section);
@@ -151,7 +151,7 @@ function extractSource_(file) {
     var ss = SpreadsheetApp.openById(file.getId());
     text = ss.getSheets().map(function(sheet) {
       var values = sheet.getDataRange().getDisplayValues();
-      return '# Hoja: ' + sheet.getName() + '\n' + values.map(function(row) { return row.join('\t'); }).join('\n');
+      return '# Sheet: ' + sheet.getName() + '\n' + values.map(function(row) { return row.join('\t'); }).join('\n');
     }).join('\n\n');
   } else if (mime === MimeType.GOOGLE_SLIDES) {
     var deck = SlidesApp.openById(file.getId());
@@ -166,7 +166,7 @@ function extractSource_(file) {
           }
         } catch (ignore) {}
       });
-      return '# Diapositiva ' + (index + 1) + '\n' + fragments.join('\n');
+      return '# Slide ' + (index + 1) + '\n' + fragments.join('\n');
     }).join('\n\n');
   } else if (/^(text\/|application\/(json|csv|xml))/.test(mime) || /\.(txt|md|csv|tsv|json|xml)$/i.test(file.getName())) {
     text = file.getBlob().getDataAsString('UTF-8');
@@ -175,7 +175,7 @@ function extractSource_(file) {
   if (text) return {text: truncate_(text, 300000)};
   var blob = file.getBlob();
   var bytes = blob.getBytes();
-  if (bytes.length > 8 * 1024 * 1024) throw new Error('Archivo binario mayor de 8 MB.');
+  if (bytes.length > 8 * 1024 * 1024) throw new Error('Binary files over 8 MB are not supported inline.');
   return {
     inlineData: {mimeType: mime, data: Utilities.base64Encode(bytes)},
     byteLength: bytes.length

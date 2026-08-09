@@ -16,19 +16,19 @@ function safeJsonParse_(value, fallback) {
 
 function normalizeName_(value, fallback) {
   var name = sanitizeText_(value, 120).trim().replace(/[\\/:*?"<>|]/g, '-');
-  return name || fallback || 'Sin título';
+  return name || fallback || 'Untitled';
 }
 
 function extractDriveId_(value) {
   var text = String(value || '').trim();
   var match = text.match(/[-\w]{20,}/);
-  if (!match) throw new Error('No se encontró un ID válido de Drive.');
+  if (!match) throw new Error('A valid Drive ID could not be found.');
   return match[0];
 }
 
 function getRootFolder_() {
   var id = PropertiesService.getScriptProperties().getProperty(APP.PROP_ROOT_ID);
-  if (!id) throw new Error('Primero configura la carpeta raíz.');
+  if (!id) throw new Error('Configure the root folder first.');
   return DriveApp.getFolderById(id);
 }
 

@@ -54,7 +54,7 @@ function appendControlRow_(project, sheetName, row) {
     var sheet = SpreadsheetApp.openById(project.controlFileId).getSheetByName(sheetName);
     if (sheet) sheet.appendRow(row);
   } catch (error) {
-    console.warn('No se pudo escribir en ' + sheetName + ': ' + error.message);
+    console.warn('Could not write to ' + sheetName + ': ' + error.message);
   }
 }
 

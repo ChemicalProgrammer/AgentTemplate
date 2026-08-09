@@ -1,20 +1,20 @@
 function exportConversationToPdf(projectId, conversationId) {
   var access = assertProjectAccess_(projectId, 'history');
   var conversation = readConversation_(access.project, conversationId);
-  var title = normalizeName_(conversation.title, 'Conversación');
+  var title = normalizeName_(conversation.title, 'Chat');
   var doc = DocumentApp.create('TEMP - ' + title);
   var body = doc.getBody();
   body.appendParagraph(access.project.title).setHeading(DocumentApp.ParagraphHeading.TITLE);
   body.appendParagraph(title).setHeading(DocumentApp.ParagraphHeading.HEADING1);
-  body.appendParagraph('Exportado: ' + formatDateForDoc_(nowIso_()));
+  body.appendParagraph('Exported: ' + formatDateForDoc_(nowIso_()));
   body.appendHorizontalRule();
 
   conversation.messages.forEach(function(message) {
-    var label = message.role === 'assistant' ? 'Agente' : 'Usuario';
+    var label = message.role === 'assistant' ? 'Agent' : 'User';
     body.appendParagraph(label + ' · ' + formatDateForDoc_(message.createdAt)).setHeading(DocumentApp.ParagraphHeading.HEADING2);
     body.appendParagraph(message.text);
     if (message.sourcesUsed && message.sourcesUsed.length) {
-      body.appendParagraph('Fuentes: ' + message.sourcesUsed.map(function(source) { return '[' + source.label + '] ' + source.name; }).join(', '));
+      body.appendParagraph('Sources: ' + message.sourcesUsed.map(function(source) { return '[' + source.label + '] ' + source.name; }).join(', '));
     }
   });
   doc.saveAndClose();
@@ -24,5 +24,6 @@ function exportConversationToPdf(projectId, conversationId) {
   var pdfBlob = tempFile.getAs(MimeType.PDF).setName(pdfName);
   var pdfFile = DriveApp.getFolderById(access.project.folders.pdfs).createFile(pdfBlob);
   tempFile.setTrashed(true);
-  return {id: pdfFile.getId(), name: pdfFile.getName(), url: pdfFile.getUrl(), createdAt: nowIso_()};
+  incrementGeneratedDocumentCount_(projectId, access.project);
+  return {id: pdfFile.getId(), name: pdfFile.getName(), mimeType: MimeType.PDF, url: pdfFile.getUrl(), createdAt: nowIso_(), updatedAt: pdfFile.getLastUpdated().toISOString()};
 }

@@ -25,7 +25,7 @@ function listGeminiModels_(apiKey) {
 
 function testGeminiKey_(apiKey, preferredModel) {
   var models = listGeminiModels_(apiKey);
-  if (!models.length) throw new Error('La llave es válida, pero no tiene modelos compatibles con generateContent.');
+  if (!models.length) throw new Error('The key is valid, but it has no models compatible with generateContent.');
   var requested = normalizeModel_(preferredModel);
   var exact = models.filter(function(item) { return item.name === requested; })[0];
   var fallback = models.filter(function(item) { return /flash/i.test(item.name); })[0] || models[0];
@@ -62,14 +62,14 @@ function generateWithGemini_(options) {
   var text = parts.map(function(part) { return part.text || ''; }).join('').trim();
   if (!text) {
     var reason = candidate && candidate.finishReason ? ' Motivo: ' + candidate.finishReason : '';
-    throw new Error('Gemini no devolvió contenido.' + reason);
+    throw new Error('Gemini returned no content.' + reason);
   }
   return {text: text, model: model, usage: payload.usageMetadata || {}, raw: payload};
 }
 
 function extractGeminiError_(payload, code) {
   var message = payload && payload.error && payload.error.message;
-  if (code === 401 || code === 403) return 'Gemini rechazó la llave o sus permisos. ' + (message || '');
-  if (code === 429) return 'Se alcanzó el límite temporal o de cuota de Gemini. Intenta de nuevo más tarde.';
-  return 'Error de Gemini (' + code + '): ' + (message || 'respuesta no reconocida');
+  if (code === 401 || code === 403) return 'Gemini rejected the key or its permissions. ' + (message || '');
+  if (code === 429) return 'The Gemini rate or quota limit was reached. Try again later.';
+  return 'Gemini error (' + code + '): ' + (message || 'unrecognized response');
 }

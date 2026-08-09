@@ -1,5 +1,6 @@
 var PROJECT_MANIFEST_FILE = 'Project Manifest.json';
 var PROJECT_CONTROL_FILE = 'Project Control';
+var PROJECT_ICONS = ['spark', 'science', 'insight', 'code', 'notes', 'launch', 'data', 'idea'];
 
 function listProjects() {
   var email = assertOrganizationMember_();
@@ -28,7 +29,7 @@ function refreshProjects() {
 function createProject(input) {
   var email = assertOrganizationMember_();
   input = input || {};
-  var title = normalizeName_(input.title, 'Nuevo proyecto');
+  var title = normalizeName_(input.title, 'New project');
   var description = sanitizeText_(input.description, 800).trim();
   var root = getRootFolder_();
   var folder = root.createFolder(title);
@@ -38,6 +39,7 @@ function createProject(input) {
     projectId: uuid_(),
     title: title,
     description: description,
+    icon: normalizeProjectIcon_(input.icon),
     createdAt: now,
     updatedAt: now,
     owner: email,
@@ -75,6 +77,7 @@ function updateProject(projectId, changes) {
   changes = changes || {};
   if (changes.title != null) project.title = normalizeName_(changes.title, project.title);
   if (changes.description != null) project.description = sanitizeText_(changes.description, 800).trim();
+  if (changes.icon != null) project.icon = normalizeProjectIcon_(changes.icon);
   if (changes.status != null && ['active', 'planning', 'archived'].indexOf(changes.status) !== -1) {
     project.status = changes.status;
   }
@@ -117,7 +120,8 @@ function registerFolderAsProject_(folder) {
       schemaVersion: 1,
       projectId: uuid_(),
       title: folder.getName(),
-      description: 'Proyecto importado automáticamente desde Drive.',
+      description: 'Project imported automatically from Drive.',
+      icon: 'spark',
       createdAt: now,
       updatedAt: now,
       owner: email,
@@ -139,9 +143,11 @@ function registerFolderAsProject_(folder) {
 
   manifest.folderId = folder.getId();
   manifest.title = manifest.title || folder.getName();
+  manifest.icon = normalizeProjectIcon_(manifest.icon);
   manifest.members = manifest.members || [{email: manifest.owner || email, role: 'owner', scope: 'full', addedAt: now}];
   manifest.stats = manifest.stats || {sourceCount: 0, conversationCount: 0, documentCount: 0, lastActivityAt: now};
   manifest = normalizeProjectStructure_(folder, manifest, true);
+  manifest = reconcileProjectStats_(manifest);
   writeProjectManifest_(folder, manifest);
   syncProjectControl_(manifest, false);
   saveRegistryProject_(manifest);
@@ -209,7 +215,7 @@ function syncProjectControl_(project, initializeIfNeeded) {
       syncProjectInformationSheet_(spreadsheet, project);
     }
   } catch (error) {
-    console.warn('No fue posible actualizar Project Control: ' + error.message);
+    console.warn('Project Control could not be updated: ' + error.message);
   }
 }
 
@@ -220,6 +226,7 @@ function syncProjectInformationSheet_(spreadsheet, project) {
     ['Project ID', project.projectId],
     ['Title', project.title],
     ['Description', project.description || ''],
+    ['Icon', normalizeProjectIcon_(project.icon)],
     ['Owner', project.owner],
     ['Created At', project.createdAt],
     ['Updated At', project.updatedAt],
@@ -260,6 +267,7 @@ function publicProject_(project, member, favorite) {
     projectId: project.projectId,
     title: project.title,
     description: project.description || '',
+    icon: normalizeProjectIcon_(project.icon),
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
     owner: project.owner,
@@ -287,4 +295,33 @@ function touchProjectStats_(projectId, changes) {
   project.stats.lastActivityAt = nowIso_();
   project.updatedAt = project.stats.lastActivityAt;
   saveRegistryProject_(project);
+  try { writeProjectManifest_(DriveApp.getFolderById(project.folderId), project); } catch (error) { console.warn(error.message); }
+}
+
+function normalizeProjectIcon_(value) {
+  value = String(value || 'spark').toLowerCase();
+  return PROJECT_ICONS.indexOf(value) !== -1 ? value : 'spark';
+}
+
+function reconcileProjectStats_(project) {
+  project.stats = project.stats || {};
+  try {
+    project.stats.sourceCount = readSourceIndex_(project).sources.filter(function(item) { return item.status !== 'removed'; }).length;
+  } catch (sourceError) {
+    project.stats.sourceCount = Number(project.stats.sourceCount || 0);
+  }
+  try {
+    project.stats.conversationCount = readConversationIndex_(project).conversations.filter(function(item) { return item.status !== 'archived'; }).length;
+  } catch (conversationError) {
+    project.stats.conversationCount = Number(project.stats.conversationCount || 0);
+  }
+  try {
+    var documentCount = listFilesRecursive_(DriveApp.getFolderById(project.folders.documents), [], 500).length;
+    var pdfCount = project.folders.pdfs ? listFilesRecursive_(DriveApp.getFolderById(project.folders.pdfs), [], 500).length : 0;
+    project.stats.documentCount = documentCount + pdfCount;
+  } catch (documentError) {
+    project.stats.documentCount = Number(project.stats.documentCount || 0);
+  }
+  project.stats.lastActivityAt = project.stats.lastActivityAt || project.updatedAt || project.createdAt;
+  return project;
 }

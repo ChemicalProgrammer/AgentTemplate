@@ -1,28 +1,28 @@
 function assertOrganizationMember_() {
   var config = getPublicConfig_();
-  if (!config.organizationDomain) throw new Error('La aplicación aún no está configurada.');
+  if (!config.organizationDomain) throw new Error('The application has not been configured yet.');
   var email = getCurrentIdentity_().email;
   if (!email || email.split('@')[1] !== config.organizationDomain) {
-    throw new Error('Acceso restringido a usuarios de @' + config.organizationDomain + '.');
+    throw new Error('Access is restricted to @' + config.organizationDomain + ' users.');
   }
   return email;
 }
 
 function assertAdmin_() {
   var email = assertOrganizationMember_();
-  if (email !== getPublicConfig_().adminEmail) throw new Error('Esta acción requiere permisos de administrador.');
+  if (email !== getPublicConfig_().adminEmail) throw new Error('This action requires administrator access.');
   return email;
 }
 
 function assertProjectAccess_(projectId, capability) {
   var email = assertOrganizationMember_();
   var project = getRegistryProject_(projectId);
-  if (!project) throw new Error('No se encontró el proyecto.');
+  if (!project) throw new Error('Project not found.');
 
   var member = (project.members || []).filter(function(item) {
     return String(item.email).toLowerCase() === email;
   })[0];
-  if (!member) throw new Error('No tienes acceso a este proyecto.');
+  if (!member) throw new Error('You do not have access to this project.');
 
   var scope = member.scope || 'full';
   var role = member.role || 'viewer';
@@ -35,13 +35,13 @@ function assertProjectAccess_(projectId, capability) {
     share: member.role === 'owner',
     edit: !readOnly
   };
-  if (capability && !allowed[capability]) throw new Error('Tu modalidad de acceso no incluye ' + capability + '.');
+  if (capability && !allowed[capability]) throw new Error('Your access scope does not include ' + capability + '.');
   return {email: email, member: member, project: project, allowed: allowed};
 }
 
 function assertProjectEdit_(projectId, capability) {
   var access = assertProjectAccess_(projectId, capability);
-  if (access.member.role === 'viewer') throw new Error('Tu rol es de solo lectura.');
+  if (access.member.role === 'viewer') throw new Error('Your role is read-only.');
   return access;
 }
 

@@ -1,67 +1,71 @@
-<section id="project-view" class="view hidden">
+<section id="project-view" class="view project-view hidden">
   <div class="project-header">
-    <button id="back-dashboard" class="icon-btn" aria-label="Volver">←</button>
+    <button id="back-dashboard" class="icon-btn" aria-label="Back to projects" title="Back to projects">←</button>
+    <button id="project-header-icon" class="project-icon project-icon-button" aria-label="Change project icon" title="Change project icon">✦</button>
     <div class="project-title-wrap">
-      <p class="eyebrow">PROYECTO</p>
-      <h1 id="project-title">Proyecto</h1>
+      <p class="eyebrow">PROJECT</p>
+      <h1 id="project-title">Project</h1>
       <p id="project-description" class="muted"></p>
     </div>
     <div class="project-actions">
-      <a id="open-project-folder" class="secondary-btn hidden" target="_blank">Abrir carpeta</a>
-      <button id="export-pdf-button" class="secondary-btn">Exportar PDF</button>
+      <a id="open-project-folder" class="secondary-btn hidden" target="_blank">Open folder</a>
+      <button id="export-pdf-button" class="secondary-btn">Export PDF</button>
     </div>
   </div>
 
   <div class="project-tabs" role="tablist">
     <button class="project-tab active" data-project-tab="chat">✦ Chat</button>
-    <button class="project-tab" data-project-tab="sources">▤ Fuentes</button>
-    <button class="project-tab" data-project-tab="documents">▧ Documentos</button>
-    <button class="project-tab owner-only" data-project-tab="sharing">♙ Compartir</button>
+    <button class="project-tab" data-project-tab="sources">▤ Sources</button>
+    <button class="project-tab" data-project-tab="documents">▧ Documents</button>
+    <button class="project-tab owner-only" data-project-tab="sharing">♙ Share</button>
   </div>
 
   <div id="project-tab-chat" class="project-tab-panel chat-layout">
     <aside class="conversation-sidebar">
-      <button id="new-conversation" class="primary-btn wide">＋ Nueva conversación</button>
-      <div class="section-label">HISTORIAL</div>
+      <button id="new-conversation" class="primary-btn wide">＋ New chat</button>
+      <div class="section-label">CHAT HISTORY</div>
       <div id="conversation-list" class="conversation-list"></div>
     </aside>
     <section class="chat-panel">
-      <div id="chat-empty" class="chat-empty">
-        <div class="gemini-mark large">✦</div>
-        <h2>¿En qué trabajamos?</h2>
-        <p>El agente combina la memoria del proyecto con las fuentes activas.</p>
+      <div id="chat-scroll-region" class="chat-scroll-region">
+        <div id="chat-empty" class="chat-empty">
+          <div class="gemini-mark large">✦</div>
+          <h2>What are we working on?</h2>
+          <p>The agent combines project memory with your selected sources.</p>
+        </div>
+        <div id="chat-messages" class="chat-messages"></div>
       </div>
-      <div id="chat-messages" class="chat-messages"></div>
       <div class="composer-wrap">
         <div id="active-source-chips" class="source-chips"></div>
         <div class="composer">
-          <textarea id="chat-input" rows="1" placeholder="Pregunta sobre este proyecto…"></textarea>
-          <button id="send-message" class="send-btn" aria-label="Enviar">➤</button>
+          <textarea id="chat-input" rows="1" placeholder="Ask about this project…"></textarea>
+          <button id="send-message" class="send-btn" aria-label="Send message" title="Send">➤</button>
+          <button id="stop-response" class="stop-btn hidden" aria-label="Stop response" title="Stop response"><span></span></button>
         </div>
-        <small>Gemini puede cometer errores. Verifica la información crítica y las fuentes citadas.</small>
+        <small>Gemini can make mistakes. Check critical information and cited sources.</small>
       </div>
     </section>
     <aside class="source-selector">
-      <div class="panel-title"><span>Fuentes activas</span><button id="select-all-sources" class="text-btn">Todas</button></div>
+      <div class="panel-title"><span>Active sources</span><button id="select-all-sources" class="text-btn">All</button></div>
       <div id="chat-source-list"></div>
     </aside>
   </div>
 
-  <div id="project-tab-sources" class="project-tab-panel hidden">
+  <div id="project-tab-sources" class="project-tab-panel content-panel hidden">
     <div class="content-toolbar">
-      <div><h2>Fuentes</h2><p class="muted">Agrega archivos o carpetas de Drive, o carga un archivo de hasta 6 MB.</p></div>
-      <div class="toolbar-actions"><button id="add-source-link" class="secondary-btn">＋ Desde Drive</button><label class="primary-btn file-button">↑ Cargar archivo<input id="source-upload" type="file"></label></div>
+      <div><h2>Sources</h2><p class="muted">Add Drive files or folders, or upload a file up to 6 MB.</p></div>
+      <div class="toolbar-actions"><button id="add-source-link" class="secondary-btn">＋ From Drive</button><label class="primary-btn file-button">↑ Upload file<input id="source-upload" type="file"></label></div>
     </div>
     <div id="sources-table" class="data-list"></div>
   </div>
 
-  <div id="project-tab-documents" class="project-tab-panel hidden">
-    <div class="content-toolbar"><div><h2>Documentos generados</h2><p class="muted">Respuestas y documentos guardados directamente en Drive.</p></div></div>
+  <div id="project-tab-documents" class="project-tab-panel content-panel hidden">
+    <div class="content-toolbar"><div><h2>Generated documents</h2><p class="muted">Documents and PDF exports stored in Drive.</p></div></div>
     <div id="documents-table" class="data-list"></div>
   </div>
 
-  <div id="project-tab-sharing" class="project-tab-panel hidden">
-    <div class="content-toolbar"><div><h2>Compartir proyecto</h2><p class="muted">El acceso se limita a usuarios del dominio y puede separarse por contenido.</p></div><button id="add-member-button" class="primary-btn">＋ Agregar usuario</button></div>
+  <div id="project-tab-sharing" class="project-tab-panel content-panel hidden">
+    <div class="content-toolbar"><div><h2>Share project</h2><p class="muted">Access is limited to your domain and can be scoped by content.</p></div><button id="add-member-button" class="primary-btn">＋ Add user</button></div>
     <div id="members-table" class="data-list"></div>
   </div>
 </section>

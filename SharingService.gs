@@ -19,8 +19,8 @@ function shareProject(input) {
   var access = assertProjectAccess_(projectId, 'share');
   var email = String(input.email || '').trim().toLowerCase();
   var domain = getPublicConfig_().organizationDomain;
-  if (!email || email.split('@')[1] !== domain) throw new Error('Solo puedes compartir con usuarios de @' + domain + '.');
-  if (email === access.project.owner) throw new Error('El owner ya tiene acceso completo.');
+  if (!email || email.split('@')[1] !== domain) throw new Error('You can only share with @' + domain + ' users.');
+  if (email === access.project.owner) throw new Error('The owner already has full access.');
 
   var role = ['editor', 'collaborator', 'viewer'].indexOf(input.role) !== -1 ? input.role : 'viewer';
   var scope = ['full', 'sources_documents', 'history', 'custom'].indexOf(input.scope) !== -1 ? input.scope : 'full';
@@ -30,7 +30,7 @@ function shareProject(input) {
     history: Boolean(input.permissions && input.permissions.history)
   } : null;
   if (scope === 'custom' && !permissions.sources && !permissions.documents && !permissions.history) {
-    throw new Error('Selecciona al menos un elemento para el acceso personalizado.');
+    throw new Error('Select at least one item for custom access.');
   }
 
   applyProjectDriveSharing_(access.project, email, role, scope, permissions);
@@ -51,7 +51,7 @@ function shareProject(input) {
 function removeProjectMember(projectId, email) {
   var access = assertProjectAccess_(projectId, 'share');
   email = String(email || '').trim().toLowerCase();
-  if (!email || email === access.project.owner) throw new Error('No se puede retirar al owner del proyecto.');
+  if (!email || email === access.project.owner) throw new Error('The project owner cannot be removed.');
   removeAllProjectDriveAccess_(access.project, email);
   access.project.members = (access.project.members || []).filter(function(member) { return String(member.email).toLowerCase() !== email; });
   access.project.updatedAt = nowIso_();

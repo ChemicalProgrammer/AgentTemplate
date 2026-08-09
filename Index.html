@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
   <head>
     <base target="_top">
     <meta charset="UTF-8">
@@ -10,39 +10,40 @@
     <div id="boot-loader" class="boot-loader">
       <div class="gemini-mark">✦</div>
       <div class="spinner"></div>
-      <p>Abriendo Gemini Project Agent…</p>
+      <p>Opening Gemini Project Agent…</p>
     </div>
 
     <section id="setup-screen" class="setup-screen hidden">
       <div class="setup-card">
         <div class="gemini-mark large">✦</div>
-        <h1>Configura tu espacio de proyectos</h1>
-        <p>La primera configuración define el dominio autorizado y la carpeta raíz de Drive.</p>
+        <h1>Set up your project workspace</h1>
+        <p>The initial setup defines the authorized domain and the root Drive folder.</p>
         <form id="setup-form">
-          <label>Dominio de la organización<input id="setup-domain" required placeholder="empresa.com"></label>
-          <label>ID o URL de una carpeta existente <span class="optional">opcional</span><input id="setup-root" placeholder="Si queda vacío se creará Agent Projects"></label>
-          <button class="primary-btn" type="submit">Configurar aplicación</button>
+          <label>Organization domain<input id="setup-domain" required placeholder="company.com"></label>
+          <label>Existing folder ID or URL <span class="optional">optional</span><input id="setup-root" placeholder="Leave blank to create Agent Projects"></label>
+          <button class="primary-btn" type="submit">Set up application</button>
         </form>
       </div>
     </section>
 
-    <div id="app-shell" class="app-shell hidden">
+    <div id="app-shell" class="app-shell dashboard-mode hidden">
       <header class="topbar">
-        <button class="icon-btn mobile-only" id="menu-toggle" aria-label="Menú">☰</button>
-        <div class="brand"><span class="drive-cube">◆</span><span>Gemini Project Agent</span></div>
-        <div class="global-search"><span>⌕</span><input id="global-search" placeholder="Buscar proyectos"></div>
-        <button class="icon-btn" id="refresh-projects" title="Actualizar proyectos">↻</button>
-        <button class="icon-btn" id="settings-button" title="Configuración">⚙</button>
+        <button class="icon-btn mobile-only dashboard-only" id="menu-toggle" aria-label="Open menu">☰</button>
+        <div class="brand"><span class="google-spark">✦</span><span>Gemini Project Agent</span></div>
+        <div class="global-search dashboard-only"><span>⌕</span><input id="global-search" placeholder="Search projects" aria-label="Search projects"></div>
+        <button class="icon-btn dashboard-only" id="refresh-projects" title="Refresh projects" aria-label="Refresh projects">↻</button>
+        <button class="icon-btn" id="settings-button" title="Settings" aria-label="Settings">⚙</button>
         <div id="user-avatar" class="avatar">U</div>
       </header>
 
-      <aside id="sidebar" class="sidebar">
-        <button id="new-project-button" class="new-btn"><span>＋</span> Nuevo proyecto</button>
+      <aside id="sidebar" class="sidebar dashboard-only">
+        <button id="new-project-button" class="new-btn"><span class="google-plus">＋</span> New project</button>
         <nav>
-          <button class="nav-item active" data-dashboard-filter="all"><span>▦</span> Proyectos</button>
-          <button class="nav-item" data-dashboard-filter="favorite"><span>★</span> Favoritos</button>
-          <button class="nav-item" data-dashboard-filter="planning"><span>◷</span> Planeación</button>
-          <button class="nav-item" data-dashboard-filter="archived"><span>▣</span> Archivados</button>
+          <button class="nav-item active" data-dashboard-filter="all"><span>▦</span> All projects</button>
+          <button class="nav-item" data-dashboard-filter="active"><span>●</span> Ongoing</button>
+          <button class="nav-item" data-dashboard-filter="favorite"><span>★</span> Favorites</button>
+          <button class="nav-item" data-dashboard-filter="planning"><span>◷</span> Planning</button>
+          <button class="nav-item" data-dashboard-filter="archived"><span>▣</span> Archived</button>
         </nav>
         <div class="sidebar-footer">
           <div id="key-status" class="key-status"></div>
