@@ -1,0 +1,28 @@
+function exportConversationToPdf(projectId, conversationId) {
+  var access = assertProjectAccess_(projectId, 'history');
+  var conversation = readConversation_(access.project, conversationId);
+  var title = normalizeName_(conversation.title, 'Conversación');
+  var doc = DocumentApp.create('TEMP - ' + title);
+  var body = doc.getBody();
+  body.appendParagraph(access.project.title).setHeading(DocumentApp.ParagraphHeading.TITLE);
+  body.appendParagraph(title).setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph('Exportado: ' + formatDateForDoc_(nowIso_()));
+  body.appendHorizontalRule();
+
+  conversation.messages.forEach(function(message) {
+    var label = message.role === 'assistant' ? 'Agente' : 'Usuario';
+    body.appendParagraph(label + ' · ' + formatDateForDoc_(message.createdAt)).setHeading(DocumentApp.ParagraphHeading.HEADING2);
+    body.appendParagraph(message.text);
+    if (message.sourcesUsed && message.sourcesUsed.length) {
+      body.appendParagraph('Fuentes: ' + message.sourcesUsed.map(function(source) { return '[' + source.label + '] ' + source.name; }).join(', '));
+    }
+  });
+  doc.saveAndClose();
+
+  var tempFile = DriveApp.getFileById(doc.getId());
+  var pdfName = title + ' - ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmm') + '.pdf';
+  var pdfBlob = tempFile.getAs(MimeType.PDF).setName(pdfName);
+  var pdfFile = DriveApp.getFolderById(access.project.folders.pdfs).createFile(pdfBlob);
+  tempFile.setTrashed(true);
+  return {id: pdfFile.getId(), name: pdfFile.getName(), url: pdfFile.getUrl(), createdAt: nowIso_()};
+}

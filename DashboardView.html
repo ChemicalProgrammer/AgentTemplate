@@ -1,0 +1,24 @@
+<section id="dashboard-view" class="view">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">PROJECT LIBRARY</p>
+      <h1>Proyectos</h1>
+      <p class="muted">Tus agentes, fuentes y conversaciones en un solo lugar.</p>
+    </div>
+    <div class="heading-actions">
+      <select id="status-filter" aria-label="Filtrar por estado">
+        <option value="all">Todos los estados</option>
+        <option value="active">Activos</option>
+        <option value="planning">Planeación</option>
+        <option value="archived">Archivados</option>
+      </select>
+      <button id="create-project-heading" class="primary-btn">＋ Crear proyecto</button>
+    </div>
+  </div>
+  <div id="project-grid" class="project-grid"></div>
+  <div id="empty-projects" class="empty-state hidden">
+    <div class="empty-icon">✦</div>
+    <h2>No hay proyectos en esta vista</h2>
+    <p>Crea uno nuevo o actualiza para detectar carpetas copiadas en Drive.</p>
+  </div>
+</section>

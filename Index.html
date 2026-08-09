@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <?!= include('Styles'); ?>
+  </head>
+  <body>
+    <div id="boot-loader" class="boot-loader">
+      <div class="gemini-mark">✦</div>
+      <div class="spinner"></div>
+      <p>Abriendo Gemini Project Agent…</p>
+    </div>
+
+    <section id="setup-screen" class="setup-screen hidden">
+      <div class="setup-card">
+        <div class="gemini-mark large">✦</div>
+        <h1>Configura tu espacio de proyectos</h1>
+        <p>La primera configuración define el dominio autorizado y la carpeta raíz de Drive.</p>
+        <form id="setup-form">
+          <label>Dominio de la organización<input id="setup-domain" required placeholder="empresa.com"></label>
+          <label>ID o URL de una carpeta existente <span class="optional">opcional</span><input id="setup-root" placeholder="Si queda vacío se creará Agent Projects"></label>
+          <button class="primary-btn" type="submit">Configurar aplicación</button>
+        </form>
+      </div>
+    </section>
+
+    <div id="app-shell" class="app-shell hidden">
+      <header class="topbar">
+        <button class="icon-btn mobile-only" id="menu-toggle" aria-label="Menú">☰</button>
+        <div class="brand"><span class="drive-cube">◆</span><span>Gemini Project Agent</span></div>
+        <div class="global-search"><span>⌕</span><input id="global-search" placeholder="Buscar proyectos"></div>
+        <button class="icon-btn" id="refresh-projects" title="Actualizar proyectos">↻</button>
+        <button class="icon-btn" id="settings-button" title="Configuración">⚙</button>
+        <div id="user-avatar" class="avatar">U</div>
+      </header>
+
+      <aside id="sidebar" class="sidebar">
+        <button id="new-project-button" class="new-btn"><span>＋</span> Nuevo proyecto</button>
+        <nav>
+          <button class="nav-item active" data-dashboard-filter="all"><span>▦</span> Proyectos</button>
+          <button class="nav-item" data-dashboard-filter="favorite"><span>★</span> Favoritos</button>
+          <button class="nav-item" data-dashboard-filter="planning"><span>◷</span> Planeación</button>
+          <button class="nav-item" data-dashboard-filter="archived"><span>▣</span> Archivados</button>
+        </nav>
+        <div class="sidebar-footer">
+          <div id="key-status" class="key-status"></div>
+          <small id="domain-label"></small>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <?!= include('DashboardView'); ?>
+        <?!= include('ProjectView'); ?>
+      </main>
+    </div>
+
+    <?!= include('SettingsView'); ?>
+    <div id="toast" class="toast hidden"></div>
+    <?!= include('AppScripts'); ?>
+  </body>
+</html>

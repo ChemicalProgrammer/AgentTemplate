@@ -1,0 +1,449 @@
+<script>
+  const state = {
+    bootstrap: null,
+    projects: [],
+    dashboardFilter: 'all',
+    search: '',
+    projectDetails: null,
+    currentProjectId: null,
+    currentConversationId: null,
+    currentConversation: null,
+    selectedSources: new Set(),
+    busy: false
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    bindStaticEvents();
+    startApp();
+  });
+
+  function server(functionName, ...args) {
+    return new Promise((resolve, reject) => {
+      const runner = google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(error => reject(new Error(error && error.message ? error.message : String(error))));
+      runner[functionName](...args);
+    });
+  }
+
+  async function startApp() {
+    try {
+      const data = await server('getBootstrap');
+      state.bootstrap = data;
+      document.getElementById('boot-loader').classList.add('hidden');
+      if (!data.initialized) {
+        document.getElementById('setup-screen').classList.remove('hidden');
+        if (data.identity.email.includes('@')) document.getElementById('setup-domain').value = data.identity.email.split('@')[1];
+        return;
+      }
+      state.projects = data.projects || [];
+      document.getElementById('app-shell').classList.remove('hidden');
+      applyIdentity();
+      renderProjects();
+    } catch (error) {
+      document.getElementById('boot-loader').classList.add('hidden');
+      showToast(error.message, true);
+    }
+  }
+
+  function applyIdentity() {
+    const data = state.bootstrap;
+    const email = data.identity.email || 'Usuario';
+    document.getElementById('user-avatar').textContent = initials(email.split('@')[0]);
+    document.getElementById('user-avatar').title = email;
+    document.getElementById('domain-label').textContent = '@' + data.config.organizationDomain;
+    updateKeyStatus(data.userSettings);
+  }
+
+  function updateKeyStatus(settings) {
+    const box = document.getElementById('key-status');
+    box.classList.toggle('ready', Boolean(settings.configured));
+    box.textContent = settings.configured ? `✓ Gemini · ••••${settings.keySuffix} · ${settings.model}` : '⚠ Configura tu llave de Gemini';
+  }
+
+  function bindStaticEvents() {
+    document.getElementById('setup-form').addEventListener('submit', configureApp);
+    document.getElementById('global-search').addEventListener('input', event => { state.search = event.target.value.toLowerCase(); renderProjects(); });
+    document.getElementById('status-filter').addEventListener('change', event => { state.dashboardFilter = event.target.value; syncNav(); renderProjects(); });
+    document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.addEventListener('click', () => {
+      state.dashboardFilter = button.dataset.dashboardFilter;
+      document.getElementById('status-filter').value = ['active','planning','archived'].includes(state.dashboardFilter) ? state.dashboardFilter : 'all';
+      syncNav(); renderProjects();
+    }));
+    ['new-project-button','create-project-heading'].forEach(id => document.getElementById(id).addEventListener('click', () => openModal('project-modal')));
+    document.getElementById('refresh-projects').addEventListener('click', refreshProjects);
+    document.getElementById('settings-button').addEventListener('click', openSettings);
+    document.getElementById('menu-toggle').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('open'));
+    document.getElementById('back-dashboard').addEventListener('click', showDashboard);
+    document.querySelectorAll('.project-tab').forEach(tab => tab.addEventListener('click', () => showProjectTab(tab.dataset.projectTab)));
+    document.getElementById('new-conversation').addEventListener('click', newConversation);
+    document.getElementById('send-message').addEventListener('click', sendMessage);
+    document.getElementById('chat-input').addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }
+    });
+    document.getElementById('chat-input').addEventListener('input', autoSizeComposer);
+    document.getElementById('select-all-sources').addEventListener('click', toggleAllSources);
+    document.getElementById('add-source-link').addEventListener('click', () => openModal('source-link-modal'));
+    document.getElementById('source-upload').addEventListener('change', uploadSourceFile);
+    document.getElementById('add-member-button').addEventListener('click', () => openModal('member-modal'));
+    document.getElementById('export-pdf-button').addEventListener('click', exportPdf);
+    document.getElementById('gemini-settings-form').addEventListener('submit', saveGeminiSettings);
+    document.getElementById('load-models').addEventListener('click', loadModels);
+    document.getElementById('project-form').addEventListener('submit', submitProject);
+    document.getElementById('source-link-form').addEventListener('submit', submitSourceLink);
+    document.getElementById('member-form').addEventListener('submit', submitMember);
+    document.getElementById('member-scope').addEventListener('change', event => document.getElementById('custom-permissions').classList.toggle('hidden', event.target.value !== 'custom'));
+    document.querySelectorAll('[data-close-modal]').forEach(button => button.addEventListener('click', closeModals));
+    document.getElementById('modal-backdrop').addEventListener('click', event => { if (event.target.id === 'modal-backdrop') closeModals(); });
+  }
+
+  async function configureApp(event) {
+    event.preventDefault();
+    setBusy(event.target, true);
+    try {
+      state.bootstrap = await server('setupApplication', {
+        organizationDomain: document.getElementById('setup-domain').value,
+        rootFolderId: document.getElementById('setup-root').value
+      });
+      state.projects = state.bootstrap.projects || [];
+      document.getElementById('setup-screen').classList.add('hidden');
+      document.getElementById('app-shell').classList.remove('hidden');
+      applyIdentity(); renderProjects();
+      showToast('Aplicación configurada.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  function renderProjects() {
+    const grid = document.getElementById('project-grid');
+    const projects = state.projects.filter(project => {
+      const matchesText = !state.search || `${project.title} ${project.description} ${project.owner}`.toLowerCase().includes(state.search);
+      let matchesFilter = true;
+      if (state.dashboardFilter === 'favorite') matchesFilter = project.favorite;
+      else if (state.dashboardFilter !== 'all') matchesFilter = project.status === state.dashboardFilter;
+      return matchesText && matchesFilter;
+    });
+    grid.innerHTML = projects.map(project => `
+      <article class="project-card" data-project-id="${escapeHtml(project.projectId)}">
+        <div class="card-top"><div class="project-icon">✦</div><button class="favorite-btn ${project.favorite ? 'on' : ''}" data-favorite-id="${escapeHtml(project.projectId)}" title="Favorito">★</button></div>
+        <h3>${escapeHtml(project.title)}</h3>
+        <p class="description">${escapeHtml(project.description || 'Sin descripción')}</p>
+        <div class="card-meta"><span class="status-pill ${escapeHtml(project.status)}">${escapeHtml(project.status)}</span><span>${formatDate(project.createdAt)}</span></div>
+        <div class="card-stats"><span>▤ ${project.sourceCount} fuentes</span><span>✦ ${project.conversationCount} chats</span><span title="Owner">♙ ${escapeHtml(shortEmail(project.owner))}</span></div>
+      </article>`).join('');
+    document.getElementById('empty-projects').classList.toggle('hidden', projects.length > 0);
+    grid.querySelectorAll('.project-card').forEach(card => card.addEventListener('click', () => openProject(card.dataset.projectId)));
+    grid.querySelectorAll('[data-favorite-id]').forEach(button => button.addEventListener('click', async event => {
+      event.stopPropagation();
+      try {
+        const result = await server('toggleProjectFavorite', button.dataset.favoriteId);
+        const project = state.projects.find(item => item.projectId === result.projectId);
+        if (project) project.favorite = result.favorite;
+        renderProjects();
+      } catch (error) { showToast(error.message, true); }
+    }));
+  }
+
+  async function refreshProjects() {
+    const button = document.getElementById('refresh-projects');
+    setBusy(button, true);
+    try { state.projects = await server('refreshProjects'); renderProjects(); showToast('Proyectos actualizados.'); }
+    catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  async function submitProject(event) {
+    event.preventDefault(); setBusy(event.target, true);
+    try {
+      const project = await server('createProject', {title: document.getElementById('new-project-title').value, description: document.getElementById('new-project-description').value});
+      state.projects.unshift(project); closeModals(); event.target.reset(); renderProjects(); await openProject(project.projectId);
+      showToast('Proyecto creado.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  async function openProject(projectId) {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('dashboard-view').classList.add('hidden');
+    document.getElementById('project-view').classList.remove('hidden');
+    document.getElementById('project-title').textContent = 'Cargando…';
+    try {
+      const details = await server('getProjectDetails', projectId);
+      state.projectDetails = details;
+      state.currentProjectId = projectId;
+      state.currentConversationId = null;
+      state.currentConversation = null;
+      state.selectedSources = new Set((details.sources || []).filter(source => source.status === 'active').map(source => source.sourceId));
+      renderProjectDetails();
+      const firstTab = details.permissions.history ? 'chat' : details.permissions.sources ? 'sources' : 'documents';
+      showProjectTab(firstTab);
+      if (details.permissions.history && details.conversations.length) await openConversation(details.conversations[0].conversationId);
+      else renderChatEmpty();
+    } catch (error) { showToast(error.message, true); showDashboard(); }
+  }
+
+  function renderProjectDetails() {
+    const details = state.projectDetails;
+    const project = details.project;
+    document.getElementById('project-title').textContent = project.title;
+    document.getElementById('project-description').textContent = project.description || '';
+    const folder = document.getElementById('open-project-folder');
+    folder.classList.toggle('hidden', !project.folderUrl); folder.href = project.folderUrl || '#';
+    document.getElementById('export-pdf-button').classList.toggle('hidden', !details.permissions.history || !details.permissions.edit);
+    document.querySelector('[data-project-tab="chat"]').classList.toggle('hidden', !details.permissions.history);
+    document.querySelector('[data-project-tab="sources"]').classList.toggle('hidden', !details.permissions.sources);
+    document.querySelector('[data-project-tab="documents"]').classList.toggle('hidden', !details.permissions.documents);
+    document.querySelector('[data-project-tab="sharing"]').classList.toggle('hidden', project.role !== 'owner');
+    document.getElementById('new-conversation').classList.toggle('hidden', !details.permissions.edit);
+    document.querySelector('.composer-wrap').classList.toggle('hidden', !details.permissions.edit);
+    document.getElementById('add-source-link').classList.toggle('hidden', !details.permissions.edit);
+    document.querySelector('.file-button').classList.toggle('hidden', !details.permissions.edit);
+    renderConversationList(); renderSources(); renderDocuments(); renderMembers();
+  }
+
+  function showDashboard() {
+    state.currentProjectId = null; state.projectDetails = null;
+    document.getElementById('project-view').classList.add('hidden');
+    document.getElementById('dashboard-view').classList.remove('hidden');
+    renderProjects();
+  }
+
+  function showProjectTab(name) {
+    document.querySelectorAll('.project-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.projectTab === name));
+    document.querySelectorAll('.project-tab-panel').forEach(panel => panel.classList.add('hidden'));
+    const panel = document.getElementById('project-tab-' + name);
+    if (panel) panel.classList.remove('hidden');
+  }
+
+  function renderConversationList() {
+    const list = document.getElementById('conversation-list');
+    const conversations = state.projectDetails.conversations || [];
+    list.innerHTML = conversations.map(item => `<button class="conversation-item ${item.conversationId === state.currentConversationId ? 'active' : ''}" data-conversation-id="${escapeHtml(item.conversationId)}"><strong>${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${item.messageCount || 0} mensajes</small></button>`).join('');
+    list.querySelectorAll('[data-conversation-id]').forEach(button => button.addEventListener('click', () => openConversation(button.dataset.conversationId)));
+  }
+
+  async function newConversation() {
+    try {
+      const conversation = await server('createConversation', state.currentProjectId, 'Nueva conversación');
+      state.projectDetails.conversations.unshift({conversationId: conversation.conversationId, title: conversation.title, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, messageCount: 0});
+      state.currentConversationId = conversation.conversationId; state.currentConversation = conversation;
+      renderConversationList(); renderMessages(); document.getElementById('chat-input').focus();
+    } catch (error) { showToast(error.message, true); }
+  }
+
+  async function openConversation(conversationId) {
+    try {
+      state.currentConversationId = conversationId;
+      renderConversationList();
+      state.currentConversation = await server('loadConversation', state.currentProjectId, conversationId);
+      renderMessages();
+    } catch (error) { showToast(error.message, true); }
+  }
+
+  function renderChatEmpty() {
+    state.currentConversation = null;
+    document.getElementById('chat-messages').innerHTML = '';
+    document.getElementById('chat-empty').classList.remove('hidden');
+  }
+
+  function renderMessages() {
+    const messages = state.currentConversation ? state.currentConversation.messages || [] : [];
+    document.getElementById('chat-empty').classList.toggle('hidden', messages.length > 0);
+    const container = document.getElementById('chat-messages');
+    container.innerHTML = messages.map(message => renderMessage(message)).join('');
+    container.querySelectorAll('[data-save-message]').forEach(button => button.addEventListener('click', () => saveMessageAsDocument(button.dataset.saveMessage)));
+    requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+  }
+
+  function renderMessage(message) {
+    const assistant = message.role === 'assistant';
+    const sources = (message.sourcesUsed || []).map(source => `[${escapeHtml(source.label)}] ${escapeHtml(source.name)}`).join(' · ');
+    return `<article class="message ${assistant ? 'assistant' : 'user'}">
+      <div class="message-header"><span class="message-avatar">${assistant ? '✦' : escapeHtml(initials(state.bootstrap.identity.email))}</span><span>${assistant ? 'Agente' : 'Tú'}</span></div>
+      <div class="message-body">${formatMarkdown(message.text)}</div>
+      ${sources ? `<div class="message-sources">Fuentes: ${sources}</div>` : ''}
+      ${assistant && state.projectDetails.permissions.documents ? `<div class="message-tools"><button class="text-btn" data-save-message="${escapeHtml(message.messageId)}">▧ Guardar como documento</button></div>` : ''}
+    </article>`;
+  }
+
+  async function sendMessage() {
+    if (state.busy) return;
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    state.busy = true; input.value = ''; autoSizeComposer();
+    const temporary = {messageId: 'temp', role: 'user', text, createdAt: new Date().toISOString()};
+    if (!state.currentConversation) state.currentConversation = {messages: []};
+    state.currentConversation.messages.push(temporary);
+    renderMessages(); document.getElementById('send-message').textContent = '…';
+    try {
+      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId || '', text, Array.from(state.selectedSources));
+      state.currentConversationId = result.conversationId;
+      state.currentConversation.messages.pop();
+      state.currentConversation.messages.push(result.userMessage, result.assistantMessage);
+      state.currentConversation.title = result.title;
+      const record = state.projectDetails.conversations.find(item => item.conversationId === result.conversationId);
+      if (record) { record.title = result.title; record.updatedAt = result.assistantMessage.createdAt; record.messageCount = state.currentConversation.messages.length; }
+      else state.projectDetails.conversations.unshift({conversationId: result.conversationId, title: result.title, updatedAt: result.assistantMessage.createdAt, messageCount: 2});
+      renderConversationList(); renderMessages();
+    } catch (error) {
+      state.currentConversation.messages = state.currentConversation.messages.filter(item => item.messageId !== 'temp');
+      input.value = text; renderMessages(); showToast(error.message, true);
+    } finally {
+      state.busy = false; document.getElementById('send-message').textContent = '➤'; input.focus();
+    }
+  }
+
+  async function saveMessageAsDocument(messageId) {
+    const title = prompt('Nombre del documento:', state.currentConversation.title + ' - respuesta');
+    if (!title) return;
+    try {
+      const doc = await server('saveAssistantMessageAsDocument', state.currentProjectId, state.currentConversationId, messageId, title);
+      state.projectDetails.documents.unshift(doc); renderDocuments(); showToast('Documento guardado en Drive.');
+    } catch (error) { showToast(error.message, true); }
+  }
+
+  async function exportPdf() {
+    if (!state.currentConversationId) return showToast('Selecciona una conversación para exportar.', true);
+    const button = document.getElementById('export-pdf-button'); setBusy(button, true);
+    try { const pdf = await server('exportConversationToPdf', state.currentProjectId, state.currentConversationId); window.open(pdf.url, '_blank'); showToast('PDF creado en Drive.'); }
+    catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function renderSources() {
+    const sources = state.projectDetails.sources || [];
+    document.getElementById('chat-source-list').innerHTML = sources.map(source => `<label class="source-check"><input type="checkbox" data-chat-source="${escapeHtml(source.sourceId)}" ${state.selectedSources.has(source.sourceId) ? 'checked' : ''}><span>${escapeHtml(source.name)}</span></label>`).join('') || '<p class="muted">Sin fuentes.</p>';
+    document.querySelectorAll('[data-chat-source]').forEach(input => input.addEventListener('change', () => { input.checked ? state.selectedSources.add(input.dataset.chatSource) : state.selectedSources.delete(input.dataset.chatSource); renderSourceChips(); }));
+    renderSourceChips();
+    const list = document.getElementById('sources-table');
+    list.innerHTML = `<div class="data-row header"><span>Nombre</span><span>Tipo</span><span>Estado</span><span></span></div>` + sources.map(source => `<div class="data-row"><span class="file-name">${escapeHtml(source.name)}</span><span>${escapeHtml(friendlyMime(source.mimeType))}</span><span class="status-pill ${source.status}">${escapeHtml(source.status)}</span><span class="row-actions">${state.projectDetails.permissions.edit ? `<button class="text-btn" data-toggle-source="${escapeHtml(source.sourceId)}">${source.status === 'active' ? 'Desactivar' : 'Activar'}</button><button class="danger-btn" data-remove-source="${escapeHtml(source.sourceId)}">Quitar</button>` : ''}</span></div>`).join('');
+    list.querySelectorAll('[data-toggle-source]').forEach(button => button.addEventListener('click', () => toggleSource(button.dataset.toggleSource)));
+    list.querySelectorAll('[data-remove-source]').forEach(button => button.addEventListener('click', () => removeSourceItem(button.dataset.removeSource)));
+  }
+
+  function renderSourceChips() {
+    const selected = (state.projectDetails.sources || []).filter(source => state.selectedSources.has(source.sourceId));
+    document.getElementById('active-source-chips').innerHTML = selected.slice(0, 6).map(source => `<span class="source-chip">${escapeHtml(source.name)}</span>`).join('') + (selected.length > 6 ? `<span class="source-chip">+${selected.length - 6}</span>` : '');
+  }
+
+  function toggleAllSources() {
+    const active = (state.projectDetails.sources || []).filter(source => source.status === 'active');
+    if (state.selectedSources.size === active.length) state.selectedSources.clear(); else active.forEach(source => state.selectedSources.add(source.sourceId));
+    renderSources();
+  }
+
+  async function submitSourceLink(event) {
+    event.preventDefault(); setBusy(event.target, true);
+    try {
+      const result = await server('addSourceFromDrive', state.currentProjectId, document.getElementById('source-drive-url').value);
+      state.projectDetails.sources.push(...result.added); result.added.forEach(source => state.selectedSources.add(source.sourceId));
+      closeModals(); event.target.reset(); renderSources(); showToast(`${result.added.length} fuente(s) importada(s).`);
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  async function uploadSourceFile(event) {
+    const file = event.target.files[0]; if (!file) return;
+    if (file.size > 6 * 1024 * 1024) { event.target.value = ''; return showToast('El archivo excede 6 MB. Impórtalo mediante Drive.', true); }
+    try {
+      const base64 = await fileAsBase64(file);
+      const source = await server('uploadSource', state.currentProjectId, {name: file.name, mimeType: file.type || 'application/octet-stream', base64});
+      state.projectDetails.sources.push(source); state.selectedSources.add(source.sourceId); renderSources(); showToast('Fuente cargada.');
+    } catch (error) { showToast(error.message, true); }
+    finally { event.target.value = ''; }
+  }
+
+  async function toggleSource(sourceId) {
+    const source = state.projectDetails.sources.find(item => item.sourceId === sourceId);
+    try { const updated = await server('setSourceActive', state.currentProjectId, sourceId, source.status !== 'active'); Object.assign(source, updated); if (updated.status === 'active') state.selectedSources.add(sourceId); else state.selectedSources.delete(sourceId); renderSources(); }
+    catch (error) { showToast(error.message, true); }
+  }
+
+  async function removeSourceItem(sourceId) {
+    if (!confirm('La fuente se moverá a la papelera de Drive. ¿Continuar?')) return;
+    try { await server('removeSource', state.currentProjectId, sourceId); state.projectDetails.sources = state.projectDetails.sources.filter(item => item.sourceId !== sourceId); state.selectedSources.delete(sourceId); renderSources(); showToast('Fuente retirada; puede recuperarse desde la papelera.'); }
+    catch (error) { showToast(error.message, true); }
+  }
+
+  function renderDocuments() {
+    const docs = state.projectDetails.documents || [];
+    document.getElementById('documents-table').innerHTML = `<div class="data-row header"><span>Nombre</span><span>Tipo</span><span>Actualizado</span><span></span></div>` + docs.map(doc => `<div class="data-row"><span class="file-name">${escapeHtml(doc.name)}</span><span>${escapeHtml(friendlyMime(doc.mimeType))}</span><span>${formatDate(doc.updatedAt)}</span><span class="row-actions"><a class="text-btn" href="${escapeHtml(doc.url)}" target="_blank">Abrir</a></span></div>`).join('');
+  }
+
+  function renderMembers() {
+    const members = state.projectDetails.members || [];
+    document.getElementById('members-table').innerHTML = `<div class="data-row header"><span>Usuario</span><span>Rol</span><span>Contenido</span><span></span></div>` + members.map(member => `<div class="data-row"><span class="file-name">${escapeHtml(member.email)}</span><span>${escapeHtml(member.role)}</span><span>${escapeHtml(scopeLabel(member.scope))}</span><span class="row-actions">${member.role !== 'owner' ? `<button class="danger-btn" data-remove-member="${escapeHtml(member.email)}">Retirar</button>` : ''}</span></div>`).join('');
+    document.querySelectorAll('[data-remove-member]').forEach(button => button.addEventListener('click', () => removeMember(button.dataset.removeMember)));
+  }
+
+  async function submitMember(event) {
+    event.preventDefault(); setBusy(event.target, true);
+    const permissions = {};
+    document.querySelectorAll('#custom-permissions input').forEach(input => permissions[input.value] = input.checked);
+    try {
+      state.projectDetails.members = await server('shareProject', {projectId: state.currentProjectId, email: document.getElementById('member-email').value, role: document.getElementById('member-role').value, scope: document.getElementById('member-scope').value, permissions});
+      closeModals(); event.target.reset(); document.getElementById('custom-permissions').classList.add('hidden'); renderMembers(); showToast('Acceso actualizado.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  async function removeMember(email) {
+    if (!confirm(`¿Retirar el acceso de ${email}?`)) return;
+    try { state.projectDetails.members = await server('removeProjectMember', state.currentProjectId, email); renderMembers(); showToast('Acceso retirado.'); }
+    catch (error) { showToast(error.message, true); }
+  }
+
+  function openSettings() {
+    const settings = state.bootstrap.userSettings;
+    document.getElementById('gemini-api-key').value = '';
+    document.getElementById('gemini-api-key').placeholder = settings.configured ? `Configurada · ••••${settings.keySuffix}` : 'AIza…';
+    document.getElementById('gemini-model').value = settings.model;
+    openModal('settings-modal');
+  }
+
+  async function saveGeminiSettings(event) {
+    event.preventDefault(); setBusy(event.target, true);
+    const key = document.getElementById('gemini-api-key').value.trim();
+    if (!key && state.bootstrap.userSettings.configured) { setBusy(event.target, false); return showToast('Escribe la llave para volver a validarla.', true); }
+    try {
+      const settings = await server('saveUserGeminiSettings', {apiKey: key, model: document.getElementById('gemini-model').value});
+      state.bootstrap.userSettings = settings; updateKeyStatus(settings); closeModals(); showToast('Llave validada y guardada para tu usuario.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  async function loadModels() {
+    try {
+      const models = await server('getAvailableGeminiModels');
+      document.getElementById('gemini-model-options').innerHTML = models.map(model => `<option value="${escapeHtml(model.name)}">${escapeHtml(model.displayName)}</option>`).join('');
+      showToast(`${models.length} modelos compatibles encontrados.`);
+    } catch (error) { showToast(error.message, true); }
+  }
+
+  function openModal(id) {
+    document.querySelectorAll('.modal').forEach(modal => modal.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+    document.getElementById('modal-backdrop').classList.remove('hidden');
+  }
+  function closeModals() { document.getElementById('modal-backdrop').classList.add('hidden'); document.querySelectorAll('.modal').forEach(modal => modal.classList.add('hidden')); }
+  function syncNav() { document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.classList.toggle('active', button.dataset.dashboardFilter === state.dashboardFilter)); }
+  function autoSizeComposer() { const el = document.getElementById('chat-input'); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; }
+  function setBusy(element, busy) { if (!element) return; element.classList.toggle('busy', busy); Array.from(element.querySelectorAll ? element.querySelectorAll('button,input,textarea,select') : []).forEach(control => control.disabled = busy); if ('disabled' in element) element.disabled = busy; }
+  function fileAsBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); }
+  function showToast(message, error = false) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.toggle('error', error); toast.classList.remove('hidden'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.add('hidden'), 4200); }
+  function initials(value) { return String(value || 'U').split(/[.\s_-]+/).filter(Boolean).slice(0,2).map(part => part[0].toUpperCase()).join('') || 'U'; }
+  function shortEmail(email) { return String(email || '').split('@')[0]; }
+  function formatDate(value) { if (!value) return ''; try { return new Intl.DateTimeFormat('es-MX',{dateStyle:'medium'}).format(new Date(value)); } catch (_) { return String(value); } }
+  function friendlyMime(mime) { const map = {'application/vnd.google-apps.document':'Google Docs','application/vnd.google-apps.spreadsheet':'Google Sheets','application/vnd.google-apps.presentation':'Google Slides','application/pdf':'PDF','text/plain':'Texto','text/csv':'CSV'}; return map[mime] || String(mime || 'Archivo').split('/').pop(); }
+  function scopeLabel(scope) { return ({full:'Proyecto completo',sources_documents:'Fuentes y documentos',history:'Solo historial',custom:'Personalizado'})[scope] || scope; }
+  function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[char]); }
+  function formatMarkdown(value) {
+    let text = escapeHtml(value);
+    const codeBlocks = [];
+    text = text.replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (_, code) => { codeBlocks.push(`<pre><code>${code}</code></pre>`); return `@@CODE${codeBlocks.length - 1}@@`; });
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/^###\s+(.+)$/gm, '<h3>$1</h3>').replace(/^##\s+(.+)$/gm, '<h2>$1</h2>').replace(/^#\s+(.+)$/gm, '<h1>$1</h1>').replace(/^[-*]\s+(.+)$/gm, '• $1').replace(/\n/g, '<br>');
+    codeBlocks.forEach((block, index) => { text = text.replace(`@@CODE${index}@@`, block); });
+    return text;
+  }
+</script>

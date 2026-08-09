@@ -1,0 +1,41 @@
+<div id="modal-backdrop" class="modal-backdrop hidden">
+  <section id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <button class="modal-close" data-close-modal>×</button>
+    <p class="eyebrow">CONFIGURACIÓN PERSONAL</p>
+    <h2>Gemini API</h2>
+    <p class="muted">La llave se guarda en tus propiedades de usuario; no aparece en el navegador ni se comparte con otros usuarios.</p>
+    <form id="gemini-settings-form">
+      <label>Llave de Gemini<input id="gemini-api-key" type="password" autocomplete="off" placeholder="AIza…"></label>
+      <label>Modelo<input id="gemini-model" list="gemini-model-options" placeholder="gemini-3.6-flash"><datalist id="gemini-model-options"></datalist></label>
+      <div class="modal-actions"><button type="button" id="load-models" class="secondary-btn">Consultar modelos</button><button type="submit" class="primary-btn">Validar y guardar</button></div>
+    </form>
+  </section>
+
+  <section id="project-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <button class="modal-close" data-close-modal>×</button>
+    <p class="eyebrow">NUEVO PROYECTO</p><h2>Crear agente de proyecto</h2>
+    <form id="project-form">
+      <label>Título<input id="new-project-title" required maxlength="120"></label>
+      <label>Descripción<textarea id="new-project-description" rows="4" maxlength="800"></textarea></label>
+      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancelar</button><button type="submit" class="primary-btn">Crear proyecto</button></div>
+    </form>
+  </section>
+
+  <section id="source-link-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <button class="modal-close" data-close-modal>×</button>
+    <p class="eyebrow">IMPORTAR FUENTE</p><h2>Archivo o carpeta de Drive</h2>
+    <p class="muted">Se creará una copia dentro de Sources para mantener una versión controlada y compartirla con el proyecto.</p>
+    <form id="source-link-form"><label>ID o URL de Drive<input id="source-drive-url" required></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancelar</button><button type="submit" class="primary-btn">Importar</button></div></form>
+  </section>
+
+  <section id="member-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <button class="modal-close" data-close-modal>×</button>
+    <p class="eyebrow">COMPARTIR</p><h2>Agregar usuario</h2>
+    <form id="member-form">
+      <label>Correo de la organización<input id="member-email" type="email" required></label>
+      <div class="form-grid"><label>Rol<select id="member-role"><option value="editor">Editor</option><option value="collaborator">Colaborador</option><option value="viewer">Lector</option></select></label><label>Contenido<select id="member-scope"><option value="full">Proyecto completo</option><option value="sources_documents">Fuentes y documentos</option><option value="history">Solo historial</option><option value="custom">Personalizado</option></select></label></div>
+      <div id="custom-permissions" class="checkbox-group hidden"><label><input type="checkbox" value="sources"> Fuentes</label><label><input type="checkbox" value="documents"> Documentos</label><label><input type="checkbox" value="history"> Historial</label></div>
+      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancelar</button><button type="submit" class="primary-btn">Compartir</button></div>
+    </form>
+  </section>
+</div>
