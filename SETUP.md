@@ -33,7 +33,7 @@ clasp open
 
 1. En Apps Script, selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 1.1.0`.
+3. Descripción: `Version 1.2.0`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Quién tiene acceso: **Cualquier usuario del dominio** o la opción equivalente de tu organización.
 6. Autoriza los permisos solicitados.
@@ -75,6 +75,10 @@ La pantalla muestra después solo los cuatro últimos caracteres de la llave.
 8. Confirma con esa cuenta que no aparece el historial.
 9. Copia manualmente la carpeta del proyecto dentro de la raíz.
 10. Pulsa **Refresh projects** y confirma que aparece como un proyecto independiente.
+11. Cambia el emoji desde el encabezado del proyecto y confirma que se actualiza en el dashboard.
+12. Abre **Documents**, ajusta el ancho del panel y verifica la selección individual y por nivel.
+13. Exporta un chat a PDF y confirma que aparece como documento derivado con sus relaciones parent/child.
+14. Elimina un chat de prueba y confirma el diálogo de advertencia y su presencia en la papelera de Drive.
 
 ## Actualizaciones
 

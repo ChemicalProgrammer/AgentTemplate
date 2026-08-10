@@ -19,6 +19,7 @@ flowchart TD
 - Registro en propiedades del script: índice rápido y membresías necesarias para el dashboard.
 - `Project Control`: registro tabular y auditable.
 - Archivos JSON de conversación: historial completo, sin límites de celda.
+- `Documents Index.json`: metadatos, origen y relaciones parent/child de documentos generados.
 - Carpetas de Drive: permisos reales y documentos.
 
 El registro central puede reconstruirse escaneando la carpeta raíz. El manifiesto permite que una copia manual conserve su estructura; si el `projectId` ya pertenece a otra carpeta, se genera uno nuevo.
@@ -31,11 +32,15 @@ La memoria no depende del estado remoto de una conversación de Gemini. Cada sol
 2. descripción del proyecto;
 3. resumen acumulativo;
 4. ventana reciente;
-5. fragmentos de fuentes con mayor coincidencia léxica;
+5. fragmentos de fuentes originales o documentos generados seleccionados con mayor coincidencia léxica;
 6. archivos binarios compatibles;
 7. consulta actual.
 
 Esta estrategia conserva el historial completo en Drive y evita que el proyecto dependa de un identificador de conversación externo.
+
+## Grafo documental
+
+Cada fuente original se representa como un nodo de nivel 0. Los documentos generados guardan una lista de `parentIds`; su nivel se calcula como uno más que el nivel máximo de sus padres. Los archivos existentes sin metadatos se registran automáticamente como documentos generados de nivel 1. La selección de nodos se guarda con cada conversación cuando se envía un mensaje y controla el contexto recuperado para Gemini.
 
 ## Aislamiento por usuario
 

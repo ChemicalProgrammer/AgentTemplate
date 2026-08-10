@@ -4,7 +4,7 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
 
 ## Funciones incluidas
 
-- Dashboard inicial con búsqueda, vistas Ongoing, Planning, Favorites y Archived, y tarjetas con icono configurable.
+- Dashboard inicial con búsqueda, vistas Ongoing, Planning, Favorites y Archived, y tarjetas identificadas por emoji.
 - Creación y descubrimiento automático de proyectos dentro de una carpeta raíz.
 - Detección de carpetas copiadas con regeneración de `projectId` duplicados.
 - Chat con historial completo en JSON, memoria acumulativa y mensajes recientes.
@@ -21,7 +21,14 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
   - Personalizado.
 - Roles Owner, Editor, Colaborador y Lector.
 - Llave y modelo de Gemini configurados por usuario.
-- Interfaz responsiva completamente en inglés, inspirada en Drive y Gemini, con fondos suaves y colores de Google.
+- Interfaz responsiva completamente en inglés, basada en superficies de Material 3, densidad de shadcn/ui y patrones de Google Workspace.
+- Vista de proyecto con encabezado compacto, Share en la parte superior y panel izquierdo Chats/Documents redimensionable.
+- Emojis de proyecto editables únicamente dentro del workspace del proyecto.
+- Grafo de documentos por niveles: fuentes iniciales en Level 0 y documentos derivados en los niveles posteriores.
+- Selección individual o por nivel de los documentos que Gemini puede utilizar en cada chat.
+- Relaciones parent/child visibles mediante resaltado al pasar el mouse, enfocar o seleccionar una tarjeta.
+- Eliminación recuperable de chats, fuentes y documentos mediante Drive trash y diálogos de advertencia.
+- Chat inspirado en Gemini con compositor tonal, respuestas sin burbuja, sugerencias iniciales y estados de carga con degradado suave.
 - Vista de proyecto sin la barra lateral del dashboard y con desplazamiento principal dentro de la conversación.
 - Indicador de análisis, control para detener la respuesta y escritura progresiva del contenido recibido.
 - Animaciones de carga en acciones de larga duración.
@@ -37,6 +44,7 @@ Agent Projects/
 │   ├── Sources/
 │   │   └── Sources Index.json
 │   ├── Generated Documents/
+│   │   └── Documents Index.json
 │   ├── Conversation Data/
 │   │   ├── Conversations Index.json
 │   │   └── Conversation - {id}.json
@@ -70,7 +78,7 @@ Agent Projects/
 | `SourceService.gs` | Importación, extracción y recuperación de fuentes |
 | `GeminiService.gs` | Modelos y llamadas REST a Gemini |
 | `ConversationService.gs` | Conversaciones, contexto y memoria acumulativa |
-| `DocumentService.gs` | Documentos generados |
+| `DocumentService.gs` | Grafo, metadatos, relaciones y eliminación de documentos generados |
 | `PdfService.gs` | Exportación de conversaciones |
 | `SharingService.gs` | Permisos selectivos y miembros |
 | `Utils.gs` | Utilidades comunes |
@@ -80,6 +88,16 @@ Agent Projects/
 | `ProjectView.html` | Proyecto, chat, fuentes y documentos |
 | `SettingsView.html` | Modales y configuración |
 | `AppScripts.html` | Lógica del navegador |
+
+## Referencias de diseño
+
+- Material 3: roles semánticos de color, superficies tonales, forma y movimiento.
+- Google Drive/Workspace: navegación contextual, acciones superiores y densidad de información.
+- NotebookLM: workspace adaptable con paneles de contenido, chat y Share en el encabezado.
+- Gemini: superficie conversacional, compositor, respuesta sin burbuja y estados de procesamiento.
+- shadcn/ui: tarjetas compactas, panel redimensionable, menús y diálogos destructivos.
+
+La implementación usa HTML, CSS y JavaScript nativos para conservar compatibilidad con HtmlService; no incorpora React ni copia componentes o assets propietarios.
 
 ## Instalación
 
@@ -103,7 +121,7 @@ La conversación completa siempre se conserva en el archivo JSON del proyecto. P
 - instrucciones y descripción permanentes del proyecto;
 - memoria acumulativa de los mensajes antiguos;
 - los 24 mensajes recientes completos;
-- fragmentos relevantes de las fuentes activas;
+- fragmentos relevantes de los documentos seleccionados, sean fuentes originales o archivos generados;
 - el mensaje nuevo.
 
 Cada ocho mensajes que quedan fuera de la ventana reciente, Gemini consolida la memoria. Si esa consolidación falla, la respuesta y el historial se guardan de todas maneras.
@@ -125,7 +143,7 @@ La app vuelve a validar el rol y el alcance en el servidor; ocultar un botón en
 - La app debe ejecutarse como el usuario que accede para aislar las llaves y respetar permisos reales de Drive.
 - El dominio se verifica en cada operación de servidor.
 - No se transmiten tokens OAuth de Google al navegador ni a Gemini.
-- Al retirar una fuente, su copia se mueve a la papelera de Drive y puede recuperarse.
+- Al retirar una fuente, documento generado o chat, el archivo se mueve a la papelera de Drive y puede recuperarse.
 
 ## Límites prácticos
 
@@ -145,4 +163,4 @@ El valor inicial es `gemini-3.6-flash`. Al guardar la llave, la app consulta los
 
 ## Versión
 
-`1.1.0` — rediseño de interfaz, iconos de proyecto, contadores reconciliados, carga animada y experiencia de respuesta progresiva con cancelación.
+`1.2.0` — workspace redimensionable Chats/Documents, emojis de proyecto, grafo documental por niveles, relaciones parent/child, selección de contexto por nivel, Share compacto y eliminación recuperable de chats y documentos.
