@@ -33,7 +33,7 @@ clasp open
 
 1. En Apps Script, selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 1.5.1`.
+3. Descripción: `Version 1.5.2`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Quién tiene acceso: **Cualquier usuario del dominio** o la opción equivalente de tu organización.
 6. Autoriza los permisos solicitados.

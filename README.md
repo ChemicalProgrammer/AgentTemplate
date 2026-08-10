@@ -201,6 +201,8 @@ El valor inicial es `gemini-3.6-flash`. Al guardar la llave, la app consulta los
 
 ## Versión
 
+`1.5.2` — corrige la inicialización de File Search con fragmentos compatibles de 200 tokens y 20 tokens de superposición, y protege la solicitud para que nunca exceda el máximo de 512 tokens aceptado por la API.
+
 `1.5.1` — carga local de fuentes de hasta 100 MB por bloques, transferencia de File Search reanudable entre ejecuciones, corrección del cuerpo de metadatos de indexación, diagnóstico verificable y eliminación del texto “No note added”.
 
 `1.5.0` — RAG persistente con Gemini File Search, fuentes de hasta 100 MB desde Drive, citas por archivo/página, Templates de Google Workspace, Flows Markdown, más iconos y colores, importación reparada de Google Sheets y PDF por tarjeta de conversación.

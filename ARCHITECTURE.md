@@ -44,7 +44,7 @@ La memoria no depende del estado remoto de una conversación de Gemini. Cada sol
 
 Cada llave personal crea su propio almacén File Search por proyecto. Los IDs del almacén y documentos remotos permanecen en `UserProperties`; el PDF, Google Sheet u otro archivo original permanece en Drive como fuente de verdad. Esta estrategia conserva el historial completo en Drive y evita que el proyecto dependa de un identificador de conversación externo.
 
-Las fuentes locales de hasta 100 MB se cargan primero a Drive mediante una sesión reanudable en bloques de 2 MB. La transferencia posterior a File Search conserva URL, offset, etapa y progreso en `UserProperties` y avanza un bloque de 8 MB por llamada, evitando que un libro grande dependa de una sola ejecución de Apps Script. Un estado `failed` representa un error confirmado por la carga o la operación; un estado `unknown` significa únicamente que la verificación remota no pudo completarse.
+Las fuentes locales de hasta 100 MB se cargan primero a Drive mediante una sesión reanudable en bloques de 2 MB. La transferencia posterior a File Search conserva URL, offset, etapa y progreso en `UserProperties` y avanza un bloque de 8 MB por llamada, evitando que un libro grande dependa de una sola ejecución de Apps Script. File Search fragmenta con 200 tokens y 20 de superposición; antes de iniciar una carga, la app limita defensivamente el tamaño a 512 tokens. Un estado `failed` representa un error confirmado por la carga o la operación; un estado `unknown` significa únicamente que la verificación remota no pudo completarse.
 
 ## Grafo documental
 

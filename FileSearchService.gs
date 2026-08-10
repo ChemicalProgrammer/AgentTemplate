@@ -126,6 +126,7 @@ function getFileSearchStoreState_(projectId, validateKey) {
 }
 
 function startFileSearchUpload_(project, source, descriptor, storeName, apiKey) {
+  var whiteSpaceConfig = getFileSearchWhiteSpaceConfig_();
   var metadata = {
     displayName: descriptor.name,
     customMetadata: [
@@ -133,10 +134,7 @@ function startFileSearchUpload_(project, source, descriptor, storeName, apiKey) 
       {key: 'source_id', stringValue: source.sourceId},
       {key: 'drive_id', stringValue: source.driveId}
     ],
-    chunkingConfig: {whiteSpaceConfig: {
-      maxTokensPerChunk: APP.FILE_SEARCH_MAX_TOKENS_PER_CHUNK,
-      maxOverlapTokens: APP.FILE_SEARCH_OVERLAP_TOKENS
-    }}
+    chunkingConfig: {whiteSpaceConfig: whiteSpaceConfig}
   };
   var start = UrlFetchApp.fetch(FILE_SEARCH_UPLOAD_ROOT + storeName + ':uploadToFileSearchStore', {
     method: 'post',
@@ -155,6 +153,16 @@ function startFileSearchUpload_(project, source, descriptor, storeName, apiKey) 
   var uploadUrl = getHeaderIgnoreCase_(start.getAllHeaders(), 'x-goog-upload-url');
   if (!uploadUrl) throw new Error('Gemini did not provide a resumable upload URL.');
   return uploadUrl;
+}
+
+function getFileSearchWhiteSpaceConfig_() {
+  var maxTokens = Number(APP.FILE_SEARCH_MAX_TOKENS_PER_CHUNK);
+  var overlap = Number(APP.FILE_SEARCH_OVERLAP_TOKENS);
+  if (!isFinite(maxTokens) || maxTokens < 1) maxTokens = 200;
+  if (!isFinite(overlap) || overlap < 0) overlap = 20;
+  maxTokens = Math.min(512, Math.floor(maxTokens));
+  overlap = Math.min(maxTokens - 1, Math.floor(overlap));
+  return {maxTokensPerChunk: maxTokens, maxOverlapTokens: overlap};
 }
 
 function advanceFileSearchUpload_(project, source, state, apiKey) {
