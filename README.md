@@ -4,29 +4,38 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
 
 ## Funciones incluidas
 
-- Dashboard inicial con búsqueda, vistas Ongoing, Planning, Favorites y Archived, y tarjetas identificadas por emoji.
+- Dashboard inicial sin barra lateral, con búsqueda, filtros Ongoing/Favorites/Planning/Archived y creación de proyectos sobre la cuadrícula.
+- Tarjetas con emoji, color configurable, estadísticas y menú contextual para clonar o mover proyectos a la papelera.
 - Creación y descubrimiento automático de proyectos dentro de una carpeta raíz.
 - Detección de carpetas copiadas con regeneración de `projectId` duplicados.
+- Drive como única fuente de verdad de proyectos: no se conserva un registro `PROJECT_*` en propiedades del script.
+- La carpeta raíz se restaura si entra en la papelera y se reconstruye si se elimina definitivamente; puede moverse libremente en Drive porque se identifica por ID.
+- Una carpeta de proyecto movida fuera de la raíz o enviada a la papelera desaparece del dashboard en la siguiente carga.
 - Chat con historial completo en JSON, memoria acumulativa y mensajes recientes.
-- Fuentes desde archivos o carpetas de Drive y carga directa de archivos de hasta 6 MB.
+- Fuentes desde archivos o carpetas de Drive y carga directa reanudable de hasta 100 MB.
 - Lectura nativa de Google Docs, Sheets, Slides, TXT, Markdown, CSV, JSON y XML.
-- Envío de PDF, imágenes y otros archivos binarios compatibles directamente a Gemini, dentro de los límites configurados.
-- Recuperación léxica por fragmentos para enviar a Gemini únicamente contenido relevante.
-- Citas de fuentes con etiquetas `[S1]`, `[S2]`, etc.
-- Exportación del historial a PDF y conteo unificado de documentos generados.
+- File Search persistente por proyecto y por llave de usuario: cada fuente se fragmenta e indexa una vez y las consultas recuperan semánticamente solo el contenido pertinente.
+- Libros y archivos de hasta 100 MB, tanto desde Drive como desde la computadora: el navegador carga a Drive en bloques de 2 MB y File Search recibe bloques de 8 MB entre ejecuciones.
+- Estados visibles `Queued`, `Uploading`, `Indexing`, `Indexed`, `Status unknown` e `Index failed`, con diagnóstico remoto, etapa, hora, progreso, error exacto y reintento.
+- Citas con archivo y página cuando Gemini devuelve ese dato.
+- Pestaña Templates para importar Google Docs, Sheets o Slides como formatos de salida sin modificar la plantilla original.
+- Generación de reportes desde cualquier tarjeta documental, con formato estándar o la plantilla seleccionada.
+- Pestaña Flows para importar o subir instrucciones `.md` seleccionables por conversación y reporte.
+- Exportación PDF disponible en cada tarjeta de conversación del historial.
 - Compartición con usuarios del mismo dominio en cuatro modalidades:
   - Proyecto completo.
   - Fuentes y documentos.
   - Solo historial.
   - Personalizado.
 - Roles Owner, Editor, Colaborador y Lector.
-- Llave y modelo de Gemini configurados por usuario.
+- Llave y modelo de Gemini configurados por usuario; la llave vuelve a aparecer en el campo protegido de Settings al recargar.
 - Interfaz responsiva completamente en inglés, basada en superficies de Material 3, densidad de shadcn/ui y patrones de Google Workspace.
-- Vista de proyecto con encabezado compacto, Share en la parte superior y panel izquierdo Chats/Documents redimensionable.
-- Emojis de proyecto editables únicamente dentro del workspace del proyecto.
+- Vista de proyecto con encabezado compacto, Share en la parte superior y panel izquierdo Chats/Documents/Templates/Flows redimensionable.
+- Emojis y colores de proyecto editables únicamente dentro del workspace del proyecto.
 - Grafo de documentos por niveles: fuentes iniciales en Level 0 y documentos derivados en los niveles posteriores.
 - Selección individual o por nivel de los documentos que Gemini puede utilizar en cada chat.
 - Relaciones parent/child visibles mediante resaltado al pasar el mouse, enfocar o seleccionar una tarjeta.
+- Notas o descripciones editables para fuentes, documentos generados y PDF; se muestran en la tarjeta y enriquecen el contexto del agente.
 - Eliminación recuperable de chats, fuentes y documentos mediante Drive trash y diálogos de advertencia.
 - Chat inspirado en Gemini con compositor tonal, respuestas sin burbuja, sugerencias iniciales y estados de carga con degradado suave.
 - Vista de proyecto sin la barra lateral del dashboard y con desplazamiento principal dentro de la conversación.
@@ -43,6 +52,10 @@ Agent Projects/
 │   ├── Project Control              (Google Sheets)
 │   ├── Sources/
 │   │   └── Sources Index.json
+│   ├── Templates/
+│   │   └── Templates Index.json
+│   ├── Flows/
+│   │   └── Flows Index.json
 │   ├── Generated Documents/
 │   │   └── Documents Index.json
 │   ├── Conversation Data/
@@ -58,13 +71,15 @@ Agent Projects/
 2. Project Attribute History
 3. Assignments
 4. Sources
-5. Conversations
-6. Documents
-7. Document Versions
-8. Members
-9. Share Policies
-10. Links
-11. Change Log
+5. Templates
+6. Flows
+7. Conversations
+8. Documents
+9. Document Versions
+10. Members
+11. Share Policies
+12. Links
+13. Change Log
 
 ## Archivos de código
 
@@ -73,9 +88,12 @@ Agent Projects/
 | `App.gs` | Entrada web y datos iniciales |
 | `ConfigService.gs` | Configuración global y llave/modelo por usuario |
 | `SecurityService.gs` | Dominio, roles, alcances y validaciones |
-| `ProjectService.gs` | Proyectos, manifiestos, registro y descubrimiento |
+| `ProjectService.gs` | Proyectos, manifiestos y descubrimiento directo desde Drive |
 | `DriveService.gs` | Operaciones reutilizables con Drive |
 | `SourceService.gs` | Importación, extracción y recuperación de fuentes |
+| `FileSearchService.gs` | Almacenes, carga reanudable, indexación, recuperación semántica y citas |
+| `TemplateService.gs` | Biblioteca de formatos y generación de reportes |
+| `FlowService.gs` | Procedimientos Markdown seleccionables |
 | `GeminiService.gs` | Modelos y llamadas REST a Gemini |
 | `ConversationService.gs` | Conversaciones, contexto y memoria acumulativa |
 | `DocumentService.gs` | Grafo, metadatos, relaciones y eliminación de documentos generados |
@@ -112,7 +130,7 @@ Resumen:
    - Ejecutar como: **usuario que accede a la aplicación**.
    - Quién tiene acceso: **usuarios del dominio**.
 5. El primer usuario configura el dominio y la carpeta raíz.
-6. Cada usuario abre Configuración y guarda su propia llave de Gemini.
+6. Cada usuario abre Configuración y guarda su propia llave de Gemini; el administrador también puede cambiar allí la carpeta raíz.
 
 ## Cómo funciona la memoria
 
@@ -121,17 +139,33 @@ La conversación completa siempre se conserva en el archivo JSON del proyecto. P
 - instrucciones y descripción permanentes del proyecto;
 - memoria acumulativa de los mensajes antiguos;
 - los 24 mensajes recientes completos;
-- fragmentos relevantes de los documentos seleccionados, sean fuentes originales o archivos generados;
+- resultados semánticos de File Search para fuentes indexadas y fragmentos locales para documentos generados;
+- los Flows seleccionados como instrucciones de procedimiento, separados de la evidencia;
 - el mensaje nuevo.
 
 Cada ocho mensajes que quedan fuera de la ventana reciente, Gemini consolida la memoria. Si esa consolidación falla, la respuesta y el historial se guardan de todas maneras.
 
+## Templates y reportes
+
+Las plantillas pueden contener estos marcadores:
+
+- `{{PROJECT_TITLE}}`
+- `{{REPORT_TITLE}}`
+- `{{GENERATED_DATE}}`
+- `{{CONTENT}}`
+
+La app crea una copia dentro de `Generated Documents` y reemplaza los marcadores. Si `{{CONTENT}}` no existe, agrega el reporte al final del Google Doc, en una hoja `Generated Report` del Google Sheet o en una diapositiva nueva del Google Slides.
+
+## Flows
+
+Cada Flow es un archivo `.md` con instrucciones ordenadas. La selección se conserva por conversación en su JSON y se envía a Gemini como procedimiento, no como fuente factual. Las respuestas registran qué Flows se usaron.
+
 ## Compartición y permisos
 
-El registro de proyectos se conserva en propiedades del script para que un usuario pueda ver en el dashboard un proyecto compartido sin necesidad de acceder a la carpeta raíz completa.
+El dashboard se reconstruye directamente desde las carpetas activas que son hijas de la raíz configurada. No existe un índice persistente alternativo que pueda conservar tarjetas huérfanas.
 
 - **Proyecto completo:** se comparte la carpeta del proyecto.
-- **Fuentes y documentos:** solo se comparten `Sources` y `Generated Documents`.
+- **Fuentes y documentos:** se comparten `Sources`, `Flows`, `Generated Documents` y `Templates`.
 - **Solo historial:** se comparten `Conversation Data` y `PDF Exports`.
 - **Personalizado:** se comparten únicamente las subcarpetas seleccionadas.
 
@@ -139,7 +173,8 @@ La app vuelve a validar el rol y el alcance en el servidor; ocultar un botón en
 
 ## Seguridad
 
-- La llave de Gemini se guarda con `PropertiesService.getUserProperties()` y nunca se inserta en HTML.
+- La llave de Gemini se guarda con `PropertiesService.getUserProperties()` y solo se devuelve al navegador autenticado del mismo usuario para rellenar el campo `password` de Settings.
+- El almacén File Search, sus estados y la plantilla predeterminada también se aíslan por usuario y proyecto; un colaborador con otra llave ejecuta **Sync index** para crear su índice propio.
 - La app debe ejecutarse como el usuario que accede para aislar las llaves y respetar permisos reales de Drive.
 - El dominio se verifica en cada operación de servidor.
 - No se transmiten tokens OAuth de Google al navegador ni a Gemini.
@@ -147,8 +182,11 @@ La app vuelve a validar el rol y el alcance en el servidor; ocultar un botón en
 
 ## Límites prácticos
 
-- La carga directa desde el navegador está limitada a 6 MB; para archivos mayores se debe usar “Desde Drive”.
-- Los archivos binarios enviados a Gemini se limitan a 8 MB por archivo y 12 MB por consulta en esta implementación.
+- Las fuentes cargadas desde el navegador admiten hasta 100 MB y se transmiten a Drive en bloques de 2 MB; ya no pasan completas como Base64 en una sola llamada.
+- File Search acepta hasta 100 MB por documento y la app transmite cada fuente en bloques persistentes de 8 MB, de modo que un libro grande no depende de una sola ejecución de Apps Script.
+- Los Flows Markdown conservan un límite independiente de 6 MB porque se usan como instrucciones y se truncan al presupuesto de contexto configurado.
+- Los binarios no indexados que usan el fallback local conservan el límite de 8 MB por archivo y 12 MB por consulta.
+- Cada acción **Sync index** procesa como máximo cinco fuentes; vuelve a ejecutarla cuando queden elementos en cola.
 - Una carpeta importada copia como máximo 50 archivos por operación.
 - El contexto de texto recuperado se limita a 90,000 caracteres por consulta.
 - Apps Script y Gemini aplican sus propias cuotas de ejecución, almacenamiento y solicitudes.
@@ -163,4 +201,6 @@ El valor inicial es `gemini-3.6-flash`. Al guardar la llave, la app consulta los
 
 ## Versión
 
-`1.2.0` — workspace redimensionable Chats/Documents, emojis de proyecto, grafo documental por niveles, relaciones parent/child, selección de contexto por nivel, Share compacto y eliminación recuperable de chats y documentos.
+`1.5.1` — carga local de fuentes de hasta 100 MB por bloques, transferencia de File Search reanudable entre ejecuciones, corrección del cuerpo de metadatos de indexación, diagnóstico verificable y eliminación del texto “No note added”.
+
+`1.5.0` — RAG persistente con Gemini File Search, fuentes de hasta 100 MB desde Drive, citas por archivo/página, Templates de Google Workspace, Flows Markdown, más iconos y colores, importación reparada de Google Sheets y PDF por tarjeta de conversación.

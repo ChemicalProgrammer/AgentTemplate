@@ -38,7 +38,7 @@ function uploadFlow(projectId, upload) {
   var mimeType = String(upload.mimeType || 'text/markdown');
   assertMarkdownFlow_(name, mimeType);
   var bytes = Utilities.base64Decode(String(upload.base64 || '').replace(/^data:[^;]+;base64,/, ''));
-  if (bytes.length > APP.MAX_UPLOAD_BYTES) throw new Error('The flow exceeds the 6 MB upload limit. Import it from Drive instead.');
+  if (bytes.length > APP.MAX_FLOW_UPLOAD_BYTES) throw new Error('The flow exceeds the 6 MB upload limit. Import it from Drive instead.');
   var file = DriveApp.getFolderById(access.project.folders.flows).createFile(Utilities.newBlob(bytes, 'text/markdown', name));
   return recordFlow_(access, file, 'upload');
 }

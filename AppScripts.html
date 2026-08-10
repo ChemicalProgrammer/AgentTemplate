@@ -37,6 +37,7 @@
     confirmResolver: null,
     highlightedDocumentId: null,
     editingDocumentId: null,
+    diagnosingSourceId: null,
     lastProjectRefresh: 0
   };
 
@@ -134,6 +135,7 @@
     document.getElementById('project-form').addEventListener('submit', submitProject);
     document.getElementById('source-link-form').addEventListener('submit', submitSourceLink);
     document.getElementById('document-note-form').addEventListener('submit', saveDocumentNote);
+    document.getElementById('retry-index-diagnostic').addEventListener('click', retryIndexFromDiagnostic);
     document.getElementById('member-form').addEventListener('submit', submitMember);
     document.getElementById('member-scope').addEventListener('change', event => document.getElementById('custom-permissions').classList.toggle('hidden', event.target.value !== 'custom'));
     document.getElementById('confirm-cancel').addEventListener('click', () => resolveConfirmation(false));
@@ -597,6 +599,7 @@
     container.querySelectorAll('[data-document-menu]').forEach(button => button.addEventListener('click', event => toggleDocumentMenu(event, button)));
     container.querySelectorAll('[data-edit-document-note]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openDocumentNoteModal(button.dataset.editDocumentNote); }));
     container.querySelectorAll('[data-index-source]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); indexSingleSource(button.dataset.indexSource, button); }));
+    container.querySelectorAll('[data-check-index]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); showIndexDiagnostic(button.dataset.checkIndex, button); }));
     container.querySelectorAll('[data-generate-report]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); generateReport(button.dataset.generateReport, button); }));
     container.querySelectorAll('[data-delete-document]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); deleteDocumentNode(button.dataset.deleteDocument, button); }));
     container.querySelectorAll('.document-card').forEach(card => {
@@ -616,7 +619,9 @@
   function renderDocumentCard(node) {
     const relation = documentRelationCounts(node.nodeId);
     const canDelete = state.projectDetails.permissions.edit && (node.kind === 'source' ? state.projectDetails.permissions.sources : state.projectDetails.permissions.documents);
-    const indexLabel = ({ready:'Indexed',indexing:'Indexing',uploading:'Uploading',queued:'Queued',failed:'Index failed',not_indexed:'Not indexed'})[node.indexStatus] || '';
+    const indexLabel = ({ready:'Indexed',indexing:'Indexing',uploading:'Uploading',queued:'Queued',failed:'Index failed',unknown:'Status unknown',not_indexed:'Not indexed'})[node.indexStatus] || '';
+    const statusDetail = node.indexStatus === 'failed' ? node.indexError : node.indexStatus === 'unknown' ? node.indexCheckError : '';
+    const progressLabel = node.indexStatus === 'uploading' && Number(node.indexProgress || 0) ? ` · ${Number(node.indexProgress)}%` : '';
     return `<article class="document-card" data-node-id="${escapeHtml(node.nodeId)}" tabindex="0">
       <div class="document-card-top">
         <label class="document-checkbox" title="Use in chat"><input type="checkbox" data-document-select="${escapeHtml(node.nodeId)}" ${state.selectedSources.has(node.nodeId) ? 'checked' : ''}><span></span></label>
@@ -625,6 +630,7 @@
           <button class="document-menu-button" data-document-menu="${escapeHtml(node.nodeId)}" aria-label="Document actions" title="Document actions">⋮</button>
           <div class="document-menu hidden" role="menu">
             ${node.url ? `<a href="${escapeHtml(node.url)}" target="_blank" role="menuitem">Open in Drive <span>↗</span></a>` : ''}
+            ${node.kind === 'source' ? `<button data-check-index="${escapeHtml(node.sourceId)}" role="menuitem">Check index status <span>ⓘ</span></button>` : ''}
             ${node.kind === 'source' && canDelete ? `<button data-index-source="${escapeHtml(node.sourceId)}" role="menuitem">${node.indexStatus === 'ready' ? 'Reindex source' : 'Index source'} <span>⌁</span></button>` : ''}
             ${canDelete ? `<button data-edit-document-note="${escapeHtml(node.nodeId)}" role="menuitem">Edit note <span>✎</span></button>` : ''}
             ${canDelete ? `<button data-delete-document="${escapeHtml(node.nodeId)}" class="danger-menu-item" role="menuitem">Move to trash <span>🗑</span></button>` : ''}
@@ -635,8 +641,9 @@
       </div>
       <strong title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</strong>
       <div class="document-meta"><span>${escapeHtml(friendlyMime(node.mimeType))}</span><span>${formatFileSize(node.size)}</span><span>${formatDate(node.createdAt)}</span></div>
-      ${node.kind === 'source' ? `<div class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" title="${escapeHtml(node.indexError || '')}"><i></i>${escapeHtml(indexLabel)}</div>` : ''}
-      <p class="document-note ${node.note ? '' : 'empty'}">${escapeHtml(node.note || 'No note added')}</p>
+      ${node.kind === 'source' ? `<button type="button" class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" data-check-index="${escapeHtml(node.sourceId)}" title="Check index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</button>` : ''}
+      ${statusDetail ? `<p class="index-status-detail ${escapeHtml(node.indexStatus)}">${escapeHtml(statusDetail)}</p>` : ''}
+      ${node.note ? `<p class="document-note">${escapeHtml(node.note)}</p>` : ''}
       <div class="document-relations"><span>${relation.parents ? `↑ ${relation.parents} parent${relation.parents === 1 ? '' : 's'}` : 'Original'}</span>${relation.children ? `<span>↓ ${relation.children} child${relation.children === 1 ? '' : 'ren'}</span>` : ''}</div>
     </article>`;
   }
@@ -735,32 +742,108 @@
   }
 
   async function uploadSourceFile(event) {
-    const file = event.target.files[0]; if (!file) return;
-    if (file.size > 6 * 1024 * 1024) { event.target.value = ''; return showToast('The file exceeds 6 MB. Import it from Drive instead.', true); }
+    const input = event.target; const file = input.files[0]; if (!file) return;
+    if (file.size > 100 * 1024 * 1024) { input.value = ''; return showToast('Sources can be uploaded up to 100 MB. Split this file into separate volumes.', true); }
     const label = document.querySelector('.file-button'); setBusy(label, true);
+    let upload = null;
     try {
-      const base64 = await fileAsBase64(file);
-      const source = await server('uploadSource', state.currentProjectId, {name: file.name, mimeType: file.type || 'application/octet-stream', base64});
-      state.projectDetails.sources.push(source); await refreshDocumentGraph(); showSideTab('documents'); showToast(source.indexingWarning ? 'Document uploaded; File Search indexing needs repair.' : source.indexStatus === 'ready' ? 'Document uploaded and indexed.' : 'Document uploaded; indexing started.');
-    } catch (error) { showToast(error.message, true); }
-    finally { event.target.value = ''; setBusy(label, false); }
+      upload = await server('startSourceUpload', state.currentProjectId, {name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size});
+      let offset = Number(upload.nextOffset || 0); let completed = null;
+      while (offset < file.size) {
+        const end = Math.min(file.size, offset + Number(upload.chunkBytes || 2 * 1024 * 1024));
+        const base64 = await fileAsBase64(file.slice(offset, end));
+        completed = await server('uploadSourceChunk', state.currentProjectId, upload.uploadId, offset, base64);
+        offset = Number(completed.nextOffset || end);
+        showToast(`Uploading ${file.name}: ${Math.round(offset * 100 / file.size)}%`);
+      }
+      const source = completed && completed.source;
+      if (!source) throw new Error('Drive did not confirm the completed upload.');
+      state.projectDetails.sources.push(source);
+      await refreshDocumentGraph(); showSideTab('documents');
+      const indexed = await continueSingleSourceIndex(source.sourceId, false);
+      await refreshDocumentGraph();
+      showToast(indexed.indexStatus === 'ready' ? 'Document uploaded and index verified.' : indexed.indexStatus === 'failed' ? 'Document uploaded, but indexing failed. Open its status for details.' : 'Document uploaded; Gemini is processing its index.');
+    } catch (error) {
+      if (upload && upload.uploadId) { try { await server('cancelSourceUpload', state.currentProjectId, upload.uploadId); } catch (_) {} }
+      try { await refreshDocumentGraph(); } catch (_) {}
+      showToast(error.message, true);
+    }
+    finally { input.value = ''; setBusy(label, false); }
   }
 
   async function syncSourceIndex() {
     const button = document.getElementById('sync-source-index'); setBusy(button, true);
     try {
-      const result = await server('syncProjectSourcesIndex', state.currentProjectId);
+      let result = null;
+      for (let pass = 0; pass < 16; pass++) {
+        result = await server('syncProjectSourcesIndex', state.currentProjectId);
+        const uploading = (result.sources || []).filter(item => item.indexStatus === 'uploading');
+        if (!uploading.length) break;
+        const average = Math.round(uploading.reduce((sum, item) => sum + Number(item.indexProgress || 0), 0) / uploading.length);
+        showToast(`Transferring ${uploading.length} source index${uploading.length === 1 ? '' : 'es'}: ${average}%`);
+      }
       await refreshDocumentGraph();
       const failed = (result.sources || []).filter(item => item.indexStatus === 'failed').length;
-      showToast(failed ? `Index sync completed with ${failed} failed source(s). Open a source menu for details.` : result.remaining ? `${result.processed} source(s) processed; ${result.remaining} remain. Run Sync index again.` : result.summary && result.summary.indexing ? `${result.summary.indexing} source(s) are still indexing. Refresh or run Sync index again shortly.` : 'All active sources are indexed.');
+      const unknown = (result.sources || []).filter(item => item.indexStatus === 'unknown').length;
+      showToast(failed ? `Index sync completed with ${failed} failed source(s). Open the red status for the exact cause.` : unknown ? `${unknown} source status could not be verified; this does not prove indexing failed.` : result.remaining ? `${result.processed} source(s) processed; ${result.remaining} remain. Run Sync index again.` : result.summary && result.summary.indexing ? `${result.summary.indexing} source(s) are still processing. Check their status shortly.` : 'All active sources are indexed.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
 
   async function indexSingleSource(sourceId, button) {
     closeDocumentMenus(); setBusy(button, true);
-    try { await server('indexProjectSource', state.currentProjectId, sourceId); await refreshDocumentGraph(); showToast('Source indexed for semantic search.'); }
+    try {
+      const node = state.documentNodes.find(item => item.sourceId === sourceId);
+      const restart = Boolean(node && ['ready','failed','unknown'].includes(node.indexStatus));
+      const result = await continueSingleSourceIndex(sourceId, restart);
+      await refreshDocumentGraph();
+      showToast(result.indexStatus === 'ready' ? 'Source index verified.' : result.indexStatus === 'failed' ? 'Indexing failed. Open the red status for the exact cause.' : 'The complete source was accepted and Gemini is processing its index.');
+    }
     catch (error) { await refreshDocumentGraph(); showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  async function continueSingleSourceIndex(sourceId, restart) {
+    let result = await server('indexProjectSource', state.currentProjectId, sourceId, restart);
+    for (let pass = 0; result.indexStatus === 'uploading' && pass < 16; pass++) {
+      showToast(`Uploading to File Search: ${Number(result.indexProgress || 0)}%`);
+      result = await server('indexProjectSource', state.currentProjectId, sourceId, false);
+    }
+    return result;
+  }
+
+  async function showIndexDiagnostic(sourceId, button) {
+    closeDocumentMenus(); state.diagnosingSourceId = sourceId; setBusy(button, true);
+    try {
+      const diagnostic = await server('getProjectSourceIndexDiagnostic', state.currentProjectId, sourceId);
+      renderIndexDiagnostic(diagnostic); openModal('index-diagnostic-modal'); await refreshDocumentGraph();
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function renderIndexDiagnostic(diagnostic) {
+    document.getElementById('index-diagnostic-name').textContent = diagnostic.name || 'Source';
+    document.getElementById('index-diagnostic-status').textContent = indexStatusLabel(diagnostic.indexStatus);
+    document.getElementById('index-diagnostic-stage').textContent = String(diagnostic.indexStage || 'not_started').replace(/_/g, ' ');
+    document.getElementById('index-diagnostic-file').textContent = `${friendlyMime(diagnostic.mimeType)} · ${formatFileSize(diagnostic.size)} · ${diagnostic.driveAvailable ? 'Drive copy available' : 'Drive copy unavailable'}`;
+    document.getElementById('index-diagnostic-time').textContent = diagnostic.indexedAt ? `Indexed ${formatDateTime(diagnostic.indexedAt)}` : diagnostic.updatedAt ? `Checked ${formatDateTime(diagnostic.updatedAt)}` : 'Not checked yet';
+    document.getElementById('index-diagnostic-message').textContent = diagnostic.message || '';
+    const error = diagnostic.indexError || diagnostic.checkError || diagnostic.driveError || '';
+    const errorBox = document.getElementById('index-diagnostic-error'); errorBox.textContent = error; errorBox.classList.toggle('hidden', !error);
+    const counts = diagnostic.storeCounts;
+    document.getElementById('index-diagnostic-counts').textContent = counts ? `Store: ${counts.active} active · ${counts.pending} pending · ${counts.failed} failed` : '';
+    document.getElementById('retry-index-diagnostic').classList.toggle('hidden', !state.projectDetails.permissions.edit || !state.projectDetails.permissions.sources);
+  }
+
+  async function retryIndexFromDiagnostic() {
+    if (!state.diagnosingSourceId) return;
+    const button = document.getElementById('retry-index-diagnostic'); setBusy(button, true);
+    try {
+      const result = await continueSingleSourceIndex(state.diagnosingSourceId, true);
+      const diagnostic = await server('getProjectSourceIndexDiagnostic', state.currentProjectId, state.diagnosingSourceId);
+      renderIndexDiagnostic(diagnostic); await refreshDocumentGraph();
+      showToast(result.indexStatus === 'failed' ? 'Retry failed; the diagnostic now shows the exact cause.' : 'Index retry submitted.');
+    } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
 
@@ -1087,6 +1170,7 @@
     document.getElementById('modal-backdrop').classList.add('hidden');
     document.querySelectorAll('.modal').forEach(modal => { modal.classList.add('hidden'); modal.classList.remove('modal-visible'); });
     state.editingDocumentId = null;
+    state.diagnosingSourceId = null;
   }
 
   function syncDashboardFilters() { document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.classList.toggle('active', button.dataset.dashboardFilter === state.dashboardFilter)); }
@@ -1117,6 +1201,8 @@
   function initials(value) { return String(value || 'U').split(/[.\s_-]+/).filter(Boolean).slice(0,2).map(part => part[0].toUpperCase()).join('') || 'U'; }
   function shortEmail(email) { return String(email || '').split('@')[0]; }
   function formatDate(value) { if (!value) return ''; try { return new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric'}).format(new Date(value)); } catch (_) { return String(value); } }
+  function formatDateTime(value) { if (!value) return ''; try { return new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(value)); } catch (_) { return String(value); } }
+  function indexStatusLabel(status) { return ({ready:'Indexed and verified',indexing:'Processing embeddings',uploading:'Uploading to File Search',queued:'Queued',failed:'Index failed',unknown:'Status could not be verified',not_indexed:'Not indexed'})[status] || status || 'Not indexed'; }
   function formatFileSize(bytes) { const value = Number(bytes || 0); if (!value) return '—'; const units = ['B','KB','MB','GB']; const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1); return `${(value / Math.pow(1024,index)).toFixed(index ? 1 : 0)} ${units[index]}`; }
   function friendlyMime(mime) { const map = {'application/vnd.google-apps.document':'Google Docs','application/vnd.google-apps.spreadsheet':'Google Sheets','application/vnd.google-apps.presentation':'Google Slides','application/pdf':'PDF','text/plain':'Text','text/csv':'CSV','text/markdown':'Markdown'}; return map[mime] || String(mime || 'File').split('/').pop(); }
   function fileTypeIcon(mime) { if (mime === 'application/pdf') return 'PDF'; if (/spreadsheet|csv/.test(mime || '')) return '▦'; if (/presentation/.test(mime || '')) return '▤'; if (/image/.test(mime || '')) return '◩'; if (/document|text|markdown/.test(mime || '')) return '▧'; return '◇'; }

@@ -47,16 +47,109 @@ function addSourceFromDrive(projectId, driveUrlOrId) {
   return {added: added, limited: imported.files.length >= APP.MAX_SOURCE_FILES, indexingErrors: indexingErrors};
 }
 
-function uploadSource(projectId, upload) {
+function startSourceUpload(projectId, metadata) {
   var access = assertProjectEdit_(projectId, 'sources');
-  upload = upload || {};
-  var name = normalizeName_(upload.name, 'Source');
-  var mimeType = String(upload.mimeType || MimeType.PLAIN_TEXT);
-  var base64 = String(upload.base64 || '').replace(/^data:[^;]+;base64,/, '');
-  var bytes = Utilities.base64Decode(base64);
-  if (bytes.length > APP.MAX_UPLOAD_BYTES) throw new Error('The file exceeds the 6 MB in-app upload limit. Use a Drive link for larger files.');
-  var folder = DriveApp.getFolderById(access.project.folders.sources);
-  var file = folder.createFile(Utilities.newBlob(bytes, mimeType, name));
+  metadata = metadata || {};
+  var name = normalizeName_(metadata.name, 'Source');
+  var mimeType = inferSourceMimeType_(name, metadata.mimeType);
+  var size = Number(metadata.size || 0);
+  if (!Number.isFinite(size) || size <= 0) throw new Error('Choose a non-empty file.');
+  if (size > APP.MAX_FILE_SEARCH_BYTES) throw new Error('Sources can be uploaded up to 100 MB. Split this file or import separate volumes.');
+
+  cleanupExpiredSourceUploadSessions_();
+  var response = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,mimeType,size,createdTime,modifiedTime,webViewLink', {
+    method: 'post',
+    headers: {
+      Authorization: 'Bearer ' + ScriptApp.getOAuthToken(),
+      'X-Upload-Content-Type': mimeType,
+      'X-Upload-Content-Length': String(size)
+    },
+    contentType: 'application/json',
+    payload: JSON.stringify({name: name, mimeType: mimeType, parents: [access.project.folders.sources]}),
+    muteHttpExceptions: true
+  });
+  assertHttpSuccess_(response, 'Drive upload could not be started');
+  var uploadUrl = getHeaderIgnoreCase_(response.getAllHeaders(), 'location');
+  if (!uploadUrl) throw new Error('Drive did not provide a resumable upload URL.');
+
+  var uploadId = uuid_();
+  var session = {
+    uploadId: uploadId,
+    projectId: projectId,
+    email: access.email,
+    name: name,
+    mimeType: mimeType,
+    size: size,
+    offset: 0,
+    uploadUrl: uploadUrl,
+    createdAt: nowIso_(),
+    expiresAt: Date.now() + APP.SOURCE_UPLOAD_SESSION_TTL_MS
+  };
+  PropertiesService.getUserProperties().setProperty(sourceUploadSessionKey_(uploadId), JSON.stringify(session));
+  return {uploadId: uploadId, nextOffset: 0, chunkBytes: APP.LOCAL_SOURCE_UPLOAD_CHUNK_BYTES, totalBytes: size};
+}
+
+function uploadSourceChunk(projectId, uploadId, offset, base64) {
+  var access = assertProjectEdit_(projectId, 'sources');
+  var props = PropertiesService.getUserProperties();
+  var key = sourceUploadSessionKey_(uploadId);
+  var session = safeJsonParse_(props.getProperty(key), null);
+  if (!session || session.projectId !== projectId || session.email !== access.email) throw new Error('This upload session is no longer available. Start the upload again.');
+  if (Number(session.expiresAt || 0) < Date.now()) {
+    props.deleteProperty(key);
+    throw new Error('The upload session expired. Start the upload again.');
+  }
+
+  offset = Number(offset || 0);
+  if (offset !== Number(session.offset || 0)) throw new Error('The upload offset is out of sync. Expected byte ' + session.offset + '.');
+  var bytes = Utilities.base64Decode(String(base64 || '').replace(/^data:[^;]+;base64,/, ''));
+  if (!bytes.length) throw new Error('The upload chunk is empty.');
+  if (bytes.length > APP.LOCAL_SOURCE_UPLOAD_CHUNK_BYTES) throw new Error('The upload chunk is too large. Reload the app and try again.');
+  if (offset + bytes.length > session.size) throw new Error('The upload contains more bytes than the selected file.');
+
+  var end = offset + bytes.length - 1;
+  var finalChunk = end + 1 === session.size;
+  var response = UrlFetchApp.fetch(session.uploadUrl, {
+    method: 'put',
+    headers: {'Content-Range': 'bytes ' + offset + '-' + end + '/' + session.size},
+    contentType: session.mimeType,
+    payload: Utilities.newBlob(bytes, session.mimeType),
+    muteHttpExceptions: true
+  });
+  var code = response.getResponseCode();
+  if (code !== 308 && (code < 200 || code >= 300)) {
+    throw new Error('Drive upload failed: ' + extractHttpError_(response));
+  }
+
+  session.offset = end + 1;
+  if (!finalChunk) {
+    if (code !== 308 && !response.getContentText()) throw new Error('Drive returned an unexpected response before the upload was complete.');
+    props.setProperty(key, JSON.stringify(session));
+    return {complete: false, uploadId: uploadId, nextOffset: session.offset, totalBytes: session.size};
+  }
+  if (code === 308) {
+    props.setProperty(key, JSON.stringify(session));
+    throw new Error('Drive received the last block but did not finalize the file. Retry the upload.');
+  }
+
+  var payload = safeJsonParse_(response.getContentText(), {});
+  if (!payload.id) throw new Error('Drive completed the upload but did not return a file ID.');
+  var file = DriveApp.getFileById(payload.id);
+  var record = registerUploadedSource_(access, file);
+  props.deleteProperty(key);
+  saveFileSearchSourceState_(projectId, record.sourceId, {
+    status: 'queued', stage: 'waiting_to_index', progress: 0, error: '', checkError: '', updatedAt: nowIso_()
+  });
+  return {complete: true, uploadId: uploadId, nextOffset: session.size, totalBytes: session.size, source: applyFileSearchStateToSource_(access.project, record)};
+}
+
+function cancelSourceUpload(projectId, uploadId) {
+  assertProjectEdit_(projectId, 'sources');
+  PropertiesService.getUserProperties().deleteProperty(sourceUploadSessionKey_(uploadId));
+  return {cancelled: true};
+}
+
+function registerUploadedSource_(access, file) {
   var index = readSourceIndex_(access.project);
   var record = {
     sourceId: uuid_(), name: file.getName(), driveId: file.getId(), mimeType: file.getMimeType(),
@@ -66,13 +159,36 @@ function uploadSource(projectId, upload) {
   index.sources.push(record);
   writeSourceIndex_(access.project, index);
   appendControlRow_(access.project, 'Sources', [record.sourceId, record.name, record.mimeType, record.driveId, record.status, record.addedAt, record.addedBy, record.note]);
-  touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
-  try {
-    indexSourceForCurrentUser_(access.project, record, false);
-  } catch (indexError) {
-    record.indexingWarning = readableErrorMessage_(indexError);
-  }
-  return applyFileSearchStateToSource_(access.project, record);
+  touchProjectStats_(access.project.projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
+  return record;
+}
+
+function sourceUploadSessionKey_(uploadId) {
+  return APP.USER_SOURCE_UPLOAD_PREFIX + String(uploadId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+function cleanupExpiredSourceUploadSessions_() {
+  var props = PropertiesService.getUserProperties();
+  var all = props.getProperties();
+  Object.keys(all).forEach(function(key) {
+    if (key.indexOf(APP.USER_SOURCE_UPLOAD_PREFIX) !== 0) return;
+    var session = safeJsonParse_(all[key], null);
+    if (!session || Number(session.expiresAt || 0) < Date.now()) props.deleteProperty(key);
+  });
+}
+
+function inferSourceMimeType_(name, mimeType) {
+  var supplied = String(mimeType || '').trim();
+  if (supplied && supplied !== 'application/octet-stream') return supplied;
+  var extension = String(name || '').toLowerCase().split('.').pop();
+  return ({
+    pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', tsv: 'text/tab-separated-values',
+    json: 'application/json', xml: 'application/xml', yaml: 'text/yaml', yml: 'text/yaml',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    zip: 'application/zip', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png'
+  })[extension] || 'application/octet-stream';
 }
 
 function setSourceActive(projectId, sourceId, active) {

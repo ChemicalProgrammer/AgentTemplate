@@ -55,6 +55,22 @@
     </form>
   </section>
 
+  <section id="index-diagnostic-modal" class="modal index-diagnostic-modal hidden" role="dialog" aria-modal="true" aria-labelledby="index-diagnostic-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">FILE SEARCH DIAGNOSTIC</p><h2 id="index-diagnostic-title">Index status</h2>
+    <p id="index-diagnostic-name" class="muted document-note-name"></p>
+    <dl class="diagnostic-grid">
+      <div><dt>Status</dt><dd id="index-diagnostic-status"></dd></div>
+      <div><dt>Stage</dt><dd id="index-diagnostic-stage"></dd></div>
+      <div class="diagnostic-wide"><dt>Project copy</dt><dd id="index-diagnostic-file"></dd></div>
+      <div class="diagnostic-wide"><dt>Last activity</dt><dd id="index-diagnostic-time"></dd></div>
+    </dl>
+    <p id="index-diagnostic-message" class="diagnostic-message"></p>
+    <pre id="index-diagnostic-error" class="diagnostic-error hidden"></pre>
+    <p id="index-diagnostic-counts" class="muted diagnostic-counts"></p>
+    <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Close</button><button type="button" id="retry-index-diagnostic" class="primary-btn">Retry indexing</button></div>
+  </section>
+
   <section id="source-link-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="source-link-title">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
     <p class="eyebrow">IMPORT DOCUMENT</p><h2 id="source-link-title">Drive file or folder</h2>

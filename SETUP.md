@@ -33,7 +33,7 @@ clasp open
 
 1. En Apps Script, selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 1.2.0`.
+3. Descripción: `Version 1.5.1`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Quién tiene acceso: **Cualquier usuario del dominio** o la opción equivalente de tu organización.
 6. Autoriza los permisos solicitados.
@@ -61,24 +61,40 @@ Cada usuario debe:
 3. Pegar la llave y elegir el modelo.
 4. Pulsa **Validate and save**.
 
-La pantalla muestra después solo los cuatro últimos caracteres de la llave.
+La pantalla superior muestra solo los cuatro últimos caracteres. Al volver a abrir Settings, el campo protegido vuelve a contener la llave completa para el mismo usuario.
+
+## Carpeta de proyectos
+
+El administrador puede cambiar la ubicación desde **Settings > Project location** pegando el ID o URL de otra carpeta. La carpeta configurada puede moverse a otra ubicación de Drive sin volver a configurarla porque la app conserva su ID.
+
+- Si la carpeta raíz entra en la papelera, la app la restaura cuando el administrador vuelve a abrirla.
+- Si se elimina definitivamente, la app crea otra con el último nombre conocido.
+- Si una carpeta de proyecto se mueve fuera de la raíz o entra en la papelera, deja de aparecer en el dashboard.
 
 ## Prueba inicial recomendada
 
 1. Crea un proyecto de prueba.
 2. Agrega un TXT pequeño como fuente.
-3. Inicia una conversación y formula una pregunta cuya respuesta aparezca en el TXT.
-4. Confirma que la respuesta cite `[S1]`.
-5. Exporta la conversación a PDF.
-6. Confirma que la tarjeta actualiza los conteos de chats, fuentes y documentos.
-7. Comparte “Sources and documents” con otro usuario del dominio.
-8. Confirma con esa cuenta que no aparece el historial.
-9. Copia manualmente la carpeta del proyecto dentro de la raíz.
-10. Pulsa **Refresh projects** y confirma que aparece como un proyecto independiente.
-11. Cambia el emoji desde el encabezado del proyecto y confirma que se actualiza en el dashboard.
-12. Abre **Documents**, ajusta el ancho del panel y verifica la selección individual y por nivel.
-13. Exporta un chat a PDF y confirma que aparece como documento derivado con sus relaciones parent/child.
-14. Elimina un chat de prueba y confirma el diálogo de advertencia y su presencia en la papelera de Drive.
+3. Confirma que la tarjeta cambie a **Indexed**; si queda pendiente, pulsa **Sync index**.
+4. Inicia una conversación y formula una pregunta cuya respuesta aparezca en el TXT.
+5. Confirma que la respuesta muestre la fuente recuperada.
+6. Exporta la conversación desde el botón PDF de su tarjeta en Chats.
+7. Confirma que la tarjeta actualiza los conteos de chats, fuentes y documentos.
+8. Comparte “Sources and documents” con otro usuario del dominio.
+9. Confirma con esa cuenta que no aparece el historial.
+10. Copia manualmente la carpeta del proyecto dentro de la raíz.
+11. Pulsa **Refresh projects** y confirma que aparece como un proyecto independiente.
+12. Cambia el emoji y color desde el encabezado del proyecto y confirma que se actualizan en el dashboard.
+13. Abre **Documents**, ajusta el ancho del panel y verifica la selección individual y por nivel.
+14. Exporta un chat a PDF y confirma que aparece como documento derivado con sus relaciones parent/child.
+15. Elimina un chat de prueba y confirma el diálogo de advertencia y su presencia en la papelera de Drive.
+16. Agrega una nota a una fuente y a un documento generado; confirma que aparece en sus tarjetas.
+17. Clona el proyecto desde el menú de la tarjeta y confirma que la copia conserva chats, fuentes y documentos sin compartir permisos.
+18. Mueve manualmente una carpeta de proyecto fuera de la raíz, pulsa **Refresh projects** y confirma que deja de aparecer en el dashboard.
+19. Envía la carpeta raíz a la papelera, recarga como administrador y confirma que se restaura conservando el mismo ID.
+20. Importa un Google Sheet mediante su enlace de Drive y confirma que se copia e indexa sin mostrar una notificación vacía.
+21. Importa un Google Doc, Sheet o Slides en Templates, selecciónalo y genera un Report desde el menú de una tarjeta documental.
+22. Sube un archivo `.md` en Flows, selecciónalo y confirma que aparece como procedimiento utilizado en la siguiente respuesta.
 
 ## Actualizaciones
 
@@ -98,15 +114,19 @@ Verifica que el despliegue esté restringido al dominio y se ejecute como el usu
 
 ### Un usuario ve el proyecto pero no puede abrir una sección
 
-El registro de la app y los permisos reales de Drive deben coincidir. El owner puede volver a compartir el mismo usuario con el alcance correcto para reparar los permisos.
+El manifiesto y los permisos reales de Drive deben coincidir. El owner puede volver a compartir el mismo usuario con el alcance correcto para reparar los permisos.
 
 ### Gemini rechaza la llave
 
 Comprueba que la Gemini API esté habilitada para la llave y que el modelo elegido aparezca al usar **Load models**. La cuota pertenece a cada llave individual.
 
-### Un PDF o imagen grande no se utiliza
+### Un PDF grande no se indexa
 
-La app omite archivos binarios mayores de 8 MB y limita el conjunto binario a 12 MB por consulta. Divide o comprime el documento, o conviértelo a Google Docs/TXT para usar recuperación por fragmentos.
+Importa el archivo mediante un enlace de Drive o cárgalo desde la computadora, confirma que no exceda 100 MB y usa **Sync index**. La acción procesa cinco fuentes por lote y continúa cada archivo en bloques persistentes. Pulsa directamente el estado de la tarjeta o **Check index status** para verificar Drive, la operación remota, la etapa y el mensaje exacto antes de reintentar.
+
+### Un colaborador ve `Not indexed`
+
+File Search pertenece al proyecto de API asociado con cada llave. El colaborador debe guardar su llave personal y ejecutar **Sync index** para crear su propio almacén semántico del proyecto.
 
 ### La copia de una carpeta no aparece
 

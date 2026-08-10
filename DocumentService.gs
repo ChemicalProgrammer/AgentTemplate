@@ -30,6 +30,10 @@ function listProjectDocuments(projectId) {
           note: source.note || '',
           indexStatus: source.indexStatus || 'not_indexed',
           indexError: source.indexError || '',
+          indexCheckError: source.indexCheckError || '',
+          indexStage: source.indexStage || '',
+          indexProgress: Number(source.indexProgress || 0),
+          indexUpdatedAt: source.indexUpdatedAt || '',
           indexedAt: source.indexedAt || '',
           selectedByDefault: source.status === 'active',
           url: source.driveId ? 'https://drive.google.com/open?id=' + source.driveId : ''
