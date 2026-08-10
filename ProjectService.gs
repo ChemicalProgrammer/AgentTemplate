@@ -1,6 +1,10 @@
 var PROJECT_MANIFEST_FILE = 'Project Manifest.json';
 var PROJECT_CONTROL_FILE = 'Project Control';
-var PROJECT_ICONS = ['spark', 'science', 'insight', 'code', 'notes', 'launch', 'data', 'idea'];
+var PROJECT_EMOJIS = ['✨', '🧠', '📚', '🧪', '⚙️', '📊', '💡', '🚀', '🌱', '🎯', '🧭', '🧩', '🔬', '🏗️', '📝', '💼', '🎨', '🌎', '🤖', '🗂️'];
+var LEGACY_PROJECT_ICONS = {
+  spark: '✨', science: '🧪', insight: '📊', code: '⚙️', notes: '📝',
+  launch: '🚀', data: '🗂️', idea: '💡'
+};
 
 function listProjects() {
   var email = assertOrganizationMember_();
@@ -61,12 +65,14 @@ function createProject(input) {
 function getProjectDetails(projectId) {
   var access = assertProjectAccess_(projectId);
   var project = access.project;
+  var documentGraph = access.allowed.sources || access.allowed.documents ? listProjectDocuments(projectId) : [];
   return {
     project: publicProject_(project, access.member, getFavoriteIds_().indexOf(projectId) !== -1),
     permissions: access.allowed,
     conversations: access.allowed.history ? listConversations(projectId) : [],
     sources: access.allowed.sources ? listSources(projectId) : [],
-    documents: access.allowed.documents ? listGeneratedDocuments(projectId) : [],
+    documents: access.allowed.documents ? documentGraph.filter(function(item) { return item.kind !== 'source'; }) : [],
+    documentGraph: documentGraph,
     members: access.member.role === 'owner' ? listProjectMembers(projectId) : []
   };
 }
@@ -121,7 +127,7 @@ function registerFolderAsProject_(folder) {
       projectId: uuid_(),
       title: folder.getName(),
       description: 'Project imported automatically from Drive.',
-      icon: 'spark',
+      icon: '✨',
       createdAt: now,
       updatedAt: now,
       owner: email,
@@ -299,8 +305,10 @@ function touchProjectStats_(projectId, changes) {
 }
 
 function normalizeProjectIcon_(value) {
-  value = String(value || 'spark').toLowerCase();
-  return PROJECT_ICONS.indexOf(value) !== -1 ? value : 'spark';
+  value = String(value || '✨').trim();
+  var legacy = LEGACY_PROJECT_ICONS[value.toLowerCase()];
+  if (legacy) return legacy;
+  return PROJECT_EMOJIS.indexOf(value) !== -1 ? value : '✨';
 }
 
 function reconcileProjectStats_(project) {
@@ -316,7 +324,8 @@ function reconcileProjectStats_(project) {
     project.stats.conversationCount = Number(project.stats.conversationCount || 0);
   }
   try {
-    var documentCount = listFilesRecursive_(DriveApp.getFolderById(project.folders.documents), [], 500).length;
+    var documentCount = listFilesRecursive_(DriveApp.getFolderById(project.folders.documents), [], 500)
+      .filter(function(file) { return file.name !== DOCUMENT_INDEX_FILE; }).length;
     var pdfCount = project.folders.pdfs ? listFilesRecursive_(DriveApp.getFolderById(project.folders.pdfs), [], 500).length : 0;
     project.stats.documentCount = documentCount + pdfCount;
   } catch (documentError) {

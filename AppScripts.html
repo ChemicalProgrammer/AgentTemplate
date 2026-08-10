@@ -1,14 +1,5 @@
 <script>
-  const PROJECT_ICONS = Object.freeze({
-    spark: {glyph: '✦', label: 'Spark'},
-    science: {glyph: '⚗', label: 'Science'},
-    insight: {glyph: '◈', label: 'Insights'},
-    code: {glyph: '⌘', label: 'Code'},
-    notes: {glyph: '▤', label: 'Notes'},
-    launch: {glyph: '◆', label: 'Launch'},
-    data: {glyph: '▥', label: 'Data'},
-    idea: {glyph: '☀', label: 'Idea'}
-  });
+  const PROJECT_EMOJIS = Object.freeze(['✨','🧠','📚','🧪','⚙️','📊','💡','🚀','🌱','🎯','🧭','🧩','🔬','🏗️','📝','💼','🎨','🌎','🤖','🗂️']);
 
   const state = {
     bootstrap: null,
@@ -16,18 +7,22 @@
     dashboardFilter: 'all',
     search: '',
     projectDetails: null,
+    documentNodes: [],
     currentProjectId: null,
     currentConversationId: null,
     currentConversation: null,
+    conversationSelections: new Map(),
     selectedSources: new Set(),
     busy: false,
     activeRequest: null,
-    iconTargetProjectId: null
+    confirmResolver: null,
+    highlightedDocumentId: null
   };
 
   document.addEventListener('DOMContentLoaded', () => {
-    renderIconOptions();
+    renderEmojiOptions();
     bindStaticEvents();
+    restorePanelWidth();
     startApp();
   });
 
@@ -90,8 +85,10 @@
     document.getElementById('settings-button').addEventListener('click', openSettings);
     document.getElementById('menu-toggle').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('open'));
     document.getElementById('back-dashboard').addEventListener('click', showDashboard);
-    document.getElementById('project-header-icon').addEventListener('click', () => openProjectIconPicker(state.currentProjectId));
-    document.querySelectorAll('.project-tab').forEach(tab => tab.addEventListener('click', () => showProjectTab(tab.dataset.projectTab)));
+    document.getElementById('toggle-project-panel').addEventListener('click', () => document.getElementById('project-side-panel').classList.toggle('mobile-open'));
+    document.getElementById('project-header-icon').addEventListener('click', openProjectEmojiPicker);
+    document.getElementById('share-project-button').addEventListener('click', openShareModal);
+    document.querySelectorAll('[data-side-tab]').forEach(tab => tab.addEventListener('click', () => showSideTab(tab.dataset.sideTab)));
     document.getElementById('new-conversation').addEventListener('click', () => newConversation(false));
     document.getElementById('send-message').addEventListener('click', sendMessage);
     document.getElementById('stop-response').addEventListener('click', stopResponse);
@@ -99,7 +96,9 @@
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }
     });
     document.getElementById('chat-input').addEventListener('input', autoSizeComposer);
-    document.getElementById('select-all-sources').addEventListener('click', toggleAllSources);
+    document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => {
+      const input = document.getElementById('chat-input'); input.value = button.dataset.prompt; autoSizeComposer(); input.focus();
+    }));
     document.getElementById('add-source-link').addEventListener('click', () => openModal('source-link-modal'));
     document.getElementById('source-upload').addEventListener('change', uploadSourceFile);
     document.getElementById('add-member-button').addEventListener('click', () => openModal('member-modal'));
@@ -110,13 +109,18 @@
     document.getElementById('source-link-form').addEventListener('submit', submitSourceLink);
     document.getElementById('member-form').addEventListener('submit', submitMember);
     document.getElementById('member-scope').addEventListener('change', event => document.getElementById('custom-permissions').classList.toggle('hidden', event.target.value !== 'custom'));
+    document.getElementById('confirm-cancel').addEventListener('click', () => resolveConfirmation(false));
+    document.getElementById('confirm-action').addEventListener('click', () => resolveConfirmation(true));
     document.querySelectorAll('[data-close-modal]').forEach(button => button.addEventListener('click', closeModals));
     document.getElementById('modal-backdrop').addEventListener('click', event => { if (event.target.id === 'modal-backdrop') closeModals(); });
+    document.getElementById('project-panel-grip').addEventListener('pointerdown', startPanelResize);
+    document.getElementById('project-panel-grip').addEventListener('keydown', resizePanelWithKeyboard);
+    document.addEventListener('click', event => { if (!event.target.closest('.document-menu-wrap')) closeDocumentMenus(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeDocumentMenus(); closeModals(); } });
   }
 
   async function configureApp(event) {
-    event.preventDefault();
-    setBusy(event.target, true);
+    event.preventDefault(); setBusy(event.target, true);
     try {
       state.bootstrap = await server('setupApplication', {
         organizationDomain: document.getElementById('setup-domain').value,
@@ -125,9 +129,7 @@
       state.projects = state.bootstrap.projects || [];
       document.getElementById('setup-screen').classList.add('hidden');
       document.getElementById('app-shell').classList.remove('hidden');
-      setWorkspaceMode('dashboard');
-      applyIdentity(); renderProjects();
-      showToast('Application configured.');
+      setWorkspaceMode('dashboard'); applyIdentity(); renderProjects(); showToast('Application configured.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
@@ -136,26 +138,22 @@
     const grid = document.getElementById('project-grid');
     const projects = state.projects.filter(project => {
       const matchesText = !state.search || `${project.title} ${project.description} ${project.owner}`.toLowerCase().includes(state.search);
-      let matchesFilter = true;
-      if (state.dashboardFilter === 'favorite') matchesFilter = project.favorite;
-      else if (state.dashboardFilter !== 'all') matchesFilter = project.status === state.dashboardFilter;
+      const matchesFilter = state.dashboardFilter === 'favorite' ? project.favorite : state.dashboardFilter === 'all' || project.status === state.dashboardFilter;
       return matchesText && matchesFilter;
     });
-    grid.innerHTML = projects.map(project => {
-      const icon = iconInfo(project.icon);
-      const canEdit = project.role && project.role !== 'viewer' && project.scope === 'full';
-      return `<article class="project-card" data-project-id="${escapeHtml(project.projectId)}">
-        <div class="card-top"><div class="project-icon icon-${escapeHtml(project.icon || 'spark')}" title="${escapeHtml(icon.label)}">${icon.glyph}</div><div class="card-top-actions">${canEdit ? `<button class="card-icon-edit" data-icon-id="${escapeHtml(project.projectId)}" title="Change icon" aria-label="Change icon">✎</button>` : ''}<button class="favorite-btn ${project.favorite ? 'on' : ''}" data-favorite-id="${escapeHtml(project.projectId)}" title="Favorite" aria-label="Favorite">★</button></div></div>
-        <h3>${escapeHtml(project.title)}</h3>
-        <p class="description">${escapeHtml(project.description || 'No description')}</p>
-        <div class="card-meta"><span class="status-pill ${escapeHtml(project.status)}">${escapeHtml(statusLabel(project.status))}</span><span>${formatDate(project.createdAt)}</span></div>
-        <div class="card-stats"><span>▤ ${numberValue(project.sourceCount)} sources</span><span>✦ ${numberValue(project.conversationCount)} chats</span><span>▧ ${numberValue(project.documentCount)} documents</span></div>
-        <div class="card-owner" title="Owner">♙ ${escapeHtml(shortEmail(project.owner))}</div>
-      </article>`;
-    }).join('');
+    grid.innerHTML = projects.map((project, index) => `<article class="project-card" style="--card-index:${index}" data-project-id="${escapeHtml(project.projectId)}" tabindex="0">
+      <div class="card-top"><div class="project-emoji" title="Project emoji">${escapeHtml(project.icon || '✨')}</div><button class="favorite-btn ${project.favorite ? 'on' : ''}" data-favorite-id="${escapeHtml(project.projectId)}" title="Favorite" aria-label="Favorite">★</button></div>
+      <h3>${escapeHtml(project.title)}</h3>
+      <p class="description">${escapeHtml(project.description || 'No description')}</p>
+      <div class="card-meta"><span class="status-pill ${escapeHtml(project.status)}">${escapeHtml(statusLabel(project.status))}</span><span>${formatDate(project.createdAt)}</span></div>
+      <div class="card-stats"><span><b>${numberValue(project.sourceCount)}</b> sources</span><span><b>${numberValue(project.conversationCount)}</b> chats</span><span><b>${numberValue(project.documentCount)}</b> documents</span></div>
+      <div class="card-owner" title="Owner">${escapeHtml(shortEmail(project.owner))}</div>
+    </article>`).join('');
     document.getElementById('empty-projects').classList.toggle('hidden', projects.length > 0);
-    grid.querySelectorAll('.project-card').forEach(card => card.addEventListener('click', () => openProject(card.dataset.projectId)));
-    grid.querySelectorAll('[data-icon-id]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openProjectIconPicker(button.dataset.iconId); }));
+    grid.querySelectorAll('.project-card').forEach(card => {
+      card.addEventListener('click', () => openProject(card.dataset.projectId));
+      card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProject(card.dataset.projectId); } });
+    });
     grid.querySelectorAll('[data-favorite-id]').forEach(button => button.addEventListener('click', async event => {
       event.stopPropagation(); setBusy(button, true);
       try {
@@ -169,144 +167,172 @@
   }
 
   async function refreshProjects() {
-    const button = document.getElementById('refresh-projects');
-    setBusy(button, true);
+    const button = document.getElementById('refresh-projects'); setBusy(button, true);
     try { state.projects = await server('refreshProjects'); renderProjects(); showToast('Projects refreshed.'); }
     catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
 
-  function openNewProjectModal() {
-    document.getElementById('new-project-icon').value = 'spark';
-    syncIconSelection('new-project-icon-options', 'spark');
-    openModal('project-modal');
-  }
+  function openNewProjectModal() { openModal('project-modal'); document.getElementById('new-project-title').focus(); }
 
   async function submitProject(event) {
     event.preventDefault(); setBusy(event.target, true);
     try {
       const project = await server('createProject', {
         title: document.getElementById('new-project-title').value,
-        description: document.getElementById('new-project-description').value,
-        icon: document.getElementById('new-project-icon').value
+        description: document.getElementById('new-project-description').value
       });
-      state.projects.unshift(project); closeModals(); event.target.reset(); renderProjects(); await openProject(project.projectId);
-      showToast('Project created.');
+      state.projects.unshift(project); closeModals(); event.target.reset(); renderProjects(); await openProject(project.projectId); showToast('Project created.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
 
   async function openProject(projectId) {
     document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('project-side-panel').classList.remove('mobile-open');
     document.getElementById('dashboard-view').classList.add('hidden');
-    document.getElementById('project-view').classList.remove('hidden');
-    setWorkspaceMode('project');
-    document.getElementById('project-title').textContent = 'Loading…';
+    const projectView = document.getElementById('project-view');
+    projectView.classList.remove('hidden'); projectView.classList.add('view-entering');
+    setWorkspaceMode('project'); document.getElementById('project-title').textContent = 'Loading…';
     try {
       const details = await server('getProjectDetails', projectId);
-      state.projectDetails = details;
-      state.currentProjectId = projectId;
-      state.currentConversationId = null;
-      state.currentConversation = null;
-      state.selectedSources = new Set((details.sources || []).filter(source => source.status === 'active').map(source => source.sourceId));
-      syncProjectSummary(details);
-      renderProjectDetails();
-      const firstTab = details.permissions.history ? 'chat' : details.permissions.sources ? 'sources' : 'documents';
-      showProjectTab(firstTab);
+      state.projectDetails = details; state.documentNodes = details.documentGraph || [];
+      state.currentProjectId = projectId; state.currentConversationId = null; state.currentConversation = null;
+      state.conversationSelections = new Map();
+      selectDefaultDocuments(); syncProjectSummary(details); renderProjectDetails();
+      showSideTab(details.permissions.history ? 'chats' : 'documents');
       if (details.permissions.history && details.conversations.length) await openConversation(details.conversations[0].conversationId);
-      else renderChatEmpty();
+      else renderChatEmpty(!details.permissions.history);
     } catch (error) { showToast(error.message, true); showDashboard(); }
+    finally { setTimeout(() => projectView.classList.remove('view-entering'), 360); }
   }
 
   function syncProjectSummary(details) {
     const local = state.projects.find(item => item.projectId === details.project.projectId);
     if (!local) return;
     Object.assign(local, details.project);
-    if (details.permissions.sources) local.sourceCount = (details.sources || []).filter(item => item.status !== 'removed').length;
+    if (details.permissions.sources) local.sourceCount = state.documentNodes.filter(item => item.kind === 'source').length;
     if (details.permissions.history) local.conversationCount = (details.conversations || []).filter(item => item.status !== 'archived').length;
-    if (details.permissions.documents && details.permissions.history) local.documentCount = (details.documents || []).length;
+    if (details.permissions.documents) local.documentCount = state.documentNodes.filter(item => item.kind !== 'source').length;
   }
 
   function renderProjectDetails() {
-    const details = state.projectDetails;
-    const project = details.project;
+    const {project, permissions} = state.projectDetails;
     document.getElementById('project-title').textContent = project.title;
-    document.getElementById('project-description').textContent = project.description || '';
-    setIconElement(document.getElementById('project-header-icon'), project.icon);
-    document.getElementById('project-header-icon').disabled = !details.permissions.edit || !details.permissions.project;
+    document.getElementById('project-description').textContent = project.description || 'Project workspace';
+    document.getElementById('project-header-icon').textContent = project.icon || '✨';
+    document.getElementById('project-header-icon').disabled = !permissions.edit || !permissions.project;
     const folder = document.getElementById('open-project-folder');
     folder.classList.toggle('hidden', !project.folderUrl); folder.href = project.folderUrl || '#';
-    document.getElementById('export-pdf-button').classList.toggle('hidden', !details.permissions.history || !details.permissions.edit);
-    document.querySelector('[data-project-tab="chat"]').classList.toggle('hidden', !details.permissions.history);
-    document.querySelector('[data-project-tab="sources"]').classList.toggle('hidden', !details.permissions.sources);
-    document.querySelector('[data-project-tab="documents"]').classList.toggle('hidden', !details.permissions.documents);
-    document.querySelector('[data-project-tab="sharing"]').classList.toggle('hidden', project.role !== 'owner');
-    document.getElementById('new-conversation').classList.toggle('hidden', !details.permissions.edit);
-    document.querySelector('.composer-wrap').classList.toggle('hidden', !details.permissions.edit);
-    document.getElementById('add-source-link').classList.toggle('hidden', !details.permissions.edit);
-    document.querySelector('.file-button').classList.toggle('hidden', !details.permissions.edit);
-    renderConversationList(); renderSources(); renderDocuments(); renderMembers();
+    document.getElementById('export-pdf-button').classList.toggle('hidden', !permissions.history || !permissions.edit);
+    document.getElementById('share-project-button').classList.toggle('hidden', project.role !== 'owner');
+    document.querySelector('[data-side-tab="chats"]').classList.toggle('hidden', !permissions.history);
+    document.querySelector('[data-side-tab="documents"]').classList.toggle('hidden', !permissions.sources && !permissions.documents);
+    document.getElementById('new-conversation').classList.toggle('hidden', !permissions.edit);
+    document.querySelector('.composer-wrap').classList.toggle('hidden', !permissions.edit || !permissions.history);
+    document.getElementById('add-source-link').classList.toggle('hidden', !permissions.edit || !permissions.sources);
+    document.querySelector('.file-button').classList.toggle('hidden', !permissions.edit || !permissions.sources);
+    renderConversationList(); renderDocumentGraph(); renderMembers();
   }
 
   function showDashboard() {
     if (state.activeRequest) stopResponse();
-    state.currentProjectId = null; state.projectDetails = null;
+    state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map();
     document.getElementById('project-view').classList.add('hidden');
-    document.getElementById('dashboard-view').classList.remove('hidden');
-    setWorkspaceMode('dashboard');
-    renderProjects();
+    const dashboard = document.getElementById('dashboard-view'); dashboard.classList.remove('hidden'); dashboard.classList.add('view-entering');
+    setWorkspaceMode('dashboard'); renderProjects(); setTimeout(() => dashboard.classList.remove('view-entering'), 360);
   }
 
   function setWorkspaceMode(mode) {
     const shell = document.getElementById('app-shell');
-    shell.classList.toggle('dashboard-mode', mode === 'dashboard');
-    shell.classList.toggle('project-mode', mode === 'project');
+    shell.classList.toggle('dashboard-mode', mode === 'dashboard'); shell.classList.toggle('project-mode', mode === 'project');
   }
 
-  function showProjectTab(name) {
-    document.querySelectorAll('.project-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.projectTab === name));
-    document.querySelectorAll('.project-tab-panel').forEach(panel => panel.classList.add('hidden'));
-    const panel = document.getElementById('project-tab-' + name);
-    if (panel) panel.classList.remove('hidden');
+  function showSideTab(name) {
+    document.querySelectorAll('[data-side-tab]').forEach(tab => {
+      const active = tab.dataset.sideTab === name; tab.classList.toggle('active', active); tab.setAttribute('aria-selected', String(active));
+    });
+    document.querySelectorAll('.side-panel-content').forEach(panel => { panel.classList.add('hidden'); panel.classList.remove('active'); });
+    const panel = document.getElementById('side-panel-' + name);
+    if (panel) { panel.classList.remove('hidden'); requestAnimationFrame(() => panel.classList.add('active')); }
   }
 
   function renderConversationList() {
     const list = document.getElementById('conversation-list');
-    const conversations = state.projectDetails.conversations || [];
-    list.innerHTML = conversations.map(item => `<button class="conversation-item ${item.conversationId === state.currentConversationId ? 'active' : ''}" data-conversation-id="${escapeHtml(item.conversationId)}"><strong>${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${numberValue(item.messageCount)} messages</small></button>`).join('');
+    const conversations = state.projectDetails ? state.projectDetails.conversations || [] : [];
+    list.innerHTML = conversations.map(item => `<article class="conversation-item ${item.conversationId === state.currentConversationId ? 'active' : ''}" data-conversation-row="${escapeHtml(item.conversationId)}">
+      <button class="conversation-open" data-conversation-id="${escapeHtml(item.conversationId)}">
+        <strong>${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${numberValue(item.messageCount)} messages</small>
+      </button>
+      ${state.projectDetails.permissions.edit ? `<button class="conversation-delete" data-delete-conversation="${escapeHtml(item.conversationId)}" aria-label="Delete ${escapeHtml(item.title)}" title="Delete chat">🗑</button>` : ''}
+    </article>`).join('');
+    document.getElementById('chat-count-label').textContent = `${conversations.length} ${conversations.length === 1 ? 'conversation' : 'conversations'}`;
+    document.getElementById('empty-conversations').classList.toggle('hidden', conversations.length > 0);
     list.querySelectorAll('[data-conversation-id]').forEach(button => button.addEventListener('click', () => openConversation(button.dataset.conversationId, button)));
+    list.querySelectorAll('[data-delete-conversation]').forEach(button => button.addEventListener('click', () => deleteChat(button.dataset.deleteConversation, button)));
   }
 
   async function newConversation(silent) {
-    const button = document.getElementById('new-conversation');
-    if (!silent) setBusy(button, true);
+    const button = document.getElementById('new-conversation'); if (!silent) setBusy(button, true);
     try {
       const conversation = await server('createConversation', state.currentProjectId, 'New chat');
       state.projectDetails.conversations.unshift({conversationId: conversation.conversationId, title: conversation.title, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, messageCount: 0});
-      state.currentConversationId = conversation.conversationId; state.currentConversation = conversation;
+      state.currentConversationId = conversation.conversationId; state.currentConversation = conversation; selectDefaultDocuments();
+      rememberCurrentSelection();
       updateProjectCount('conversationCount', state.projectDetails.conversations.length);
-      renderConversationList(); renderMessages(); document.getElementById('chat-input').focus();
+      renderConversationList(); renderDocumentGraph(); renderMessages(); document.getElementById('chat-input').focus();
       return conversation;
     } catch (error) { showToast(error.message, true); throw error; }
     finally { if (!silent) setBusy(button, false); }
   }
 
   async function openConversation(conversationId, button) {
-    if (state.busy) return;
-    if (button) setBusy(button, true);
+    if (state.busy) return; if (button) setBusy(button, true);
     try {
-      state.currentConversationId = conversationId;
-      renderConversationList();
+      state.currentConversationId = conversationId; renderConversationList();
       state.currentConversation = await server('loadConversation', state.currentProjectId, conversationId);
-      renderMessages();
+      if (state.conversationSelections.has(conversationId)) {
+        state.selectedSources = new Set(state.conversationSelections.get(conversationId));
+      } else if (Object.prototype.hasOwnProperty.call(state.currentConversation, 'sourceSelection')) {
+        state.selectedSources = new Set(normalizeSelectedDocumentIds(state.currentConversation.sourceSelection));
+      } else selectDefaultDocuments();
+      rememberCurrentSelection();
+      renderDocumentGraph(); renderMessages(); document.getElementById('project-side-panel').classList.remove('mobile-open');
     } catch (error) { showToast(error.message, true); }
     finally { if (button) setBusy(button, false); }
   }
 
-  function renderChatEmpty() {
-    state.currentConversation = null;
-    document.getElementById('chat-messages').innerHTML = '';
-    document.getElementById('chat-empty').classList.remove('hidden');
+  async function deleteChat(conversationId, button) {
+    const record = state.projectDetails.conversations.find(item => item.conversationId === conversationId);
+    const confirmed = await askConfirmation({
+      title: 'Delete this chat?',
+      message: `“${record ? record.title : 'This chat'}” will be moved to Drive trash. Its messages will no longer appear in the project.`,
+      action: 'Delete chat'
+    });
+    if (!confirmed) return;
+    setBusy(button, true);
+    try {
+      await server('deleteConversation', state.currentProjectId, conversationId);
+      state.projectDetails.conversations = state.projectDetails.conversations.filter(item => item.conversationId !== conversationId);
+      state.conversationSelections.delete(conversationId);
+      updateProjectCount('conversationCount', state.projectDetails.conversations.length);
+      if (state.currentConversationId === conversationId) {
+        state.currentConversationId = null; state.currentConversation = null;
+        const next = state.projectDetails.conversations[0];
+        if (next) await openConversation(next.conversationId); else renderChatEmpty(false);
+      }
+      renderConversationList(); showToast('Chat moved to Drive trash.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function renderChatEmpty(noAccess) {
+    state.currentConversation = null; document.getElementById('chat-messages').innerHTML = '';
+    const empty = document.getElementById('chat-empty'); empty.classList.remove('hidden');
+    const title = empty.querySelector('h2'); const text = empty.querySelector('p'); const suggestions = empty.querySelector('.prompt-suggestions');
+    title.textContent = noAccess ? 'Chat history is not shared with you' : 'How can I help with this project?';
+    text.textContent = noAccess ? 'You can still work with the documents available in the left panel.' : 'Ask a question, explore your documents, or develop a new idea.';
+    suggestions.classList.toggle('hidden', Boolean(noAccess));
   }
 
   function renderMessages(options = {}) {
@@ -314,28 +340,36 @@
     document.getElementById('chat-empty').classList.toggle('hidden', messages.length > 0 || options.thinking);
     const container = document.getElementById('chat-messages');
     container.innerHTML = messages.map(message => renderMessage(message)).join('') + (options.thinking ? renderThinkingMessage(options.stopping) : '');
+    container.querySelectorAll('[data-copy-message]').forEach(button => button.addEventListener('click', () => copyMessage(button.dataset.copyMessage, button)));
     scrollChatToBottom();
   }
 
   function renderMessage(message) {
     const assistant = message.role === 'assistant';
     const sources = (message.sourcesUsed || []).map(source => `[${escapeHtml(source.label)}] ${escapeHtml(source.name)}`).join(' · ');
-    return `<article class="message ${assistant ? 'assistant' : 'user'}" data-message-id="${escapeHtml(message.messageId)}">
-      <div class="message-header"><span class="message-avatar">${assistant ? '✦' : escapeHtml(initials(state.bootstrap.identity.email))}</span><span>${assistant ? 'Agent' : 'You'}</span></div>
+    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div></article>`;
+    return `<article class="message assistant" data-message-id="${escapeHtml(message.messageId)}">
+      <div class="message-header"><span class="message-avatar">✦</span><span>Gemini</span></div>
       <div id="message-body-${escapeHtml(message.messageId)}" class="message-body ${message.isTyping ? 'typing-cursor' : ''}">${formatMarkdown(message.text)}</div>
-      ${sources ? `<div class="message-sources">Sources: ${sources}</div>` : ''}
+      ${sources ? `<div class="message-sources">${sources}</div>` : ''}
+      ${!message.isTyping ? `<div class="message-actions"><button data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response">▣</button></div>` : ''}
     </article>`;
   }
 
   function renderThinkingMessage(stopping) {
-    return `<article id="agent-thinking" class="message assistant"><div class="message-header"><span class="message-avatar">✦</span><span>Agent</span></div><div class="thinking-body"><span>${stopping ? 'Stopping response…' : 'Gemini received your message and is thinking'}</span><span class="thinking-dots"><i></i><i></i><i></i><i></i></span></div></article>`;
+    return `<article id="agent-thinking" class="message assistant thinking-message"><div class="message-header"><span class="message-avatar">✦</span><span>Gemini</span></div><div class="thinking-body"><span>${stopping ? 'Stopping response…' : 'Working with your project context'}</span><span class="thinking-dots"><i></i><i></i><i></i><i></i></span></div></article>`;
+  }
+
+  async function copyMessage(messageId, button) {
+    const message = state.currentConversation && state.currentConversation.messages.find(item => item.messageId === messageId);
+    if (!message) return;
+    try { await navigator.clipboard.writeText(message.text); button.textContent = '✓'; setTimeout(() => button.textContent = '▣', 1200); }
+    catch (_) { showToast('Could not copy the response.', true); }
   }
 
   async function sendMessage() {
     if (state.busy) return;
-    const input = document.getElementById('chat-input');
-    const text = input.value.trim();
-    if (!text) return;
+    const input = document.getElementById('chat-input'); const text = input.value.trim(); if (!text) return;
     state.busy = true;
     try {
       if (!state.currentConversationId) await newConversation(true);
@@ -343,70 +377,49 @@
       const request = {id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`, cancelled: false, phase: 'waiting', displayedText: ''};
       state.activeRequest = request;
       const temporary = {messageId: `temp-${Date.now()}`, role: 'user', text, createdAt: new Date().toISOString()};
-      state.currentConversation.messages.push(temporary);
-      setAgentBusy(true); renderMessages({thinking: true});
-
-      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId, text, Array.from(state.selectedSources), request.id);
-      if (request.cancelled) {
-        await syncCurrentConversation();
-        showToast('Response stopped.');
-        return;
-      }
+      state.currentConversation.messages.push(temporary); setAgentBusy(true); renderMessages({thinking: true});
+      const selection = Array.from(state.selectedSources);
+      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId, text, selection, request.id);
+      if (request.cancelled) { await syncCurrentConversation(); showToast('Response stopped.'); return; }
       state.currentConversationId = result.conversationId;
       state.currentConversation.messages = state.currentConversation.messages.filter(item => item.messageId !== temporary.messageId);
       state.currentConversation.messages.push(result.userMessage);
       const assistantMessage = Object.assign({}, result.assistantMessage, {text: '', isTyping: true});
-      state.currentConversation.messages.push(assistantMessage);
-      state.currentConversation.title = result.title;
+      state.currentConversation.messages.push(assistantMessage); state.currentConversation.title = result.title; state.currentConversation.sourceSelection = selection;
+      state.conversationSelections.set(result.conversationId, selection);
       const record = state.projectDetails.conversations.find(item => item.conversationId === result.conversationId);
       if (record) { record.title = result.title; record.updatedAt = result.assistantMessage.createdAt; record.messageCount = result.messageCount; }
       else state.projectDetails.conversations.unshift({conversationId: result.conversationId, title: result.title, updatedAt: result.assistantMessage.createdAt, messageCount: result.messageCount});
-      renderConversationList(); renderMessages();
-      request.phase = 'typing';
+      renderConversationList(); renderMessages(); request.phase = 'typing';
       const completed = await typeAssistantResponse(assistantMessage, result.assistantMessage.text, request);
       assistantMessage.isTyping = false;
       if (!completed) {
-        const stoppedText = request.displayedText.trim() || '[Response stopped]';
-        assistantMessage.text = stoppedText;
+        const stoppedText = request.displayedText.trim() || '[Response stopped]'; assistantMessage.text = stoppedText;
         try { await server('truncateAssistantMessage', state.currentProjectId, state.currentConversationId, assistantMessage.messageId, stoppedText); } catch (_) {}
         showToast('Response stopped.');
       }
       renderConversationList(); renderMessages();
     } catch (error) {
-      if (state.activeRequest && state.activeRequest.cancelled) {
-        await syncCurrentConversation();
-        showToast('Response stopped.');
-      } else {
-        await syncCurrentConversation();
-        showToast(error.message, true);
-      }
-    } finally {
-      state.busy = false; state.activeRequest = null; setAgentBusy(false); input.focus();
-    }
+      await syncCurrentConversation();
+      showToast(state.activeRequest && state.activeRequest.cancelled ? 'Response stopped.' : error.message, !(state.activeRequest && state.activeRequest.cancelled));
+    } finally { state.busy = false; state.activeRequest = null; setAgentBusy(false); input.focus(); }
   }
 
   function stopResponse() {
-    const request = state.activeRequest;
-    if (!request || request.cancelled) return;
-    request.cancelled = true;
-    renderMessages({thinking: request.phase === 'waiting', stopping: request.phase === 'waiting'});
+    const request = state.activeRequest; if (!request || request.cancelled) return;
+    request.cancelled = true; renderMessages({thinking: request.phase === 'waiting', stopping: request.phase === 'waiting'});
     if (request.phase === 'waiting') server('cancelChatRequest', request.id).catch(() => {});
   }
 
   async function typeAssistantResponse(message, fullText, request) {
-    const chunks = Math.min(190, Math.max(35, Math.ceil(fullText.length / 18)));
-    const step = Math.max(1, Math.ceil(fullText.length / chunks));
+    const chunks = Math.min(200, Math.max(35, Math.ceil(fullText.length / 18))); const step = Math.max(1, Math.ceil(fullText.length / chunks));
     for (let end = step; end < fullText.length + step; end += step) {
       if (request.cancelled) return false;
-      request.displayedText = fullText.slice(0, Math.min(end, fullText.length));
-      message.text = request.displayedText;
-      const body = document.getElementById('message-body-' + message.messageId);
-      if (body) body.innerHTML = formatMarkdown(message.text);
-      scrollChatToBottom();
-      await delay(12);
+      request.displayedText = fullText.slice(0, Math.min(end, fullText.length)); message.text = request.displayedText;
+      const body = document.getElementById('message-body-' + message.messageId); if (body) body.innerHTML = formatMarkdown(message.text);
+      scrollChatToBottom(); await delay(12);
     }
-    message.text = fullText;
-    return true;
+    message.text = fullText; return true;
   }
 
   async function syncCurrentConversation() {
@@ -430,41 +443,148 @@
     const button = document.getElementById('export-pdf-button'); setBusy(button, true);
     try {
       const pdf = await server('exportConversationToPdf', state.currentProjectId, state.currentConversationId);
-      if (state.projectDetails.permissions.documents) { state.projectDetails.documents.unshift(pdf); renderDocuments(); updateProjectCount('documentCount', state.projectDetails.documents.length); }
-      window.open(pdf.url, '_blank'); showToast('PDF created in Drive.');
+      await refreshDocumentGraph(); window.open(pdf.url, '_blank'); showToast('PDF created in Drive.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
 
-  function renderSources() {
-    const sources = state.projectDetails.sources || [];
-    document.getElementById('chat-source-list').innerHTML = sources.map(source => `<label class="source-check"><input type="checkbox" data-chat-source="${escapeHtml(source.sourceId)}" ${state.selectedSources.has(source.sourceId) ? 'checked' : ''}><span>${escapeHtml(source.name)}</span></label>`).join('') || '<p class="muted">No sources yet.</p>';
-    document.querySelectorAll('[data-chat-source]').forEach(input => input.addEventListener('change', () => { input.checked ? state.selectedSources.add(input.dataset.chatSource) : state.selectedSources.delete(input.dataset.chatSource); renderSourceChips(); }));
+  function selectDefaultDocuments() {
+    state.selectedSources = new Set(state.documentNodes.filter(node => node.selectedByDefault).map(node => node.nodeId));
+  }
+
+  function normalizeSelectedDocumentIds(ids) {
+    const byNodeId = new Set(state.documentNodes.map(node => node.nodeId));
+    const bySourceId = new Map(state.documentNodes.filter(node => node.sourceId).map(node => [node.sourceId, node.nodeId]));
+    return (ids || []).map(id => byNodeId.has(id) ? id : bySourceId.get(id)).filter(Boolean);
+  }
+
+  function renderDocumentGraph() {
+    if (!state.projectDetails) return;
+    const container = document.getElementById('document-levels'); const nodes = state.documentNodes || [];
+    const levels = [...new Set(nodes.map(node => Number(node.level || 0)))].sort((a,b) => a-b);
+    container.innerHTML = levels.map(level => {
+      const items = nodes.filter(node => Number(node.level || 0) === level);
+      const selected = items.filter(node => state.selectedSources.has(node.nodeId)).length;
+      const allChecked = items.length > 0 && selected === items.length;
+      const partial = selected > 0 && selected < items.length;
+      return `<section class="document-level" data-level="${level}">
+        <div class="level-heading"><label class="level-select"><input type="checkbox" data-level-select="${level}" ${allChecked ? 'checked' : ''} ${partial ? 'data-partial="true"' : ''}><span>${level === 0 ? 'Source documents' : `Generated · Level ${level}`}</span></label><small>${items.length}</small></div>
+        <div class="level-track">${items.map(renderDocumentCard).join('')}</div>
+      </section>`;
+    }).join('');
+    document.getElementById('document-count-label').textContent = `${nodes.length} ${nodes.length === 1 ? 'item' : 'items'}`;
+    document.getElementById('empty-documents').classList.toggle('hidden', nodes.length > 0);
+    container.querySelectorAll('[data-level-select]').forEach(input => {
+      if (input.dataset.partial === 'true') input.indeterminate = true;
+      input.addEventListener('change', () => toggleDocumentLevel(Number(input.dataset.levelSelect), input.checked));
+    });
+    container.querySelectorAll('[data-document-select]').forEach(input => input.addEventListener('change', () => toggleDocumentSelection(input.dataset.documentSelect, input.checked)));
+    container.querySelectorAll('[data-document-menu]').forEach(button => button.addEventListener('click', event => toggleDocumentMenu(event, button)));
+    container.querySelectorAll('[data-delete-document]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); deleteDocumentNode(button.dataset.deleteDocument, button); }));
+    container.querySelectorAll('.document-card').forEach(card => {
+      card.addEventListener('mouseenter', () => highlightDocumentRelations(card.dataset.nodeId));
+      card.addEventListener('mouseleave', () => state.highlightedDocumentId ? highlightDocumentRelations(state.highlightedDocumentId) : clearDocumentHighlights());
+      card.addEventListener('focusin', () => highlightDocumentRelations(card.dataset.nodeId));
+      card.addEventListener('focusout', () => state.highlightedDocumentId ? highlightDocumentRelations(state.highlightedDocumentId) : clearDocumentHighlights());
+      card.addEventListener('click', event => {
+        if (event.target.closest('button,a,input,label')) return;
+        state.highlightedDocumentId = state.highlightedDocumentId === card.dataset.nodeId ? null : card.dataset.nodeId;
+        state.highlightedDocumentId ? highlightDocumentRelations(state.highlightedDocumentId) : clearDocumentHighlights();
+      });
+    });
     renderSourceChips();
-    const list = document.getElementById('sources-table');
-    list.innerHTML = `<div class="data-row header"><span>Name</span><span>Type</span><span>Status</span><span></span></div>` + sources.map(source => `<div class="data-row"><span class="file-name">${escapeHtml(source.name)}</span><span>${escapeHtml(friendlyMime(source.mimeType))}</span><span class="status-pill ${source.status}">${escapeHtml(source.status)}</span><span class="row-actions">${state.projectDetails.permissions.edit ? `<button class="text-btn" data-toggle-source="${escapeHtml(source.sourceId)}">${source.status === 'active' ? 'Deactivate' : 'Activate'}</button><button class="danger-btn" data-remove-source="${escapeHtml(source.sourceId)}">Remove</button>` : ''}</span></div>`).join('');
-    list.querySelectorAll('[data-toggle-source]').forEach(button => button.addEventListener('click', () => toggleSource(button.dataset.toggleSource, button)));
-    list.querySelectorAll('[data-remove-source]').forEach(button => button.addEventListener('click', () => removeSourceItem(button.dataset.removeSource, button)));
+  }
+
+  function renderDocumentCard(node) {
+    const relation = documentRelationCounts(node.nodeId);
+    const canDelete = state.projectDetails.permissions.edit && (node.kind === 'source' ? state.projectDetails.permissions.sources : state.projectDetails.permissions.documents);
+    return `<article class="document-card" data-node-id="${escapeHtml(node.nodeId)}" tabindex="0">
+      <div class="document-card-top">
+        <label class="document-checkbox" title="Use in chat"><input type="checkbox" data-document-select="${escapeHtml(node.nodeId)}" ${state.selectedSources.has(node.nodeId) ? 'checked' : ''}><span></span></label>
+        <span class="file-type-icon ${fileTypeClass(node.mimeType)}">${fileTypeIcon(node.mimeType)}</span>
+        <div class="document-menu-wrap">
+          <button class="document-menu-button" data-document-menu="${escapeHtml(node.nodeId)}" aria-label="Document actions" title="Document actions">⋮</button>
+          <div class="document-menu hidden" role="menu">
+            ${node.url ? `<a href="${escapeHtml(node.url)}" target="_blank" role="menuitem">Open in Drive <span>↗</span></a>` : ''}
+            ${canDelete ? `<button data-delete-document="${escapeHtml(node.nodeId)}" class="danger-menu-item" role="menuitem">Move to trash <span>🗑</span></button>` : ''}
+            <div class="menu-separator"></div><p>Generate from document</p>
+            <button disabled>Summary <span>Soon</span></button><button disabled>Report <span>Soon</span></button>
+          </div>
+        </div>
+      </div>
+      <strong title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</strong>
+      <div class="document-meta"><span>${escapeHtml(friendlyMime(node.mimeType))}</span><span>${formatFileSize(node.size)}</span><span>${formatDate(node.createdAt)}</span></div>
+      <div class="document-relations"><span>${relation.parents ? `↑ ${relation.parents} parent${relation.parents === 1 ? '' : 's'}` : 'Original'}</span>${relation.children ? `<span>↓ ${relation.children} child${relation.children === 1 ? '' : 'ren'}</span>` : ''}</div>
+    </article>`;
+  }
+
+  function toggleDocumentSelection(nodeId, checked) {
+    checked ? state.selectedSources.add(nodeId) : state.selectedSources.delete(nodeId); rememberCurrentSelection(); updateDocumentSelectionUi();
+  }
+
+  function toggleDocumentLevel(level, checked) {
+    state.documentNodes.filter(node => Number(node.level || 0) === level).forEach(node => checked ? state.selectedSources.add(node.nodeId) : state.selectedSources.delete(node.nodeId));
+    rememberCurrentSelection(); updateDocumentSelectionUi();
+  }
+
+  function rememberCurrentSelection() {
+    if (state.currentConversationId) state.conversationSelections.set(state.currentConversationId, Array.from(state.selectedSources));
+  }
+
+  function updateDocumentSelectionUi() {
+    document.querySelectorAll('[data-document-select]').forEach(input => { input.checked = state.selectedSources.has(input.dataset.documentSelect); });
+    document.querySelectorAll('[data-level-select]').forEach(input => {
+      const items = state.documentNodes.filter(node => Number(node.level || 0) === Number(input.dataset.levelSelect));
+      const selected = items.filter(node => state.selectedSources.has(node.nodeId)).length;
+      input.checked = items.length > 0 && selected === items.length; input.indeterminate = selected > 0 && selected < items.length;
+    });
+    renderSourceChips();
   }
 
   function renderSourceChips() {
-    const selected = (state.projectDetails.sources || []).filter(source => state.selectedSources.has(source.sourceId));
-    document.getElementById('active-source-chips').innerHTML = selected.slice(0, 6).map(source => `<span class="source-chip">${escapeHtml(source.name)}</span>`).join('') + (selected.length > 6 ? `<span class="source-chip">+${selected.length - 6}</span>` : '');
+    const selected = state.documentNodes.filter(node => state.selectedSources.has(node.nodeId));
+    document.getElementById('active-source-chips').innerHTML = selected.slice(0, 4).map(node => `<button class="source-chip" title="Open Documents panel">${fileTypeIcon(node.mimeType)} ${escapeHtml(node.name)}</button>`).join('') + (selected.length > 4 ? `<button class="source-chip">+${selected.length - 4}</button>` : '');
+    document.querySelectorAll('#active-source-chips .source-chip').forEach(chip => chip.addEventListener('click', () => showSideTab('documents')));
   }
 
-  function toggleAllSources() {
-    const active = (state.projectDetails.sources || []).filter(source => source.status === 'active');
-    if (state.selectedSources.size === active.length) state.selectedSources.clear(); else active.forEach(source => state.selectedSources.add(source.sourceId));
-    renderSources();
+  function documentRelationCounts(nodeId) {
+    const node = state.documentNodes.find(item => item.nodeId === nodeId);
+    return {parents: node ? (node.parentIds || []).length : 0, children: state.documentNodes.filter(item => (item.parentIds || []).includes(nodeId)).length};
   }
+
+  function relatedDocumentIds(nodeId) {
+    const related = new Set([nodeId]);
+    const visitParents = id => {
+      const node = state.documentNodes.find(item => item.nodeId === id);
+      (node && node.parentIds || []).forEach(parent => { if (!related.has(parent)) { related.add(parent); visitParents(parent); } });
+    };
+    const visitChildren = id => state.documentNodes.filter(item => (item.parentIds || []).includes(id)).forEach(child => { if (!related.has(child.nodeId)) { related.add(child.nodeId); visitChildren(child.nodeId); } });
+    visitParents(nodeId); visitChildren(nodeId); return related;
+  }
+
+  function highlightDocumentRelations(nodeId) {
+    const related = relatedDocumentIds(nodeId);
+    document.querySelectorAll('.document-card').forEach(card => {
+      card.classList.toggle('relation-focus', card.dataset.nodeId === nodeId);
+      card.classList.toggle('relation-highlight', related.has(card.dataset.nodeId) && card.dataset.nodeId !== nodeId);
+      card.classList.toggle('relation-dim', !related.has(card.dataset.nodeId));
+    });
+  }
+
+  function clearDocumentHighlights() { document.querySelectorAll('.document-card').forEach(card => card.classList.remove('relation-focus','relation-highlight','relation-dim')); }
+
+  function toggleDocumentMenu(event, button) {
+    event.stopPropagation(); const menu = button.nextElementSibling; const open = menu.classList.contains('hidden'); closeDocumentMenus(); if (open) menu.classList.remove('hidden');
+  }
+
+  function closeDocumentMenus() { document.querySelectorAll('.document-menu').forEach(menu => menu.classList.add('hidden')); }
 
   async function submitSourceLink(event) {
     event.preventDefault(); setBusy(event.target, true);
     try {
       const result = await server('addSourceFromDrive', state.currentProjectId, document.getElementById('source-drive-url').value);
-      state.projectDetails.sources.push(...result.added); result.added.forEach(source => state.selectedSources.add(source.sourceId));
-      updateProjectCount('sourceCount', state.projectDetails.sources.filter(item => item.status !== 'removed').length);
-      closeModals(); event.target.reset(); renderSources(); showToast(`${result.added.length} source(s) imported.`);
+      state.projectDetails.sources.push(...result.added); closeModals(); event.target.reset(); await refreshDocumentGraph();
+      showSideTab('documents'); showToast(`${result.added.length} document(s) imported.`);
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
@@ -476,59 +596,64 @@
     try {
       const base64 = await fileAsBase64(file);
       const source = await server('uploadSource', state.currentProjectId, {name: file.name, mimeType: file.type || 'application/octet-stream', base64});
-      state.projectDetails.sources.push(source); state.selectedSources.add(source.sourceId);
-      updateProjectCount('sourceCount', state.projectDetails.sources.filter(item => item.status !== 'removed').length);
-      renderSources(); showToast('Source uploaded.');
+      state.projectDetails.sources.push(source); await refreshDocumentGraph(); showSideTab('documents'); showToast('Document uploaded.');
     } catch (error) { showToast(error.message, true); }
     finally { event.target.value = ''; setBusy(label, false); }
   }
 
-  async function toggleSource(sourceId, button) {
-    const source = state.projectDetails.sources.find(item => item.sourceId === sourceId); setBusy(button, true);
-    try { const updated = await server('setSourceActive', state.currentProjectId, sourceId, source.status !== 'active'); Object.assign(source, updated); if (updated.status === 'active') state.selectedSources.add(sourceId); else state.selectedSources.delete(sourceId); renderSources(); }
-    catch (error) { showToast(error.message, true); }
-    finally { setBusy(button, false); }
-  }
-
-  async function removeSourceItem(sourceId, button) {
-    if (!confirm('This source will be moved to the Drive trash. Continue?')) return;
+  async function deleteDocumentNode(nodeId, button) {
+    const node = state.documentNodes.find(item => item.nodeId === nodeId); if (!node) return;
+    closeDocumentMenus();
+    const confirmed = await askConfirmation({title: 'Move this document to trash?', message: `“${node.name}” will be removed from this project and moved to Drive trash. Generated children will remain in the project.`, action: 'Move to trash'});
+    if (!confirmed) return;
     setBusy(button, true);
     try {
-      await server('removeSource', state.currentProjectId, sourceId);
-      state.projectDetails.sources = state.projectDetails.sources.filter(item => item.sourceId !== sourceId); state.selectedSources.delete(sourceId);
-      updateProjectCount('sourceCount', state.projectDetails.sources.length);
-      renderSources(); showToast('Source removed. It can still be restored from Drive trash.');
+      if (node.kind === 'source') await server('removeSource', state.currentProjectId, node.sourceId);
+      else await server('removeGeneratedDocument', state.currentProjectId, node.nodeId);
+      state.selectedSources.delete(node.nodeId); await refreshDocumentGraph(); showToast('Document moved to Drive trash.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
 
-  function renderDocuments() {
-    const docs = state.projectDetails.documents || [];
-    document.getElementById('documents-table').innerHTML = `<div class="data-row header"><span>Name</span><span>Type</span><span>Updated</span><span></span></div>` + docs.map(doc => `<div class="data-row"><span class="file-name">${escapeHtml(doc.name)}</span><span>${escapeHtml(friendlyMime(doc.mimeType))}</span><span>${formatDate(doc.updatedAt)}</span><span class="row-actions"><a class="text-btn" href="${escapeHtml(doc.url)}" target="_blank">Open</a></span></div>`).join('');
+  async function refreshDocumentGraph() {
+    const previousIds = new Set(state.documentNodes.map(node => node.nodeId));
+    const previousSelection = new Set(state.selectedSources);
+    state.documentNodes = await server('listProjectDocuments', state.currentProjectId);
+    state.selectedSources = new Set(state.documentNodes.filter(node => previousSelection.has(node.nodeId) || !previousIds.has(node.nodeId) && node.selectedByDefault).map(node => node.nodeId));
+    rememberCurrentSelection();
+    state.projectDetails.documentGraph = state.documentNodes;
+    state.projectDetails.sources = state.projectDetails.sources.filter(source => state.documentNodes.some(node => node.sourceId === source.sourceId));
+    state.projectDetails.documents = state.documentNodes.filter(node => node.kind !== 'source');
+    updateProjectCount('sourceCount', state.documentNodes.filter(node => node.kind === 'source').length);
+    updateProjectCount('documentCount', state.documentNodes.filter(node => node.kind !== 'source').length);
+    renderDocumentGraph();
   }
 
   function renderMembers() {
+    if (!state.projectDetails) return;
     const members = state.projectDetails.members || [];
-    document.getElementById('members-table').innerHTML = `<div class="data-row header"><span>User</span><span>Role</span><span>Content</span><span></span></div>` + members.map(member => `<div class="data-row"><span class="file-name">${escapeHtml(member.email)}</span><span>${escapeHtml(member.role)}</span><span>${escapeHtml(scopeLabel(member.scope))}</span><span class="row-actions">${member.role !== 'owner' ? `<button class="danger-btn" data-remove-member="${escapeHtml(member.email)}">Remove</button>` : ''}</span></div>`).join('');
+    document.getElementById('members-table').innerHTML = members.map(member => `<div class="member-row"><div class="member-avatar">${escapeHtml(initials(member.email))}</div><div class="member-info"><strong>${escapeHtml(member.email)}</strong><span>${escapeHtml(scopeLabel(member.scope))}</span></div><span class="role-pill">${escapeHtml(member.role)}</span>${member.role !== 'owner' ? `<button class="icon-btn member-remove" data-remove-member="${escapeHtml(member.email)}" title="Remove access" aria-label="Remove access">×</button>` : '<span></span>'}</div>`).join('');
     document.querySelectorAll('[data-remove-member]').forEach(button => button.addEventListener('click', () => removeMember(button.dataset.removeMember, button)));
   }
 
+  function openShareModal() { renderMembers(); openModal('share-modal'); }
+
   async function submitMember(event) {
-    event.preventDefault(); setBusy(event.target, true);
-    const permissions = {};
+    event.preventDefault(); setBusy(event.target, true); const permissions = {};
     document.querySelectorAll('#custom-permissions input').forEach(input => permissions[input.value] = input.checked);
     try {
       state.projectDetails.members = await server('shareProject', {projectId: state.currentProjectId, email: document.getElementById('member-email').value, role: document.getElementById('member-role').value, scope: document.getElementById('member-scope').value, permissions});
-      closeModals(); event.target.reset(); document.getElementById('custom-permissions').classList.add('hidden'); renderMembers(); showToast('Access updated.');
+      event.target.reset(); document.getElementById('custom-permissions').classList.add('hidden'); renderMembers(); openModal('share-modal'); showToast('Access updated.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
 
   async function removeMember(email, button) {
-    if (!confirm(`Remove access for ${email}?`)) return;
+    const confirmed = await askConfirmation({title: 'Remove access?', message: `${email} will no longer be able to open the shared project content.`, action: 'Remove access'});
+    if (!confirmed) { openShareModal(); return; }
     setBusy(button, true);
-    try { state.projectDetails.members = await server('removeProjectMember', state.currentProjectId, email); renderMembers(); showToast('Access removed.'); }
-    catch (error) { showToast(error.message, true); }
+    try { state.projectDetails.members = await server('removeProjectMember', state.currentProjectId, email); renderMembers(); openShareModal(); showToast('Access removed.'); }
+    catch (error) { openShareModal(); showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
 
@@ -536,13 +661,11 @@
     const settings = state.bootstrap.userSettings;
     document.getElementById('gemini-api-key').value = '';
     document.getElementById('gemini-api-key').placeholder = settings.configured ? `Configured · ••••${settings.keySuffix}` : 'AIza…';
-    document.getElementById('gemini-model').value = settings.model;
-    openModal('settings-modal');
+    document.getElementById('gemini-model').value = settings.model; openModal('settings-modal');
   }
 
   async function saveGeminiSettings(event) {
-    event.preventDefault(); setBusy(event.target, true);
-    const key = document.getElementById('gemini-api-key').value.trim();
+    event.preventDefault(); setBusy(event.target, true); const key = document.getElementById('gemini-api-key').value.trim();
     if (!key && state.bootstrap.userSettings.configured) { setBusy(event.target, false); return showToast('Enter the key again to validate it.', true); }
     try {
       const settings = await server('saveUserGeminiSettings', {apiKey: key, model: document.getElementById('gemini-model').value});
@@ -561,59 +684,81 @@
     finally { setBusy(button, false); }
   }
 
-  function renderIconOptions() {
-    const markup = selected => Object.entries(PROJECT_ICONS).map(([key, icon]) => `<button type="button" class="icon-choice icon-${key} ${key === selected ? 'selected' : ''}" data-icon-key="${key}" title="${escapeHtml(icon.label)}" aria-label="${escapeHtml(icon.label)}">${icon.glyph}</button>`).join('');
-    document.getElementById('new-project-icon-options').innerHTML = markup('spark');
-    document.getElementById('project-icon-options').innerHTML = markup('spark');
-    document.getElementById('new-project-icon-options').addEventListener('click', event => {
-      const button = event.target.closest('[data-icon-key]'); if (!button) return;
-      document.getElementById('new-project-icon').value = button.dataset.iconKey; syncIconSelection('new-project-icon-options', button.dataset.iconKey);
-    });
-    document.getElementById('project-icon-options').addEventListener('click', event => {
-      const button = event.target.closest('[data-icon-key]'); if (button) setProjectIcon(button.dataset.iconKey, button);
-    });
+  function renderEmojiOptions() {
+    const container = document.getElementById('project-emoji-options');
+    container.innerHTML = PROJECT_EMOJIS.map(emoji => `<button type="button" class="emoji-choice" data-emoji="${emoji}" role="option" aria-label="${emoji}">${emoji}</button>`).join('');
+    container.addEventListener('click', event => { const button = event.target.closest('[data-emoji]'); if (button) setProjectEmoji(button.dataset.emoji, button); });
   }
 
-  function openProjectIconPicker(projectId) {
-    if (!projectId) return;
-    const project = state.projects.find(item => item.projectId === projectId) || (state.projectDetails && state.projectDetails.project);
-    if (!project || project.role === 'viewer' || project.scope !== 'full') return;
-    state.iconTargetProjectId = projectId;
-    syncIconSelection('project-icon-options', project.icon || 'spark');
-    openModal('icon-modal');
+  function openProjectEmojiPicker() {
+    if (!state.projectDetails || !state.projectDetails.permissions.edit || !state.projectDetails.permissions.project) return;
+    const current = state.projectDetails.project.icon || '✨';
+    document.querySelectorAll('[data-emoji]').forEach(button => { const selected = button.dataset.emoji === current; button.classList.toggle('selected', selected); button.setAttribute('aria-selected', String(selected)); });
+    openModal('emoji-modal');
   }
 
-  async function setProjectIcon(icon, button) {
-    const projectId = state.iconTargetProjectId; if (!projectId) return;
+  async function setProjectEmoji(emoji, button) {
     setBusy(button, true);
     try {
-      const updated = await server('updateProject', projectId, {icon});
-      const local = state.projects.find(item => item.projectId === projectId); if (local) Object.assign(local, updated);
-      if (state.projectDetails && state.projectDetails.project.projectId === projectId) { Object.assign(state.projectDetails.project, updated); setIconElement(document.getElementById('project-header-icon'), icon); }
-      closeModals(); renderProjects(); showToast('Project icon updated.');
+      const updated = await server('updateProject', state.currentProjectId, {icon: emoji});
+      const local = state.projects.find(item => item.projectId === state.currentProjectId); if (local) Object.assign(local, updated);
+      Object.assign(state.projectDetails.project, updated); document.getElementById('project-header-icon').textContent = emoji;
+      closeModals(); renderProjects(); showToast('Project emoji updated.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
 
-  function syncIconSelection(containerId, selected) {
-    document.querySelectorAll(`#${containerId} [data-icon-key]`).forEach(button => button.classList.toggle('selected', button.dataset.iconKey === selected));
+  function startPanelResize(event) {
+    if (window.innerWidth <= 760) return;
+    event.preventDefault(); const workspace = document.getElementById('project-workspace'); const startX = event.clientX;
+    const startWidth = document.getElementById('project-side-panel').getBoundingClientRect().width;
+    document.body.classList.add('is-resizing'); event.currentTarget.setPointerCapture(event.pointerId);
+    const move = moveEvent => setPanelWidth(startWidth + moveEvent.clientX - startX);
+    const stop = () => { document.body.classList.remove('is-resizing'); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); try { localStorage.setItem('gpa.projectPanelWidth', workspace.style.getPropertyValue('--project-panel-width')); } catch (_) {} };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop);
   }
 
-  function setIconElement(element, key) {
-    const icon = iconInfo(key); const iconKey = PROJECT_ICONS[key] ? key : 'spark';
-    element.textContent = icon.glyph;
-    element.className = `project-icon project-icon-button icon-${iconKey}`;
-    element.title = 'Change project icon';
+  function resizePanelWithKeyboard(event) {
+    if (!['ArrowLeft','ArrowRight'].includes(event.key)) return; event.preventDefault();
+    const width = document.getElementById('project-side-panel').getBoundingClientRect().width + (event.key === 'ArrowRight' ? 20 : -20); setPanelWidth(width);
+  }
+
+  function setPanelWidth(width) {
+    const max = Math.min(720, window.innerWidth * .58); const value = Math.max(270, Math.min(max, width));
+    document.getElementById('project-workspace').style.setProperty('--project-panel-width', `${Math.round(value)}px`);
+  }
+
+  function restorePanelWidth() { try { const value = parseInt(localStorage.getItem('gpa.projectPanelWidth'), 10); if (Number.isFinite(value)) setPanelWidth(value); } catch (_) {} }
+
+  function askConfirmation({title, message, action}) {
+    if (state.confirmResolver) state.confirmResolver(false);
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    document.getElementById('confirm-action').textContent = action || 'Continue';
+    openModal('confirm-modal');
+    return new Promise(resolve => { state.confirmResolver = resolve; });
+  }
+
+  function resolveConfirmation(value) {
+    const resolver = state.confirmResolver; state.confirmResolver = null;
+    document.getElementById('modal-backdrop').classList.add('hidden'); document.getElementById('confirm-modal').classList.add('hidden');
+    if (resolver) resolver(value);
   }
 
   function openModal(id) {
     document.querySelectorAll('.modal').forEach(modal => modal.classList.add('hidden'));
-    document.getElementById(id).classList.remove('hidden');
-    document.getElementById('modal-backdrop').classList.remove('hidden');
+    const modal = document.getElementById(id); modal.classList.remove('hidden'); document.getElementById('modal-backdrop').classList.remove('hidden');
+    requestAnimationFrame(() => modal.classList.add('modal-visible'));
   }
-  function closeModals() { document.getElementById('modal-backdrop').classList.add('hidden'); document.querySelectorAll('.modal').forEach(modal => modal.classList.add('hidden')); }
+
+  function closeModals() {
+    if (state.confirmResolver) { const resolver = state.confirmResolver; state.confirmResolver = null; resolver(false); }
+    document.getElementById('modal-backdrop').classList.add('hidden');
+    document.querySelectorAll('.modal').forEach(modal => { modal.classList.add('hidden'); modal.classList.remove('modal-visible'); });
+  }
+
   function syncNav() { document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.classList.toggle('active', button.dataset.dashboardFilter === state.dashboardFilter)); }
-  function autoSizeComposer() { const el = document.getElementById('chat-input'); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; }
+  function autoSizeComposer() { const el = document.getElementById('chat-input'); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 180) + 'px'; }
   function scrollChatToBottom() { const region = document.getElementById('chat-scroll-region'); requestAnimationFrame(() => { region.scrollTop = region.scrollHeight; }); }
   function setBusy(element, busy) {
     if (!element) return;
@@ -626,21 +771,21 @@
   function fileAsBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); }
   function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
   function showToast(message, error = false) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.toggle('error', error); toast.classList.remove('hidden'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.add('hidden'), 4200); }
-  function iconInfo(key) { return PROJECT_ICONS[key] || PROJECT_ICONS.spark; }
   function numberValue(value) { const number = Number(value); return Number.isFinite(number) && number >= 0 ? number : 0; }
   function statusLabel(status) { return ({active:'Ongoing',planning:'Planning',archived:'Archived'})[status] || status; }
   function initials(value) { return String(value || 'U').split(/[.\s_-]+/).filter(Boolean).slice(0,2).map(part => part[0].toUpperCase()).join('') || 'U'; }
   function shortEmail(email) { return String(email || '').split('@')[0]; }
-  function formatDate(value) { if (!value) return ''; try { return new Intl.DateTimeFormat('en-US',{dateStyle:'medium'}).format(new Date(value)); } catch (_) { return String(value); } }
-  function friendlyMime(mime) { const map = {'application/vnd.google-apps.document':'Google Docs','application/vnd.google-apps.spreadsheet':'Google Sheets','application/vnd.google-apps.presentation':'Google Slides','application/pdf':'PDF','text/plain':'Text','text/csv':'CSV'}; return map[mime] || String(mime || 'File').split('/').pop(); }
+  function formatDate(value) { if (!value) return ''; try { return new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric'}).format(new Date(value)); } catch (_) { return String(value); } }
+  function formatFileSize(bytes) { const value = Number(bytes || 0); if (!value) return '—'; const units = ['B','KB','MB','GB']; const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1); return `${(value / Math.pow(1024,index)).toFixed(index ? 1 : 0)} ${units[index]}`; }
+  function friendlyMime(mime) { const map = {'application/vnd.google-apps.document':'Google Docs','application/vnd.google-apps.spreadsheet':'Google Sheets','application/vnd.google-apps.presentation':'Google Slides','application/pdf':'PDF','text/plain':'Text','text/csv':'CSV','text/markdown':'Markdown'}; return map[mime] || String(mime || 'File').split('/').pop(); }
+  function fileTypeIcon(mime) { if (mime === 'application/pdf') return 'PDF'; if (/spreadsheet|csv/.test(mime || '')) return '▦'; if (/presentation/.test(mime || '')) return '▤'; if (/image/.test(mime || '')) return '◩'; if (/document|text|markdown/.test(mime || '')) return '▧'; return '◇'; }
+  function fileTypeClass(mime) { if (mime === 'application/pdf') return 'type-pdf'; if (/spreadsheet|csv/.test(mime || '')) return 'type-sheet'; if (/presentation/.test(mime || '')) return 'type-slide'; return 'type-doc'; }
   function scopeLabel(scope) { return ({full:'Full project',sources_documents:'Sources and documents',history:'Chat history only',custom:'Custom'})[scope] || scope; }
   function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[char]); }
   function formatMarkdown(value) {
-    let text = escapeHtml(value);
-    const codeBlocks = [];
+    let text = escapeHtml(value); const codeBlocks = [];
     text = text.replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (_, code) => { codeBlocks.push(`<pre><code>${code}</code></pre>`); return `@@CODE${codeBlocks.length - 1}@@`; });
     text = text.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/^###\s+(.+)$/gm, '<h3>$1</h3>').replace(/^##\s+(.+)$/gm, '<h2>$1</h2>').replace(/^#\s+(.+)$/gm, '<h1>$1</h1>').replace(/^[-*]\s+(.+)$/gm, '• $1').replace(/\n/g, '<br>');
-    codeBlocks.forEach((block, index) => { text = text.replace(`@@CODE${index}@@`, block); });
-    return text;
+    codeBlocks.forEach((block, index) => { text = text.replace(`@@CODE${index}@@`, block); }); return text;
   }
 </script>

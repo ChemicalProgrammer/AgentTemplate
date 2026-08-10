@@ -94,10 +94,11 @@ function writeSourceIndex_(project, index) {
 }
 
 function buildSourceContext_(project, query, selectedSourceIds) {
-  var index = readSourceIndex_(project);
-  var selected = index.sources.filter(function(source) {
-    var enabled = source.status === 'active';
-    return enabled && (selectedSourceIds == null || selectedSourceIds.indexOf(source.sourceId) !== -1);
+  var requested = selectedSourceIds == null ? null : selectedSourceIds.map(String);
+  var selected = getDocumentContextRecords_(project).filter(function(source) {
+    if (source.status !== 'active') return false;
+    if (requested == null) return true;
+    return requested.indexOf(source.sourceId) !== -1 || source.legacySourceId && requested.indexOf(source.legacySourceId) !== -1;
   });
   var queryTerms = tokenize_(query);
   var candidates = [];
@@ -118,7 +119,7 @@ function buildSourceContext_(project, query, selectedSourceIds) {
         inlineParts.push({text: '[' + label + '] Binary file: ' + source.name});
         inlineParts.push({inlineData: extracted.inlineData});
         inlineBytes += extracted.byteLength;
-        used.push({sourceId: source.sourceId, label: label, name: source.name, mimeType: source.mimeType});
+        used.push({sourceId: source.sourceId, label: label, name: source.name, mimeType: source.mimeType, kind: source.kind});
       }
     } catch (error) {
       console.warn('Source skipped ' + source.name + ': ' + error.message);
@@ -136,7 +137,7 @@ function buildSourceContext_(project, query, selectedSourceIds) {
     chars += section.length;
     textSections.push(section);
     if (!used.some(function(source) { return source.sourceId === item.source.sourceId; })) {
-      used.push({sourceId: item.source.sourceId, label: item.label, name: item.source.name, mimeType: item.source.mimeType});
+      used.push({sourceId: item.source.sourceId, label: item.label, name: item.source.name, mimeType: item.source.mimeType, kind: item.source.kind});
     }
   });
   return {text: textSections.join('\n\n---\n\n'), inlineParts: inlineParts, sourcesUsed: used};

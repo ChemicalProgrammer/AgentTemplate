@@ -24,6 +24,10 @@ function exportConversationToPdf(projectId, conversationId) {
   var pdfBlob = tempFile.getAs(MimeType.PDF).setName(pdfName);
   var pdfFile = DriveApp.getFolderById(access.project.folders.pdfs).createFile(pdfBlob);
   tempFile.setTrashed(true);
+  var parentIds = inferConversationParentIds_(conversation);
+  recordGeneratedDocument_(access.project, pdfFile, {
+    kind: 'pdf', parentIds: parentIds, createdBy: access.email, sourceConversation: conversationId
+  });
   incrementGeneratedDocumentCount_(projectId, access.project);
-  return {id: pdfFile.getId(), name: pdfFile.getName(), mimeType: MimeType.PDF, url: pdfFile.getUrl(), createdAt: nowIso_(), updatedAt: pdfFile.getLastUpdated().toISOString()};
+  return publicGeneratedFile_(pdfFile, 'pdf', parentIds, conversationId);
 }

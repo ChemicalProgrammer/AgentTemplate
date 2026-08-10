@@ -1,71 +1,90 @@
-<section id="project-view" class="view project-view hidden">
-  <div class="project-header">
-    <button id="back-dashboard" class="icon-btn" aria-label="Back to projects" title="Back to projects">←</button>
-    <button id="project-header-icon" class="project-icon project-icon-button" aria-label="Change project icon" title="Change project icon">✦</button>
-    <div class="project-title-wrap">
-      <p class="eyebrow">PROJECT</p>
-      <h1 id="project-title">Project</h1>
-      <p id="project-description" class="muted"></p>
+<section id="project-view" class="view project-view hidden" aria-label="Project workspace">
+  <header class="project-header">
+    <div class="project-identity">
+      <button id="back-dashboard" class="icon-btn" aria-label="Back to projects" title="Back to projects">←</button>
+      <button id="toggle-project-panel" class="icon-btn project-panel-toggle" aria-label="Open project panel" title="Open project panel">☰</button>
+      <button id="project-header-icon" class="project-emoji project-emoji-button" aria-label="Change project emoji" title="Change project emoji">✨</button>
+      <div class="project-title-wrap">
+        <h1 id="project-title">Project</h1>
+        <p id="project-description"></p>
+      </div>
     </div>
     <div class="project-actions">
-      <a id="open-project-folder" class="secondary-btn hidden" target="_blank">Open folder</a>
-      <button id="export-pdf-button" class="secondary-btn">Export PDF</button>
+      <a id="open-project-folder" class="icon-btn action-icon hidden" target="_blank" aria-label="Open project folder" title="Open project folder">↗</a>
+      <button id="export-pdf-button" class="secondary-btn compact-btn"><span>⇩</span> Export PDF</button>
+      <button id="share-project-button" class="primary-btn compact-btn owner-only"><span>♙</span> Share</button>
     </div>
-  </div>
+  </header>
 
-  <div class="project-tabs" role="tablist">
-    <button class="project-tab active" data-project-tab="chat">✦ Chat</button>
-    <button class="project-tab" data-project-tab="sources">▤ Sources</button>
-    <button class="project-tab" data-project-tab="documents">▧ Documents</button>
-    <button class="project-tab owner-only" data-project-tab="sharing">♙ Share</button>
-  </div>
+  <div id="project-workspace" class="project-workspace">
+    <aside id="project-side-panel" class="project-side-panel" aria-label="Project navigation">
+      <div class="side-tabs" role="tablist" aria-label="Project sections">
+        <button class="side-tab active" data-side-tab="chats" role="tab" aria-selected="true">Chats</button>
+        <button class="side-tab" data-side-tab="documents" role="tab" aria-selected="false">Documents</button>
+      </div>
 
-  <div id="project-tab-chat" class="project-tab-panel chat-layout">
-    <aside class="conversation-sidebar">
-      <button id="new-conversation" class="primary-btn wide">＋ New chat</button>
-      <div class="section-label">CHAT HISTORY</div>
-      <div id="conversation-list" class="conversation-list"></div>
+      <section id="side-panel-chats" class="side-panel-content active" role="tabpanel">
+        <div class="panel-toolbar compact-toolbar">
+          <div>
+            <h2>Chats</h2>
+            <p id="chat-count-label">0 conversations</p>
+          </div>
+          <button id="new-conversation" class="tonal-icon-btn" aria-label="New chat" title="New chat">＋</button>
+        </div>
+        <div id="conversation-list" class="conversation-list"></div>
+        <div id="empty-conversations" class="panel-empty hidden">
+          <span>💬</span>
+          <strong>No chats yet</strong>
+          <p>Start a conversation with your project agent.</p>
+        </div>
+      </section>
+
+      <section id="side-panel-documents" class="side-panel-content hidden" role="tabpanel">
+        <div class="panel-toolbar document-toolbar">
+          <div>
+            <h2>Documents</h2>
+            <p id="document-count-label">0 items</p>
+          </div>
+          <div class="toolbar-actions compact-actions">
+            <button id="add-source-link" class="tonal-icon-btn" aria-label="Import from Drive" title="Import from Drive">＋</button>
+            <label class="tonal-icon-btn file-button" aria-label="Upload file" title="Upload file">↑<input id="source-upload" type="file"></label>
+          </div>
+        </div>
+        <p class="panel-help">Select the documents Gemini may use in this chat.</p>
+        <div id="document-levels" class="document-levels"></div>
+        <div id="empty-documents" class="panel-empty hidden">
+          <span>📄</span>
+          <strong>No documents yet</strong>
+          <p>Import a Drive file or upload a source to begin.</p>
+        </div>
+      </section>
     </aside>
-    <section class="chat-panel">
+
+    <button id="project-panel-grip" class="panel-grip" type="button" role="separator" aria-orientation="vertical" aria-label="Resize project panel" aria-valuemin="260" aria-valuemax="720" tabindex="0"><span></span></button>
+
+    <section class="chat-panel" aria-label="Agent conversation">
       <div id="chat-scroll-region" class="chat-scroll-region">
         <div id="chat-empty" class="chat-empty">
-          <div class="gemini-mark large">✦</div>
-          <h2>What are we working on?</h2>
-          <p>The agent combines project memory with your selected sources.</p>
+          <div class="gemini-orb" aria-hidden="true">✦</div>
+          <h2>How can I help with this project?</h2>
+          <p>Ask a question, explore your documents, or develop a new idea.</p>
+          <div class="prompt-suggestions">
+            <button data-prompt="Summarize the selected documents and highlight the most important decisions.">Summarize the selected documents</button>
+            <button data-prompt="Identify open questions, risks, and recommended next steps for this project.">Find risks and next steps</button>
+            <button data-prompt="Create a concise project status update based on the selected documents.">Draft a status update</button>
+          </div>
         </div>
         <div id="chat-messages" class="chat-messages"></div>
       </div>
       <div class="composer-wrap">
         <div id="active-source-chips" class="source-chips"></div>
         <div class="composer">
-          <textarea id="chat-input" rows="1" placeholder="Ask about this project…"></textarea>
+          <textarea id="chat-input" rows="1" placeholder="Ask Gemini about this project" aria-label="Message Gemini"></textarea>
           <button id="send-message" class="send-btn" aria-label="Send message" title="Send">➤</button>
           <button id="stop-response" class="stop-btn hidden" aria-label="Stop response" title="Stop response"><span></span></button>
         </div>
-        <small>Gemini can make mistakes. Check critical information and cited sources.</small>
+        <small>Gemini can make mistakes. Check important information.</small>
       </div>
     </section>
-    <aside class="source-selector">
-      <div class="panel-title"><span>Active sources</span><button id="select-all-sources" class="text-btn">All</button></div>
-      <div id="chat-source-list"></div>
-    </aside>
-  </div>
-
-  <div id="project-tab-sources" class="project-tab-panel content-panel hidden">
-    <div class="content-toolbar">
-      <div><h2>Sources</h2><p class="muted">Add Drive files or folders, or upload a file up to 6 MB.</p></div>
-      <div class="toolbar-actions"><button id="add-source-link" class="secondary-btn">＋ From Drive</button><label class="primary-btn file-button">↑ Upload file<input id="source-upload" type="file"></label></div>
-    </div>
-    <div id="sources-table" class="data-list"></div>
-  </div>
-
-  <div id="project-tab-documents" class="project-tab-panel content-panel hidden">
-    <div class="content-toolbar"><div><h2>Generated documents</h2><p class="muted">Documents and PDF exports stored in Drive.</p></div></div>
-    <div id="documents-table" class="data-list"></div>
-  </div>
-
-  <div id="project-tab-sharing" class="project-tab-panel content-panel hidden">
-    <div class="content-toolbar"><div><h2>Share project</h2><p class="muted">Access is limited to your domain and can be scoped by content.</p></div><button id="add-member-button" class="primary-btn">＋ Add user</button></div>
-    <div id="members-table" class="data-list"></div>
   </div>
 </section>

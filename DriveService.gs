@@ -38,6 +38,7 @@ function listFilesRecursive_(folder, output, limit) {
       mimeType: file.getMimeType(),
       url: file.getUrl(),
       size: Number(file.getSize() || 0),
+      createdAt: file.getDateCreated().toISOString(),
       updatedAt: file.getLastUpdated().toISOString()
     });
   }

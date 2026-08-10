@@ -1,8 +1,8 @@
 <div id="modal-backdrop" class="modal-backdrop hidden">
-  <section id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
-    <button class="modal-close" data-close-modal>×</button>
+  <section id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
     <p class="eyebrow">PERSONAL SETTINGS</p>
-    <h2>Gemini API</h2>
+    <h2 id="settings-title">Gemini API</h2>
     <p class="muted">Your key is stored in your user properties. It is never shown in the browser or shared with other users.</p>
     <form id="gemini-settings-form">
       <label>Gemini API key<input id="gemini-api-key" type="password" autocomplete="off" placeholder="AIza…"></label>
@@ -11,39 +11,55 @@
     </form>
   </section>
 
-  <section id="project-modal" class="modal hidden" role="dialog" aria-modal="true">
-    <button class="modal-close" data-close-modal>×</button>
-    <p class="eyebrow">NEW PROJECT</p><h2>Create a project agent</h2>
+  <section id="project-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="new-project-title-label">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">NEW PROJECT</p><h2 id="new-project-title-label">Create a project agent</h2>
     <form id="project-form">
       <label>Title<input id="new-project-title" required maxlength="120"></label>
       <label>Description<textarea id="new-project-description" rows="4" maxlength="800"></textarea></label>
-      <fieldset class="icon-fieldset"><legend>Project icon</legend><input id="new-project-icon" type="hidden" value="spark"><div id="new-project-icon-options" class="icon-options"></div></fieldset>
+      <p class="form-note">A default emoji will be assigned. You can change it from inside the project.</p>
       <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Create project</button></div>
     </form>
   </section>
 
-  <section id="icon-modal" class="modal icon-modal hidden" role="dialog" aria-modal="true">
-    <button class="modal-close" data-close-modal>×</button>
-    <p class="eyebrow">PROJECT IDENTITY</p><h2>Choose an icon</h2>
-    <p class="muted">The icon helps distinguish this project across the dashboard and workspace.</p>
-    <div id="project-icon-options" class="icon-options large-options"></div>
+  <section id="emoji-modal" class="modal emoji-modal hidden" role="dialog" aria-modal="true" aria-labelledby="emoji-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">PROJECT IDENTITY</p><h2 id="emoji-title">Choose an emoji</h2>
+    <p class="muted">Use one memorable symbol to recognize this project across the dashboard.</p>
+    <div id="project-emoji-options" class="emoji-options" role="listbox" aria-label="Project emojis"></div>
   </section>
 
-  <section id="source-link-modal" class="modal hidden" role="dialog" aria-modal="true">
-    <button class="modal-close" data-close-modal>×</button>
-    <p class="eyebrow">IMPORT SOURCE</p><h2>Drive file or folder</h2>
-    <p class="muted">A copy will be added to Sources to keep a controlled project version.</p>
+  <section id="source-link-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="source-link-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">IMPORT DOCUMENT</p><h2 id="source-link-title">Drive file or folder</h2>
+    <p class="muted">A controlled copy will be stored with this project and added to Level 0.</p>
     <form id="source-link-form"><label>Drive ID or URL<input id="source-drive-url" required></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Import</button></div></form>
   </section>
 
-  <section id="member-modal" class="modal hidden" role="dialog" aria-modal="true">
-    <button class="modal-close" data-close-modal>×</button>
-    <p class="eyebrow">SHARE</p><h2>Add a user</h2>
+  <section id="share-modal" class="modal share-modal hidden" role="dialog" aria-modal="true" aria-labelledby="share-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <div class="share-heading">
+      <div><p class="eyebrow">PROJECT ACCESS</p><h2 id="share-title">Share project</h2><p class="muted">Access remains limited to your organization.</p></div>
+      <button id="add-member-button" class="primary-btn compact-btn">＋ Add person</button>
+    </div>
+    <div id="members-table" class="member-list"></div>
+  </section>
+
+  <section id="member-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="member-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">SHARE</p><h2 id="member-title">Add a person</h2>
     <form id="member-form">
       <label>Organization email<input id="member-email" type="email" required></label>
       <div class="form-grid"><label>Role<select id="member-role"><option value="editor">Editor</option><option value="collaborator">Collaborator</option><option value="viewer">Viewer</option></select></label><label>Content<select id="member-scope"><option value="full">Full project</option><option value="sources_documents">Sources and documents</option><option value="history">Chat history only</option><option value="custom">Custom</option></select></label></div>
       <div id="custom-permissions" class="checkbox-group hidden"><label><input type="checkbox" value="sources"> Sources</label><label><input type="checkbox" value="documents"> Documents</label><label><input type="checkbox" value="history"> Chat history</label></div>
       <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Share</button></div>
     </form>
+  </section>
+
+  <section id="confirm-modal" class="modal confirm-modal hidden" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <div id="confirm-icon" class="confirm-icon">⚠️</div>
+    <h2 id="confirm-title">Are you sure?</h2>
+    <p id="confirm-message" class="muted"></p>
+    <div class="modal-actions"><button id="confirm-cancel" type="button" class="secondary-btn">Cancel</button><button id="confirm-action" type="button" class="danger-filled-btn">Delete</button></div>
   </section>
 </div>
