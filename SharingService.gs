@@ -41,7 +41,7 @@ function shareProject(input) {
   if (member) Object.keys(record).forEach(function(key) { member[key] = record[key]; }); else members.push(record);
   access.project.members = members;
   access.project.updatedAt = now;
-  saveRegistryProject_(access.project);
+  persistProjectManifest_(access.project);
   writeProjectManifest_(DriveApp.getFolderById(access.project.folderId), access.project);
   appendControlRow_(access.project, 'Members', [email, role, scope, record.addedAt, access.email]);
   appendControlRow_(access.project, 'Share Policies', [email, scope === 'full' || scope === 'sources_documents' || permissions && permissions.sources, scope === 'full' || scope === 'sources_documents' || permissions && permissions.documents, scope === 'full' || scope === 'history' || permissions && permissions.history, now]);
@@ -55,7 +55,7 @@ function removeProjectMember(projectId, email) {
   removeAllProjectDriveAccess_(access.project, email);
   access.project.members = (access.project.members || []).filter(function(member) { return String(member.email).toLowerCase() !== email; });
   access.project.updatedAt = nowIso_();
-  saveRegistryProject_(access.project);
+  persistProjectManifest_(access.project);
   writeProjectManifest_(DriveApp.getFolderById(access.project.folderId), access.project);
   appendControlRow_(access.project, 'Change Log', [nowIso_(), access.email, 'REMOVE_MEMBER', 'Member', email, 'Acceso retirado']);
   return listProjectMembers(projectId);

@@ -5,10 +5,9 @@ var PROJECT_COLORS = ['blue', 'violet', 'coral', 'amber', 'green', 'teal', 'rose
 
 function listProjects() {
   var email = assertOrganizationMember_();
-  try { discoverProjects_(); } catch (ignored) {}
-
+  var projects = discoverProjects_();
   var favorites = getFavoriteIds_();
-  return getAllRegistryProjects_()
+  return projects
     .filter(function(project) {
       return (project.members || []).some(function(member) {
         return String(member.email).toLowerCase() === email;
@@ -23,7 +22,6 @@ function listProjects() {
 
 function refreshProjects() {
   assertOrganizationMember_();
-  discoverProjects_();
   return listProjects();
 }
 
@@ -56,7 +54,6 @@ function createProject(input) {
   project = normalizeProjectStructure_(folder, project, true);
   writeProjectManifest_(folder, project);
   syncProjectControl_(project, true);
-  saveRegistryProject_(project);
   return publicProject_(project, project.members[0], false);
 }
 
@@ -91,7 +88,6 @@ function updateProject(projectId, changes) {
   if (folder.getName() !== project.title) folder.setName(project.title);
   writeProjectManifest_(folder, project);
   syncProjectControl_(project, false);
-  saveRegistryProject_(project);
   return publicProject_(project, access.member, getFavoriteIds_().indexOf(projectId) !== -1);
 }
 
@@ -139,7 +135,6 @@ function cloneProject(projectId) {
     clone = reconcileProjectStats_(clone);
     writeProjectManifest_(destination, clone);
     syncProjectControl_(clone, false);
-    saveRegistryProject_(clone);
     return publicProject_(clone, clone.members[0], false);
   } catch (error) {
     try { destination.setTrashed(true); } catch (cleanupError) { console.warn(cleanupError.message); }
@@ -151,9 +146,6 @@ function deleteProject(projectId) {
   var access = assertProjectAccess_(projectId);
   if (access.member.role !== 'owner') throw new Error('Only the project owner can delete this project.');
   DriveApp.getFolderById(access.project.folderId).setTrashed(true);
-  withScriptLock_(function() {
-    PropertiesService.getScriptProperties().deleteProperty(APP.REGISTRY_PREFIX + projectId);
-  });
   var favorites = getFavoriteIds_().filter(function(id) { return id !== projectId; });
   PropertiesService.getUserProperties().setProperty(APP.USER_FAVORITES, JSON.stringify(favorites));
   return {deleted: true, projectId: projectId};
@@ -162,28 +154,31 @@ function deleteProject(projectId) {
 function discoverProjects_() {
   var root = getRootFolder_();
   var folders = root.getFolders();
-  var rootFolderIds = {};
+  var projects = [];
+  var seenProjectIds = {};
   while (folders.hasNext()) {
     var folder = folders.next();
-    if (folder.getName() === APP.SYSTEM_FOLDER) continue;
-    rootFolderIds[folder.getId()] = true;
-    try { registerFolderAsProject_(folder); } catch (error) { console.warn(error.message); }
+    if (folder.isTrashed() || folder.getName() === APP.SYSTEM_FOLDER) continue;
+    try {
+      projects.push(registerFolderAsProject_(folder, seenProjectIds));
+    } catch (error) {
+      console.warn('Project folder skipped: ' + error.message);
+    }
   }
-  removeMissingRegistryProjects_(rootFolderIds);
+  clearLegacyProjectRegistry_();
+  cleanMissingFavorites_(projects.map(function(project) { return project.projectId; }));
+  return projects;
 }
 
-function removeMissingRegistryProjects_(rootFolderIds) {
+function clearLegacyProjectRegistry_() {
   var props = PropertiesService.getScriptProperties();
   var values = props.getProperties();
-  var activeIds = [];
-  Object.keys(values).filter(function(key) { return key.indexOf(APP.REGISTRY_PREFIX) === 0; }).forEach(function(key) {
-    var project = safeJsonParse_(values[key], null);
-    if (!project || !rootFolderIds[project.folderId]) {
-      props.deleteProperty(key);
-    } else {
-      activeIds.push(project.projectId);
-    }
+  Object.keys(values).filter(function(key) { return key.indexOf('PROJECT_') === 0; }).forEach(function(key) {
+    props.deleteProperty(key);
   });
+}
+
+function cleanMissingFavorites_(activeIds) {
   var favorites = getFavoriteIds_();
   var cleaned = favorites.filter(function(id) { return activeIds.indexOf(id) !== -1; });
   if (cleaned.length !== favorites.length) PropertiesService.getUserProperties().setProperty(APP.USER_FAVORITES, JSON.stringify(cleaned));
@@ -266,7 +261,7 @@ function remapClonedControlSpreadsheet_(controlFileId, idMap, oldProjectId, newP
   }
 }
 
-function registerFolderAsProject_(folder) {
+function registerFolderAsProject_(folder, seenProjectIds) {
   var manifestFile = getFirstFileByName_(folder, PROJECT_MANIFEST_FILE);
   var manifest = readJsonFile_(manifestFile, null);
   var now = nowIso_();
@@ -287,16 +282,13 @@ function registerFolderAsProject_(folder) {
       members: [{email: email, role: 'owner', scope: 'full', addedAt: now}],
       stats: {sourceCount: 0, conversationCount: 0, documentCount: 0, lastActivityAt: now}
     };
-  } else {
-    var registered = getRegistryProject_(manifest.projectId);
-    if (registered && registered.folderId !== folder.getId()) {
-      manifest.projectId = uuid_();
-      manifest.title = folder.getName();
-      manifest.owner = email;
-      manifest.createdAt = now;
-      manifest.updatedAt = now;
-      manifest.members = [{email: email, role: 'owner', scope: 'full', addedAt: now}];
-    }
+  } else if (seenProjectIds && seenProjectIds[manifest.projectId] && seenProjectIds[manifest.projectId] !== folder.getId()) {
+    manifest.projectId = uuid_();
+    manifest.title = folder.getName();
+    manifest.owner = email;
+    manifest.createdAt = now;
+    manifest.updatedAt = now;
+    manifest.members = [{email: email, role: 'owner', scope: 'full', addedAt: now}];
   }
 
   manifest.folderId = folder.getId();
@@ -309,7 +301,7 @@ function registerFolderAsProject_(folder) {
   manifest = reconcileProjectStats_(manifest);
   writeProjectManifest_(folder, manifest);
   syncProjectControl_(manifest, false);
-  saveRegistryProject_(manifest);
+  if (seenProjectIds) seenProjectIds[manifest.projectId] = folder.getId();
   return manifest;
 }
 
@@ -402,23 +394,35 @@ function writeProjectManifest_(folder, project) {
   writeJsonFile_(folder, PROJECT_MANIFEST_FILE, project);
 }
 
-function saveRegistryProject_(project) {
+function persistProjectManifest_(project) {
   project.updatedAt = project.updatedAt || nowIso_();
-  withScriptLock_(function() {
-    PropertiesService.getScriptProperties().setProperty(APP.REGISTRY_PREFIX + project.projectId, JSON.stringify(project));
-  });
+  var folder = getActiveProjectFolderById_(project.folderId);
+  if (!folder) throw new Error('The project folder is no longer inside the configured project folder.');
+  writeProjectManifest_(folder, project);
 }
 
-function getRegistryProject_(projectId) {
-  var value = PropertiesService.getScriptProperties().getProperty(APP.REGISTRY_PREFIX + projectId);
-  return safeJsonParse_(value, null);
+function getProjectFromRoot_(projectId) {
+  var root = getRootFolder_();
+  var folders = root.getFolders();
+  while (folders.hasNext()) {
+    var folder = folders.next();
+    if (folder.isTrashed() || folder.getName() === APP.SYSTEM_FOLDER) continue;
+    var manifest = readJsonFile_(getFirstFileByName_(folder, PROJECT_MANIFEST_FILE), null);
+    if (manifest && manifest.projectId === projectId) {
+      manifest.folderId = folder.getId();
+      return manifest;
+    }
+  }
+  return null;
 }
 
-function getAllRegistryProjects_() {
-  var props = PropertiesService.getScriptProperties().getProperties();
-  return Object.keys(props).filter(function(key) { return key.indexOf(APP.REGISTRY_PREFIX) === 0; })
-    .map(function(key) { return safeJsonParse_(props[key], null); })
-    .filter(Boolean);
+function getActiveProjectFolderById_(folderId) {
+  var folders = getRootFolder_().getFolders();
+  while (folders.hasNext()) {
+    var folder = folders.next();
+    if (!folder.isTrashed() && folder.getId() === folderId) return folder;
+  }
+  return null;
 }
 
 function publicProject_(project, member, favorite) {
@@ -449,13 +453,13 @@ function getFavoriteIds_() {
 }
 
 function touchProjectStats_(projectId, changes) {
-  var project = getRegistryProject_(projectId);
+  var project = getProjectFromRoot_(projectId);
   if (!project) return;
   project.stats = project.stats || {};
   Object.keys(changes || {}).forEach(function(key) { project.stats[key] = changes[key]; });
   project.stats.lastActivityAt = nowIso_();
   project.updatedAt = project.stats.lastActivityAt;
-  saveRegistryProject_(project);
+  persistProjectManifest_(project);
   try { writeProjectManifest_(DriveApp.getFolderById(project.folderId), project); } catch (error) { console.warn(error.message); }
 }
 

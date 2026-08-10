@@ -115,6 +115,7 @@
     document.getElementById('add-member-button').addEventListener('click', () => openModal('member-modal'));
     document.getElementById('export-pdf-button').addEventListener('click', exportPdf);
     document.getElementById('gemini-settings-form').addEventListener('submit', saveGeminiSettings);
+    document.getElementById('root-settings-form').addEventListener('submit', saveRootFolderSettings);
     document.getElementById('load-models').addEventListener('click', loadModels);
     document.getElementById('project-form').addEventListener('submit', submitProject);
     document.getElementById('source-link-form').addEventListener('submit', submitSourceLink);
@@ -757,17 +758,44 @@
 
   function openSettings() {
     const settings = state.bootstrap.userSettings;
-    document.getElementById('gemini-api-key').value = '';
+    const config = state.bootstrap.config;
+    document.getElementById('gemini-api-key').value = settings.apiKey || '';
     document.getElementById('gemini-api-key').placeholder = settings.configured ? `Configured · ••••${settings.keySuffix}` : 'AIza…';
-    document.getElementById('gemini-model').value = settings.model; openModal('settings-modal');
+    document.getElementById('gemini-model').value = settings.model;
+    const adminSection = document.getElementById('project-location-settings');
+    adminSection.classList.toggle('hidden', !config.isAdmin);
+    document.getElementById('settings-root-folder').value = config.rootFolderUrl || config.rootFolderId || '';
+    document.getElementById('settings-root-name').value = config.rootFolderName || 'Agent Projects';
+    const rootLink = document.getElementById('settings-open-root');
+    rootLink.href = config.rootFolderUrl || '#';
+    rootLink.classList.toggle('hidden', !config.rootFolderUrl);
+    openModal('settings-modal');
   }
 
   async function saveGeminiSettings(event) {
     event.preventDefault(); setBusy(event.target, true); const key = document.getElementById('gemini-api-key').value.trim();
-    if (!key && state.bootstrap.userSettings.configured) { setBusy(event.target, false); return showToast('Enter the key again to validate it.', true); }
     try {
       const settings = await server('saveUserGeminiSettings', {apiKey: key, model: document.getElementById('gemini-model').value});
       state.bootstrap.userSettings = settings; updateKeyStatus(settings); closeModals(); showToast('API key validated and saved for your account.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  async function saveRootFolderSettings(event) {
+    event.preventDefault(); setBusy(event.target, true);
+    try {
+      const data = await server('updateRootFolderSettings', {
+        rootFolderId: document.getElementById('settings-root-folder').value,
+        rootFolderName: document.getElementById('settings-root-name').value
+      });
+      state.bootstrap = data;
+      state.projects = data.projects || [];
+      state.currentProjectId = null;
+      state.projectDetails = null;
+      closeModals();
+      applyIdentity();
+      showDashboard();
+      showToast('Project location saved.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }

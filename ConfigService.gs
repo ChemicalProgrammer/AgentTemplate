@@ -1,10 +1,10 @@
 var APP = Object.freeze({
   NAME: 'Gemini Project Agent',
-  VERSION: '1.3.0',
+  VERSION: '1.4.0',
   ROOT_NAME: 'Agent Projects',
   SYSTEM_FOLDER: '_System',
-  REGISTRY_PREFIX: 'PROJECT_',
   PROP_ROOT_ID: 'ROOT_FOLDER_ID',
+  PROP_ROOT_NAME: 'ROOT_FOLDER_NAME',
   PROP_DOMAIN: 'ORGANIZATION_DOMAIN',
   PROP_ADMIN: 'ADMIN_EMAIL',
   USER_API_KEY: 'GEMINI_API_KEY',
@@ -36,16 +36,12 @@ function setupApplication(settings) {
     throw new Error('The domain must match the account configuring the application.');
   }
 
-  var root;
-  if (settings.rootFolderId) {
-    root = DriveApp.getFolderById(extractDriveId_(settings.rootFolderId));
-  } else {
-    root = DriveApp.createFolder(settings.rootFolderName || APP.ROOT_NAME);
-  }
+  var root = resolveConfiguredRootFolder_(settings.rootFolderId, settings.rootFolderName);
   ensureFolder_(root, APP.SYSTEM_FOLDER);
 
   scriptProps.setProperties({
     ROOT_FOLDER_ID: root.getId(),
+    ROOT_FOLDER_NAME: root.getName(),
     ORGANIZATION_DOMAIN: domain,
     ADMIN_EMAIL: identity.email
   }, false);
@@ -56,12 +52,19 @@ function setupApplication(settings) {
 function getPublicConfig_() {
   var props = PropertiesService.getScriptProperties();
   var rootId = props.getProperty(APP.PROP_ROOT_ID) || '';
+  var rootName = props.getProperty(APP.PROP_ROOT_NAME) || APP.ROOT_NAME;
+  if (rootId) {
+    var root = getRootFolder_();
+    rootId = root.getId();
+    rootName = root.getName();
+  }
   var adminEmail = props.getProperty(APP.PROP_ADMIN) || '';
   var currentEmail = getCurrentIdentity_().email;
   return {
     appName: APP.NAME,
     version: APP.VERSION,
     rootFolderId: rootId,
+    rootFolderName: rootName,
     rootFolderUrl: rootId ? 'https://drive.google.com/drive/folders/' + rootId : '',
     organizationDomain: props.getProperty(APP.PROP_DOMAIN) || '',
     adminEmail: adminEmail,
@@ -69,10 +72,35 @@ function getPublicConfig_() {
   };
 }
 
+function updateRootFolderSettings(settings) {
+  assertAdmin_();
+  settings = settings || {};
+  var root = resolveConfiguredRootFolder_(settings.rootFolderId, settings.rootFolderName);
+  ensureFolder_(root, APP.SYSTEM_FOLDER);
+  PropertiesService.getScriptProperties().setProperties({
+    ROOT_FOLDER_ID: root.getId(),
+    ROOT_FOLDER_NAME: root.getName()
+  }, false);
+  clearLegacyProjectRegistry_();
+  return getBootstrap();
+}
+
+function resolveConfiguredRootFolder_(rootFolderId, rootFolderName) {
+  var root;
+  if (String(rootFolderId || '').trim()) {
+    root = DriveApp.getFolderById(extractDriveId_(rootFolderId));
+    if (root.isTrashed()) root.setTrashed(false);
+  } else {
+    root = DriveApp.createFolder(normalizeName_(rootFolderName, APP.ROOT_NAME));
+  }
+  return root;
+}
+
 function saveUserGeminiSettings(settings) {
   assertOrganizationMember_();
   settings = settings || {};
-  var apiKey = String(settings.apiKey || '').trim();
+  var userProps = PropertiesService.getUserProperties();
+  var apiKey = String(settings.apiKey || userProps.getProperty(APP.USER_API_KEY) || '').trim();
   var model = normalizeModel_(settings.model || APP.DEFAULT_MODEL);
   if (!apiKey) throw new Error('Enter a Gemini API key.');
 
@@ -94,6 +122,7 @@ function getPublicUserGeminiSettings_() {
   var key = props.getProperty(APP.USER_API_KEY) || '';
   return {
     configured: Boolean(key),
+    apiKey: key,
     keySuffix: key ? key.slice(-4) : '',
     model: props.getProperty(APP.USER_MODEL) || APP.DEFAULT_MODEL
   };

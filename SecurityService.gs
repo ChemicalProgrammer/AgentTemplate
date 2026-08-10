@@ -16,7 +16,7 @@ function assertAdmin_() {
 
 function assertProjectAccess_(projectId, capability) {
   var email = assertOrganizationMember_();
-  var project = getRegistryProject_(projectId);
+  var project = getProjectFromRoot_(projectId);
   if (!project) throw new Error('Project not found.');
 
   var member = (project.members || []).filter(function(item) {

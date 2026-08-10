@@ -27,9 +27,26 @@ function extractDriveId_(value) {
 }
 
 function getRootFolder_() {
-  var id = PropertiesService.getScriptProperties().getProperty(APP.PROP_ROOT_ID);
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty(APP.PROP_ROOT_ID);
   if (!id) throw new Error('Configure the root folder first.');
-  return DriveApp.getFolderById(id);
+  var currentEmail = getCurrentIdentity_().email;
+  var adminEmail = props.getProperty(APP.PROP_ADMIN) || '';
+  var mayRepair = Boolean(currentEmail && currentEmail === adminEmail);
+  var root;
+  try {
+    root = DriveApp.getFolderById(id);
+    if (root.isTrashed()) {
+      if (!mayRepair) throw new Error('The configured project folder is in Drive trash. Ask the administrator to open the app and restore it.');
+      root.setTrashed(false);
+    }
+  } catch (error) {
+    if (!mayRepair) throw new Error('The configured project folder is unavailable. Ask the administrator to verify its Drive location and access.');
+    root = DriveApp.createFolder(props.getProperty(APP.PROP_ROOT_NAME) || APP.ROOT_NAME);
+    props.setProperties({ROOT_FOLDER_ID: root.getId(), ROOT_FOLDER_NAME: root.getName()}, false);
+  }
+  ensureFolder_(root, APP.SYSTEM_FOLDER);
+  return root;
 }
 
 function getFirstFileByName_(folder, name) {

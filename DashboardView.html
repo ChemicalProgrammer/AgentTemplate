@@ -1,23 +1,23 @@
 <section id="dashboard-view" class="view dashboard-view">
-  <div class="page-heading">
-    <div>
+  <div class="dashboard-header">
+    <div class="dashboard-intro">
       <p class="eyebrow">PROJECT LIBRARY</p>
       <h1>Projects</h1>
       <p class="muted">Your agents, sources, conversations, and generated files in one place.</p>
     </div>
-  </div>
-  <div class="dashboard-command-bar" aria-label="Project search and filters">
-    <div class="dashboard-search"><span aria-hidden="true">⌕</span><input id="global-search" placeholder="Search projects" aria-label="Search projects"></div>
-    <div class="dashboard-actions">
-      <button id="refresh-projects" class="icon-btn command-icon-btn" title="Refresh projects" aria-label="Refresh projects">↻</button>
-      <button id="create-project-heading" class="primary-btn"><span aria-hidden="true">＋</span><span class="button-label">New project</span></button>
-    </div>
-    <div class="filter-chips" role="group" aria-label="Filter projects">
-      <button class="filter-chip active" data-dashboard-filter="all"><span>▦</span> All</button>
-      <button class="filter-chip" data-dashboard-filter="active"><span class="filter-dot ongoing-dot"></span> Ongoing</button>
-      <button class="filter-chip" data-dashboard-filter="favorite"><span>★</span> Favorites</button>
-      <button class="filter-chip" data-dashboard-filter="planning"><span class="filter-dot planning-dot"></span> Planning</button>
-      <button class="filter-chip" data-dashboard-filter="archived"><span class="filter-dot archived-dot"></span> Archived</button>
+    <div class="dashboard-command-bar" aria-label="Project search and filters">
+      <div class="dashboard-primary-controls">
+        <div class="dashboard-search"><span aria-hidden="true">⌕</span><input id="global-search" placeholder="Search projects" aria-label="Search projects"></div>
+        <button id="refresh-projects" class="icon-btn command-icon-btn" title="Refresh projects" aria-label="Refresh projects">↻</button>
+        <button id="create-project-heading" class="primary-btn"><span aria-hidden="true">＋</span><span class="button-label">New project</span></button>
+      </div>
+      <div class="filter-chips" role="group" aria-label="Filter projects">
+        <button class="filter-chip active" data-dashboard-filter="all"><span>▦</span> All</button>
+        <button class="filter-chip" data-dashboard-filter="active"><span class="filter-dot ongoing-dot"></span> Ongoing</button>
+        <button class="filter-chip" data-dashboard-filter="favorite"><span>★</span> Favorites</button>
+        <button class="filter-chip" data-dashboard-filter="planning"><span class="filter-dot planning-dot"></span> Planning</button>
+        <button class="filter-chip" data-dashboard-filter="archived"><span class="filter-dot archived-dot"></span> Archived</button>
+      </div>
     </div>
   </div>
   <div id="project-grid" class="project-grid"></div>

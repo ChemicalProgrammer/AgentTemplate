@@ -1,14 +1,26 @@
 <div id="modal-backdrop" class="modal-backdrop hidden">
   <section id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
-    <p class="eyebrow">PERSONAL SETTINGS</p>
-    <h2 id="settings-title">Gemini API</h2>
-    <p class="muted">Your key is stored in your user properties. It is never shown in the browser or shared with other users.</p>
-    <form id="gemini-settings-form">
-      <label>Gemini API key<input id="gemini-api-key" type="password" autocomplete="off" placeholder="AIza…"></label>
-      <label>Model<input id="gemini-model" list="gemini-model-options" placeholder="gemini-3.6-flash"><datalist id="gemini-model-options"></datalist></label>
-      <div class="modal-actions"><button type="button" id="load-models" class="secondary-btn">Load models</button><button type="submit" class="primary-btn">Validate and save</button></div>
-    </form>
+    <p class="eyebrow">SETTINGS</p>
+    <h2 id="settings-title">Workspace settings</h2>
+    <div class="settings-sections">
+      <section class="settings-section">
+        <div class="settings-section-heading"><div><h3>Gemini API</h3><p class="muted">This key belongs to your account and is stored separately for each user.</p></div><span class="settings-badge">Personal</span></div>
+        <form id="gemini-settings-form">
+          <label>Gemini API key<input id="gemini-api-key" type="password" autocomplete="off" placeholder="AIza…"></label>
+          <label>Model<input id="gemini-model" list="gemini-model-options" placeholder="gemini-3.6-flash"><datalist id="gemini-model-options"></datalist></label>
+          <div class="modal-actions"><button type="button" id="load-models" class="secondary-btn">Load models</button><button type="submit" class="primary-btn">Validate and save</button></div>
+        </form>
+      </section>
+      <section id="project-location-settings" class="settings-section admin-only hidden">
+        <div class="settings-section-heading"><div><h3>Project location</h3><p class="muted">Choose the Drive folder that directly contains every project. You may move this folder anywhere in Drive without changing this setting.</p></div><span class="settings-badge">Admin</span></div>
+        <form id="root-settings-form">
+          <label>Drive folder ID or URL<input id="settings-root-folder" placeholder="Paste a Drive folder URL or ID"></label>
+          <label>New folder name <span class="optional">used only when the field above is empty</span><input id="settings-root-name" maxlength="120" placeholder="Agent Projects"></label>
+          <div class="modal-actions"><a id="settings-open-root" class="secondary-btn" target="_blank">Open current folder</a><button type="submit" class="primary-btn">Save location</button></div>
+        </form>
+      </section>
+    </div>
   </section>
 
   <section id="project-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="new-project-title-label">
