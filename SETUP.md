@@ -122,7 +122,7 @@ Comprueba que la Gemini API esté habilitada para la llave y que el modelo elegi
 
 ### Un PDF grande no se indexa
 
-Importa el archivo mediante un enlace de Drive o cárgalo desde la computadora, confirma que no exceda 100 MB y usa **Sync index**. La acción procesa cinco fuentes por lote y continúa cada archivo en bloques persistentes. Pulsa directamente el estado de la tarjeta o **Check index status** para verificar Drive, la operación remota, la etapa y el mensaje exacto antes de reintentar.
+Importa el archivo mediante un enlace de Drive o cárgalo desde la computadora, confirma que no exceda 100 MB y usa **Sync index**. La acción procesa cinco fuentes por lote y continúa cada archivo en bloques persistentes. Pulsa directamente el estado de la tarjeta o **Check index status** para verificar Drive, la operación remota y los documentos reales de esa fuente. **Check again** actualiza sin crear otro intento; **Retry cleanly** aparece únicamente cuando no existe un procesamiento activo y elimina los intentos fallidos anteriores antes de volver a cargar.
 
 ### Un colaborador ve `Not indexed`
 

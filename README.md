@@ -17,6 +17,7 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
 - File Search persistente por proyecto y por llave de usuario: cada fuente se fragmenta e indexa una vez y las consultas recuperan semánticamente solo el contenido pertinente.
 - Libros y archivos de hasta 100 MB, tanto desde Drive como desde la computadora: el navegador carga a Drive en bloques de 2 MB y File Search recibe bloques de 8 MB entre ejecuciones.
 - Estados visibles `Queued`, `Uploading`, `Indexing`, `Indexed`, `Status unknown` e `Index failed`, con diagnóstico remoto, etapa, hora, progreso, error exacto y reintento.
+- El diagnóstico reconcilia la operación de larga duración con los documentos reales de la fuente, distingue sus intentos de los contadores globales, detecta operaciones huérfanas y elimina intentos fallidos antes de reintentar.
 - Citas con archivo y página cuando Gemini devuelve ese dato.
 - Pestaña Templates para importar Google Docs, Sheets o Slides como formatos de salida sin modificar la plantilla original.
 - Generación de reportes desde cualquier tarjeta documental, con formato estándar o la plantilla seleccionada.

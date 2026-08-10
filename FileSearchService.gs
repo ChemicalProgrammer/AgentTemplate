@@ -70,8 +70,15 @@ function indexSourceForCurrentUser_(project, source, force) {
       throw new Error('File Search indexing failed: ' + continuationFailed.error);
     }
   }
-  if (force && current.documentName) {
-    try { deleteFileSearchDocument_(project.projectId, current.documentName); } catch (cleanupError) { console.warn(cleanupError.message); }
+  if (force) {
+    var cleanupConfig = getUserGeminiConfig_();
+    var cleanupStore = current.storeName ? {storeName: current.storeName} : getFileSearchStoreState_(project.projectId, true);
+    if (cleanupStore && cleanupStore.storeName) {
+      var deletedNames = deleteFileSearchDocumentsForSource_(cleanupStore.storeName, source, cleanupConfig.apiKey);
+      if (current.documentName && deletedNames.indexOf(current.documentName) === -1) {
+        deleteFileSearchDocumentByName_(current.documentName, cleanupConfig.apiKey);
+      }
+    }
   }
 
   var stage = 'validating_source';
@@ -89,7 +96,8 @@ function indexSourceForCurrentUser_(project, source, force) {
     var state = saveFileSearchSourceState_(project.projectId, source.sourceId, {
       status: 'uploading', stage: 'uploading_to_file_search', storeName: storeName, revision: revision,
       uploadUrl: uploadUrl, offset: 0, totalBytes: descriptor.size, progress: 0,
-      operationName: '', documentName: '', indexedAt: '', error: '', checkError: '', updatedAt: nowIso_()
+      operationName: '', documentName: '', indexedAt: '', error: '', checkError: '',
+      attemptStartedAt: nowIso_(), operationDone: false, updatedAt: nowIso_()
     });
     return advanceFileSearchUpload_(project, source, state, config.apiKey);
   } catch (error) {
@@ -205,7 +213,7 @@ function advanceFileSearchUpload_(project, source, state, apiKey) {
     operationName: operation.name || '',
     documentName: extractFileSearchDocumentName_(operation),
     uploadUrl: '', offset: descriptor.size, totalBytes: descriptor.size, progress: 100,
-    indexedAt: '', error: '', checkError: '', updatedAt: nowIso_()
+    indexedAt: '', error: '', checkError: '', operationDone: Boolean(operation.done), updatedAt: nowIso_()
   });
   if (operation.done) state = applyCompletedFileSearchOperation_(project, source, state, operation, apiKey);
   return publicFileSearchState_(source, state);
@@ -305,6 +313,7 @@ function refreshFileSearchSourceState_(project, source, waitForCompletion) {
       state.status = 'indexing';
       state.stage = 'processing_embeddings';
     }
+    state.operationDone = Boolean(operation.done);
     if (state.status !== 'unknown') state.checkError = '';
     state.updatedAt = nowIso_();
     saveFileSearchSourceState_(project.projectId, source.sourceId, state);
@@ -340,6 +349,7 @@ function getProjectSourceIndexDiagnostic(projectId, sourceId) {
   var remoteVerified = false;
   var remoteError = '';
   var storeCounts = null;
+  var sourceCounts = null;
   if (state.storeName) {
     try {
       var config = getUserGeminiConfig_();
@@ -349,37 +359,10 @@ function getProjectSourceIndexDiagnostic(projectId, sourceId) {
         pending: Number(store.pendingDocumentsCount || 0),
         failed: Number(store.failedDocumentsCount || 0)
       };
-      if (!state.documentName && state.status === 'ready') {
-        state.documentName = findFileSearchDocumentForSource_(state.storeName, source.sourceId, config.apiKey) || '';
-      }
-      if (state.documentName) {
-        var document = fileSearchFetchJson_(FILE_SEARCH_API_ROOT + state.documentName, {method: 'get', apiKey: config.apiKey});
-        if (document.state === 'STATE_FAILED') {
-          state.status = 'failed';
-          state.stage = 'processing_embeddings';
-          state.error = state.error || 'Gemini reports STATE_FAILED: one or more document chunks could not be processed.';
-          state.checkError = '';
-        } else if (document.state === 'STATE_PENDING') {
-          state.status = 'indexing';
-          state.stage = 'processing_embeddings';
-          state.error = '';
-          state.checkError = '';
-        } else if (document.state === 'STATE_ACTIVE') {
-          state.status = 'ready';
-          state.stage = 'verified';
-          state.indexedAt = state.indexedAt || nowIso_();
-          state.error = '';
-          remoteVerified = true;
-        }
-        state.updatedAt = nowIso_();
-        saveFileSearchSourceState_(projectId, sourceId, state);
-      }
-      if (remoteVerified && state.status === 'ready') {
-        state.stage = 'verified';
-        state.checkError = '';
-        state.updatedAt = nowIso_();
-        saveFileSearchSourceState_(projectId, sourceId, state);
-      }
+      var sourceDocuments = listFileSearchDocumentsForSource_(state.storeName, source, config.apiKey);
+      sourceCounts = summarizeFileSearchDocuments_(sourceDocuments);
+      state = reconcileFileSearchDocuments_(access.project, source, state, sourceDocuments, storeCounts);
+      remoteVerified = state.status === 'ready' && Boolean(state.documentName);
     } catch (remoteCheckError) {
       remoteError = readableErrorMessage_(remoteCheckError);
     }
@@ -399,17 +382,21 @@ function getProjectSourceIndexDiagnostic(projectId, sourceId) {
     checkError: state.checkError || remoteError || '',
     indexedAt: state.indexedAt || '',
     updatedAt: state.updatedAt || '',
+    attemptStartedAt: state.attemptStartedAt || '',
     remoteVerified: remoteVerified,
     storeCounts: storeCounts,
-    message: fileSearchDiagnosticMessage_(state, remoteVerified, driveAvailable)
+    sourceCounts: sourceCounts,
+    operationState: state.operationName ? state.operationDone ? 'completed' : 'running' : 'not_available',
+    message: fileSearchDiagnosticMessage_(state, remoteVerified, driveAvailable, sourceCounts, storeCounts)
   };
 }
 
-function fileSearchDiagnosticMessage_(state, remoteVerified, driveAvailable) {
+function fileSearchDiagnosticMessage_(state, remoteVerified, driveAvailable, sourceCounts, storeCounts) {
   if (!driveAvailable) return 'The project copy is not available in Drive, so it cannot be indexed.';
   if (state.status === 'ready' && remoteVerified) return 'The index was verified directly in Gemini File Search and is ready for queries.';
   if (state.status === 'ready') return 'Gemini reported the operation as complete, but the indexed document could not be verified yet.';
   if (state.status === 'failed') return 'Indexing genuinely failed during ' + humanFileSearchStage_(state.stage) + '. Use the error below to correct the cause, then retry.';
+  if (state.status === 'unknown' && sourceCounts && !sourceCounts.pending && storeCounts && !storeCounts.pending) return 'The saved operation still appears to be running, but Gemini has no document pending for this source or this project. It is safe to perform a clean retry.';
   if (state.status === 'unknown') return 'The app could not verify the remote operation. This does not prove that indexing failed.';
   if (state.status === 'uploading') return 'The project copy is being transferred to File Search (' + Number(state.progress || 0) + '%).';
   if (state.status === 'indexing') return 'Gemini accepted the complete file and is processing its chunks and embeddings.';
@@ -460,7 +447,63 @@ function applyCompletedFileSearchOperation_(project, source, state, operation, a
     state.checkError = 'Gemini returned document state ' + String(document.state || 'STATE_UNSPECIFIED') + '.';
   }
   state.updatedAt = nowIso_();
+  state.operationDone = Boolean(operation.done);
   return saveFileSearchSourceState_(project.projectId, source.sourceId, state);
+}
+
+function reconcileFileSearchDocuments_(project, source, state, documents, storeCounts) {
+  var attemptTime = Date.parse(state.attemptStartedAt || '');
+  var currentDocuments = (documents || []).filter(function(document) {
+    var created = Date.parse(document.createTime || document.updateTime || '');
+    return !isFinite(attemptTime) || !isFinite(created) || created >= attemptTime - 5000;
+  });
+  var latest = currentDocuments[0] || null;
+  if (latest) {
+    state.documentName = latest.name || state.documentName || '';
+    if (latest.state === 'STATE_ACTIVE') {
+      state.status = 'ready';
+      state.stage = 'verified';
+      state.indexedAt = state.indexedAt || latest.updateTime || nowIso_();
+      state.error = '';
+      state.checkError = '';
+    } else if (latest.state === 'STATE_PENDING') {
+      state.status = 'indexing';
+      state.stage = 'processing_embeddings';
+      state.error = '';
+      state.checkError = '';
+    } else if (latest.state === 'STATE_FAILED') {
+      state.status = 'failed';
+      state.stage = 'processing_embeddings';
+      state.error = state.error || 'Gemini marked the latest document attempt as STATE_FAILED. The file was received, but its chunks or embeddings could not be processed.';
+      state.checkError = '';
+    }
+  } else if (state.status === 'indexing' && storeCounts && Number(storeCounts.pending || 0) === 0) {
+    var started = Date.parse(state.attemptStartedAt || state.updatedAt || '');
+    var elapsed = isFinite(started) ? Date.now() - started : APP.FILE_SEARCH_STALE_OPERATION_MS + 1;
+    if (elapsed >= APP.FILE_SEARCH_STALE_OPERATION_MS) {
+      state.status = 'unknown';
+      state.stage = 'checking_status';
+      state.checkError = 'Gemini still reports the long-running operation as incomplete, but the store contains no pending or active document for this attempt.';
+    }
+  }
+  state.updatedAt = nowIso_();
+  return saveFileSearchSourceState_(project.projectId, source.sourceId, state);
+}
+
+function summarizeFileSearchDocuments_(documents) {
+  var summary = {total: 0, active: 0, pending: 0, failed: 0, other: 0, latestState: '', latestCreatedAt: ''};
+  (documents || []).forEach(function(document, index) {
+    summary.total++;
+    if (document.state === 'STATE_ACTIVE') summary.active++;
+    else if (document.state === 'STATE_PENDING') summary.pending++;
+    else if (document.state === 'STATE_FAILED') summary.failed++;
+    else summary.other++;
+    if (index === 0) {
+      summary.latestState = document.state || 'STATE_UNSPECIFIED';
+      summary.latestCreatedAt = document.createTime || document.updateTime || '';
+    }
+  });
+  return summary;
 }
 
 function getFileSearchSourceState_(projectId, sourceId) {
@@ -591,7 +634,11 @@ function deleteFileSearchDocumentForSource_(projectId, sourceId) {
 
 function deleteFileSearchDocument_(projectId, documentName) {
   var config = getUserGeminiConfig_();
-  fileSearchFetchJson_(FILE_SEARCH_API_ROOT + documentName + '?force=true', {method: 'delete', apiKey: config.apiKey});
+  deleteFileSearchDocumentByName_(documentName, config.apiKey);
+}
+
+function deleteFileSearchDocumentByName_(documentName, apiKey) {
+  fileSearchFetchJson_(FILE_SEARCH_API_ROOT + documentName + '?force=true', {method: 'delete', apiKey: apiKey});
 }
 
 function deleteFileSearchStoreForProject_(projectId) {
@@ -609,22 +656,50 @@ function deleteFileSearchStoreForProject_(projectId) {
   }
 }
 
-function findFileSearchDocumentForSource_(storeName, sourceId, apiKey) {
+function listFileSearchDocuments_(storeName, apiKey) {
+  var output = [];
   var pageToken = '';
   for (var page = 0; page < 25; page++) {
     var url = FILE_SEARCH_API_ROOT + storeName + '/documents?pageSize=20' + (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '');
     var payload = fileSearchFetchJson_(url, {method: 'get', apiKey: apiKey});
     var documents = payload.documents || payload.fileSearchStoreDocuments || [];
-    var match = documents.filter(function(document) {
-      return (document.customMetadata || document.custom_metadata || []).some(function(item) {
-        return item.key === 'source_id' && (item.stringValue || item.string_value) === sourceId;
-      });
-    })[0];
-    if (match && match.name) return match.name;
+    output = output.concat(documents);
     pageToken = payload.nextPageToken || '';
     if (!pageToken) break;
   }
-  return '';
+  return output.sort(function(left, right) {
+    var rightTime = Date.parse(right.createTime || right.updateTime || '');
+    var leftTime = Date.parse(left.createTime || left.updateTime || '');
+    if (!isFinite(rightTime)) rightTime = 0;
+    if (!isFinite(leftTime)) leftTime = 0;
+    return rightTime - leftTime;
+  });
+}
+
+function fileSearchMetadataValue_(document, key) {
+  var item = (document.customMetadata || document.custom_metadata || []).filter(function(metadata) { return metadata.key === key; })[0];
+  return item ? item.stringValue || item.string_value || item.numericValue || item.numeric_value || '' : '';
+}
+
+function listFileSearchDocumentsForSource_(storeName, source, apiKey) {
+  return listFileSearchDocuments_(storeName, apiKey).filter(function(document) {
+    return fileSearchMetadataValue_(document, 'source_id') === source.sourceId || fileSearchMetadataValue_(document, 'drive_id') === source.driveId;
+  });
+}
+
+function findFileSearchDocumentForSource_(storeName, sourceId, apiKey) {
+  var match = listFileSearchDocuments_(storeName, apiKey).filter(function(document) {
+    return fileSearchMetadataValue_(document, 'source_id') === sourceId;
+  })[0];
+  return match && match.name || '';
+}
+
+function deleteFileSearchDocumentsForSource_(storeName, source, apiKey) {
+  var documents = listFileSearchDocumentsForSource_(storeName, source, apiKey);
+  documents.forEach(function(document) {
+    if (document.name) deleteFileSearchDocumentByName_(document.name, apiKey);
+  });
+  return documents.map(function(document) { return document.name; }).filter(Boolean);
 }
 
 function extractFileSearchDocumentName_(operation) {

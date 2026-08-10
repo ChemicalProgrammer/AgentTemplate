@@ -136,6 +136,7 @@
     document.getElementById('source-link-form').addEventListener('submit', submitSourceLink);
     document.getElementById('document-note-form').addEventListener('submit', saveDocumentNote);
     document.getElementById('retry-index-diagnostic').addEventListener('click', retryIndexFromDiagnostic);
+    document.getElementById('refresh-index-diagnostic').addEventListener('click', refreshIndexDiagnostic);
     document.getElementById('member-form').addEventListener('submit', submitMember);
     document.getElementById('member-scope').addEventListener('change', event => document.getElementById('custom-permissions').classList.toggle('hidden', event.target.value !== 'custom'));
     document.getElementById('confirm-cancel').addEventListener('click', () => resolveConfirmation(false));
@@ -826,13 +827,29 @@
     document.getElementById('index-diagnostic-status').textContent = indexStatusLabel(diagnostic.indexStatus);
     document.getElementById('index-diagnostic-stage').textContent = String(diagnostic.indexStage || 'not_started').replace(/_/g, ' ');
     document.getElementById('index-diagnostic-file').textContent = `${friendlyMime(diagnostic.mimeType)} · ${formatFileSize(diagnostic.size)} · ${diagnostic.driveAvailable ? 'Drive copy available' : 'Drive copy unavailable'}`;
-    document.getElementById('index-diagnostic-time').textContent = diagnostic.indexedAt ? `Indexed ${formatDateTime(diagnostic.indexedAt)}` : diagnostic.updatedAt ? `Checked ${formatDateTime(diagnostic.updatedAt)}` : 'Not checked yet';
+    document.getElementById('index-diagnostic-time').textContent = diagnostic.indexedAt ? `Indexed ${formatDateTime(diagnostic.indexedAt)}` : diagnostic.attemptStartedAt ? `Started ${formatDateTime(diagnostic.attemptStartedAt)} · checked ${formatDateTime(diagnostic.updatedAt)}` : diagnostic.updatedAt ? `Checked ${formatDateTime(diagnostic.updatedAt)}` : 'Not checked yet';
     document.getElementById('index-diagnostic-message').textContent = diagnostic.message || '';
     const error = diagnostic.indexError || diagnostic.checkError || diagnostic.driveError || '';
     const errorBox = document.getElementById('index-diagnostic-error'); errorBox.textContent = error; errorBox.classList.toggle('hidden', !error);
     const counts = diagnostic.storeCounts;
-    document.getElementById('index-diagnostic-counts').textContent = counts ? `Store: ${counts.active} active · ${counts.pending} pending · ${counts.failed} failed` : '';
-    document.getElementById('retry-index-diagnostic').classList.toggle('hidden', !state.projectDetails.permissions.edit || !state.projectDetails.permissions.sources);
+    const sourceCounts = diagnostic.sourceCounts;
+    document.getElementById('index-diagnostic-source-counts').textContent = sourceCounts ? `This source: ${sourceCounts.active} active · ${sourceCounts.pending} processing · ${sourceCounts.failed} failed` : '';
+    document.getElementById('index-diagnostic-counts').textContent = counts ? `Project store: ${counts.active} active · ${counts.pending} processing · ${counts.failed} failed` : '';
+    const canRetry = state.projectDetails.permissions.edit && state.projectDetails.permissions.sources && !['uploading','indexing','queued'].includes(diagnostic.indexStatus);
+    const retry = document.getElementById('retry-index-diagnostic');
+    retry.classList.toggle('hidden', !canRetry);
+    retry.textContent = diagnostic.indexStatus === 'ready' ? 'Reindex cleanly' : 'Retry cleanly';
+  }
+
+  async function refreshIndexDiagnostic() {
+    if (!state.diagnosingSourceId) return;
+    const button = document.getElementById('refresh-index-diagnostic'); setBusy(button, true);
+    try {
+      const diagnostic = await server('getProjectSourceIndexDiagnostic', state.currentProjectId, state.diagnosingSourceId);
+      renderIndexDiagnostic(diagnostic); await refreshDocumentGraph();
+      showToast(diagnostic.indexStatus === 'ready' ? 'Index verified.' : diagnostic.indexStatus === 'failed' ? 'Gemini confirmed that indexing failed.' : diagnostic.indexStatus === 'unknown' ? 'No active remote processing could be verified.' : 'Index status refreshed.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
   }
 
   async function retryIndexFromDiagnostic() {
@@ -842,7 +859,7 @@
       const result = await continueSingleSourceIndex(state.diagnosingSourceId, true);
       const diagnostic = await server('getProjectSourceIndexDiagnostic', state.currentProjectId, state.diagnosingSourceId);
       renderIndexDiagnostic(diagnostic); await refreshDocumentGraph();
-      showToast(result.indexStatus === 'failed' ? 'Retry failed; the diagnostic now shows the exact cause.' : 'Index retry submitted.');
+      showToast(result.indexStatus === 'failed' ? 'Clean retry failed; the diagnostic shows the confirmed remote state.' : 'Previous failed attempts were removed and a clean index retry was submitted.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
