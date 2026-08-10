@@ -2,7 +2,9 @@ var SOURCE_INDEX_FILE = 'Sources Index.json';
 
 function listSources(projectId) {
   var access = assertProjectAccess_(projectId, 'sources');
-  return readSourceIndex_(access.project).sources.filter(function(source) { return source.status !== 'removed'; });
+  return readSourceIndex_(access.project).sources.filter(function(source) { return source.status !== 'removed'; }).map(function(source) {
+    return applyFileSearchStateToSource_(access.project, source);
+  });
 }
 
 function addSourceFromDrive(projectId, driveUrlOrId) {
@@ -12,7 +14,8 @@ function addSourceFromDrive(projectId, driveUrlOrId) {
   var imported = copyDriveItemToSources_(project, driveId);
   var index = readSourceIndex_(project);
   var now = nowIso_();
-  var added = imported.files.map(function(file) {
+  var indexingErrors = [];
+  var added = imported.files.map(function(file, fileIndex) {
     var record = {
       sourceId: uuid_(),
       name: file.getName(),
@@ -28,11 +31,20 @@ function addSourceFromDrive(projectId, driveUrlOrId) {
     };
     index.sources.push(record);
     appendControlRow_(project, 'Sources', [record.sourceId, record.name, record.mimeType, record.driveId, record.status, record.addedAt, record.addedBy, record.note]);
-    return record;
+    if (fileIndex < APP.FILE_SEARCH_BATCH_SIZE) {
+      try {
+        indexSourceForCurrentUser_(project, record, false);
+      } catch (indexError) {
+        indexingErrors.push(record.name + ': ' + readableErrorMessage_(indexError));
+      }
+    } else {
+      saveFileSearchSourceState_(project.projectId, record.sourceId, {status: 'queued', updatedAt: nowIso_()});
+    }
+    return applyFileSearchStateToSource_(project, record);
   });
   writeSourceIndex_(project, index);
   touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
-  return {added: added, limited: imported.files.length >= APP.MAX_SOURCE_FILES};
+  return {added: added, limited: imported.files.length >= APP.MAX_SOURCE_FILES, indexingErrors: indexingErrors};
 }
 
 function uploadSource(projectId, upload) {
@@ -55,7 +67,12 @@ function uploadSource(projectId, upload) {
   writeSourceIndex_(access.project, index);
   appendControlRow_(access.project, 'Sources', [record.sourceId, record.name, record.mimeType, record.driveId, record.status, record.addedAt, record.addedBy, record.note]);
   touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
-  return record;
+  try {
+    indexSourceForCurrentUser_(access.project, record, false);
+  } catch (indexError) {
+    record.indexingWarning = readableErrorMessage_(indexError);
+  }
+  return applyFileSearchStateToSource_(access.project, record);
 }
 
 function setSourceActive(projectId, sourceId, active) {
@@ -65,6 +82,7 @@ function setSourceActive(projectId, sourceId, active) {
   if (!source) throw new Error('Source not found.');
   source.status = active ? 'active' : 'inactive';
   source.updatedAt = nowIso_();
+  try { deleteFileSearchDocumentForSource_(projectId, sourceId); } catch (indexError) { console.warn(indexError.message); }
   writeSourceIndex_(access.project, index);
   touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
   return source;
@@ -106,6 +124,7 @@ function buildSourceContext_(project, query, selectedSourceIds) {
   var inlineParts = [];
   var inlineBytes = 0;
   var used = [];
+  var warnings = [];
 
   selected.forEach(function(source, position) {
     try {
@@ -121,9 +140,12 @@ function buildSourceContext_(project, query, selectedSourceIds) {
         inlineParts.push({inlineData: extracted.inlineData});
         inlineBytes += extracted.byteLength;
         used.push({sourceId: source.sourceId, label: label, name: source.name, mimeType: source.mimeType, kind: source.kind});
+      } else if (extracted.inlineData) {
+        warnings.push(source.name + ': the selected binary files exceed the 12 MB local fallback limit.');
       }
     } catch (error) {
       console.warn('Source skipped ' + source.name + ': ' + error.message);
+      warnings.push(source.name + ': ' + readableErrorMessage_(error));
     }
   });
 
@@ -142,35 +164,14 @@ function buildSourceContext_(project, query, selectedSourceIds) {
       used.push({sourceId: item.source.sourceId, label: item.label, name: item.source.name, mimeType: item.source.mimeType, kind: item.source.kind});
     }
   });
-  return {text: textSections.join('\n\n---\n\n'), inlineParts: inlineParts, sourcesUsed: used};
+  return {text: textSections.join('\n\n---\n\n'), inlineParts: inlineParts, sourcesUsed: used, warnings: warnings};
 }
 
 function extractSource_(file) {
   var mime = file.getMimeType();
   var text = '';
-  if (mime === MimeType.GOOGLE_DOCS) {
-    text = DocumentApp.openById(file.getId()).getBody().getText();
-  } else if (mime === MimeType.GOOGLE_SHEETS) {
-    var ss = SpreadsheetApp.openById(file.getId());
-    text = ss.getSheets().map(function(sheet) {
-      var values = sheet.getDataRange().getDisplayValues();
-      return '# Sheet: ' + sheet.getName() + '\n' + values.map(function(row) { return row.join('\t'); }).join('\n');
-    }).join('\n\n');
-  } else if (mime === MimeType.GOOGLE_SLIDES) {
-    var deck = SlidesApp.openById(file.getId());
-    text = deck.getSlides().map(function(slide, index) {
-      var fragments = [];
-      slide.getPageElements().forEach(function(element) {
-        try {
-          if (element.getPageElementType() === SlidesApp.PageElementType.SHAPE) fragments.push(element.asShape().getText().asString());
-          if (element.getPageElementType() === SlidesApp.PageElementType.TABLE) {
-            var table = element.asTable();
-            for (var r = 0; r < table.getNumRows(); r++) for (var c = 0; c < table.getNumColumns(); c++) fragments.push(table.getCell(r, c).getText().asString());
-          }
-        } catch (ignore) {}
-      });
-      return '# Slide ' + (index + 1) + '\n' + fragments.join('\n');
-    }).join('\n\n');
+  if (mime === MimeType.GOOGLE_DOCS || mime === MimeType.GOOGLE_SHEETS || mime === MimeType.GOOGLE_SLIDES) {
+    text = extractGoogleWorkspaceText_(file);
   } else if (/^(text\/|application\/(json|csv|xml))/.test(mime) || /\.(txt|md|csv|tsv|json|xml)$/i.test(file.getName())) {
     text = file.getBlob().getDataAsString('UTF-8');
   }

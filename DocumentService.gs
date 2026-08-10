@@ -13,6 +13,7 @@ function listProjectDocuments(projectId) {
     readSourceIndex_(access.project).sources
       .filter(function(source) { return source.status !== 'removed'; })
       .forEach(function(source) {
+        source = applyFileSearchStateToSource_(access.project, source);
         nodes.push({
           nodeId: 'source:' + source.sourceId,
           sourceId: source.sourceId,
@@ -27,6 +28,9 @@ function listProjectDocuments(projectId) {
           level: 0,
           parentIds: [],
           note: source.note || '',
+          indexStatus: source.indexStatus || 'not_indexed',
+          indexError: source.indexError || '',
+          indexedAt: source.indexedAt || '',
           selectedByDefault: source.status === 'active',
           url: source.driveId ? 'https://drive.google.com/open?id=' + source.driveId : ''
         });

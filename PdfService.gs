@@ -1,5 +1,5 @@
 function exportConversationToPdf(projectId, conversationId) {
-  var access = assertProjectAccess_(projectId, 'history');
+  var access = assertProjectEdit_(projectId, 'history');
   var conversation = readConversation_(access.project, conversationId);
   var title = normalizeName_(conversation.title, 'Chat');
   var doc = DocumentApp.create('TEMP - ' + title);
@@ -14,8 +14,9 @@ function exportConversationToPdf(projectId, conversationId) {
     body.appendParagraph(label + ' · ' + formatDateForDoc_(message.createdAt)).setHeading(DocumentApp.ParagraphHeading.HEADING2);
     body.appendParagraph(message.text);
     if (message.sourcesUsed && message.sourcesUsed.length) {
-      body.appendParagraph('Sources: ' + message.sourcesUsed.map(function(source) { return '[' + source.label + '] ' + source.name; }).join(', '));
+      body.appendParagraph('Sources: ' + message.sourcesUsed.map(function(source) { return '[' + source.label + '] ' + source.name + (source.pageNumber ? ' (p. ' + source.pageNumber + ')' : ''); }).join(', '));
     }
+    if (message.flowsUsed && message.flowsUsed.length) body.appendParagraph('Procedures: ' + message.flowsUsed.map(function(flow) { return '[' + flow.label + '] ' + flow.name; }).join(', '));
   });
   doc.saveAndClose();
 

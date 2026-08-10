@@ -11,7 +11,6 @@
     </div>
     <div class="project-actions">
       <a id="open-project-folder" class="icon-btn action-icon hidden" target="_blank" aria-label="Open project folder" title="Open project folder">↗</a>
-      <button id="export-pdf-button" class="secondary-btn compact-btn"><span>⇩</span> Export PDF</button>
       <button id="share-project-button" class="primary-btn compact-btn owner-only"><span>♙</span> Share</button>
       <button id="project-settings-button" class="icon-btn action-icon" title="Settings" aria-label="Settings">⚙</button>
     </div>
@@ -22,6 +21,8 @@
       <div class="side-tabs" role="tablist" aria-label="Project sections">
         <button class="side-tab active" data-side-tab="chats" role="tab" aria-selected="true">Chats</button>
         <button class="side-tab" data-side-tab="documents" role="tab" aria-selected="false">Documents</button>
+        <button class="side-tab" data-side-tab="templates" role="tab" aria-selected="false">Templates</button>
+        <button class="side-tab" data-side-tab="flows" role="tab" aria-selected="false">Flows</button>
       </div>
 
       <section id="side-panel-chats" class="side-panel-content active" role="tabpanel">
@@ -47,6 +48,7 @@
             <p id="document-count-label">0 items</p>
           </div>
           <div class="toolbar-actions compact-actions">
+            <button id="sync-source-index" class="tonal-icon-btn" aria-label="Sync File Search index" title="Index or repair project sources">⌁</button>
             <button id="add-source-link" class="tonal-icon-btn" aria-label="Import from Drive" title="Import from Drive">＋</button>
             <label class="tonal-icon-btn file-button" aria-label="Upload file" title="Upload file">↑<input id="source-upload" type="file"></label>
           </div>
@@ -58,6 +60,29 @@
           <strong>No documents yet</strong>
           <p>Import a Drive file or upload a source to begin.</p>
         </div>
+      </section>
+
+      <section id="side-panel-templates" class="side-panel-content hidden" role="tabpanel">
+        <div class="panel-toolbar">
+          <div><h2>Templates</h2><p id="template-count-label">0 formats</p></div>
+          <button id="add-template-link" class="tonal-icon-btn" aria-label="Import template from Drive" title="Import Google Docs, Sheets, or Slides template">＋</button>
+        </div>
+        <p class="panel-help">Choose one output format for reports. The template is copied; the original stays unchanged.</p>
+        <div id="template-list" class="asset-list"></div>
+        <div id="empty-templates" class="panel-empty hidden"><span>▧</span><strong>No templates yet</strong><p>Import a Google Docs, Sheets, or Slides file from Drive.</p></div>
+      </section>
+
+      <section id="side-panel-flows" class="side-panel-content hidden" role="tabpanel">
+        <div class="panel-toolbar">
+          <div><h2>Flows</h2><p id="flow-count-label">0 procedures</p></div>
+          <div class="toolbar-actions compact-actions">
+            <button id="add-flow-link" class="tonal-icon-btn" aria-label="Import flow from Drive" title="Import Markdown flow from Drive">＋</button>
+            <label class="tonal-icon-btn flow-file-button" aria-label="Upload Markdown flow" title="Upload .md flow">↑<input id="flow-upload" type="file" accept=".md,text/markdown,text/plain"></label>
+          </div>
+        </div>
+        <p class="panel-help">Select the Markdown procedures Gemini must follow for this chat.</p>
+        <div id="flow-list" class="asset-list"></div>
+        <div id="empty-flows" class="panel-empty hidden"><span>⇄</span><strong>No flows yet</strong><p>Add a .md file with ordered instructions or a processing workflow.</p></div>
       </section>
     </aside>
 

@@ -1,7 +1,7 @@
 var PROJECT_MANIFEST_FILE = 'Project Manifest.json';
 var PROJECT_CONTROL_FILE = 'Project Control';
-var PROJECT_EMOJIS = ['✨', '🧠', '📚', '🧪', '⚙️', '📊', '💡', '🚀', '🌱', '🎯', '🧭', '🧩', '🔬', '🏗️', '📝', '💼', '🎨', '🌎', '🤖', '🗂️'];
-var PROJECT_COLORS = ['blue', 'violet', 'coral', 'amber', 'green', 'teal', 'rose', 'slate'];
+var PROJECT_EMOJIS = ['✨', '🧠', '📚', '🧪', '⚙️', '📊', '💡', '🚀', '🌱', '🎯', '🧭', '🧩', '🔬', '🏗️', '📝', '💼', '🎨', '🌎', '🤖', '🗂️', '⚗️', '🧬', '🧮', '📐', '🛠️', '🏭', '🔋', '🌡️', '💧', '🔥', '♻️', '✅', '📈', '🔎', '🛰️', '🛡️', '🎓', '📋', '🔗', '🌐'];
+var PROJECT_COLORS = ['blue', 'violet', 'coral', 'amber', 'green', 'teal', 'rose', 'slate', 'indigo', 'cyan', 'lime', 'orange', 'plum', 'graphite'];
 
 function listProjects() {
   var email = assertOrganizationMember_();
@@ -34,7 +34,7 @@ function createProject(input) {
   var folder = root.createFolder(title);
   var now = nowIso_();
   var project = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     projectId: uuid_(),
     title: title,
     description: description,
@@ -67,6 +67,9 @@ function getProjectDetails(projectId) {
     conversations: access.allowed.history ? listConversations(projectId) : [],
     sources: access.allowed.sources ? listSources(projectId) : [],
     documents: access.allowed.documents ? documentGraph.filter(function(item) { return item.kind !== 'source'; }) : [],
+    templates: access.allowed.documents ? listTemplates(projectId) : [],
+    flows: access.allowed.sources ? listFlows(projectId) : [],
+    fileSearch: access.allowed.sources ? getProjectFileSearchSummary(projectId) : {configured: false, ready: 0, total: 0},
     documentGraph: documentGraph,
     members: access.member.role === 'owner' ? listProjectMembers(projectId) : []
   };
@@ -112,7 +115,7 @@ function cloneProject(projectId) {
     copyProjectFolderTree_(DriveApp.getFolderById(sourceProject.folderId), destination, idMap);
     var now = nowIso_();
     var clone = JSON.parse(JSON.stringify(sourceProject));
-    clone.schemaVersion = 2;
+    clone.schemaVersion = 3;
     clone.projectId = uuid_();
     clone.title = cloneTitle;
     clone.createdAt = now;
@@ -145,9 +148,11 @@ function cloneProject(projectId) {
 function deleteProject(projectId) {
   var access = assertProjectAccess_(projectId);
   if (access.member.role !== 'owner') throw new Error('Only the project owner can delete this project.');
+  try { deleteFileSearchStoreForProject_(projectId); } catch (indexError) { console.warn('File Search cleanup skipped: ' + indexError.message); }
   DriveApp.getFolderById(access.project.folderId).setTrashed(true);
   var favorites = getFavoriteIds_().filter(function(id) { return id !== projectId; });
   PropertiesService.getUserProperties().setProperty(APP.USER_FAVORITES, JSON.stringify(favorites));
+  PropertiesService.getUserProperties().deleteProperty(APP.USER_TEMPLATE_PREFIX + projectId);
   return {deleted: true, projectId: projectId};
 }
 
@@ -200,6 +205,18 @@ function remapClonedProjectData_(sourceProject, clone, idMap) {
     if (idMap[source.driveId]) source.driveId = idMap[source.driveId];
   });
   writeSourceIndex_(clone, sourceIndex);
+
+  var templateIndex = readTemplateIndex_(clone);
+  templateIndex.templates.forEach(function(template) {
+    if (idMap[template.driveId]) template.driveId = idMap[template.driveId];
+  });
+  writeTemplateIndex_(clone, templateIndex);
+
+  var flowIndex = readFlowIndex_(clone);
+  flowIndex.flows.forEach(function(flow) {
+    if (idMap[flow.driveId]) flow.driveId = idMap[flow.driveId];
+  });
+  writeFlowIndex_(clone, flowIndex);
 
   var documentIndex = readDocumentIndex_(clone);
   documentIndex.documents.forEach(function(document) {
@@ -269,7 +286,7 @@ function registerFolderAsProject_(folder, seenProjectIds) {
 
   if (!manifest || !manifest.projectId) {
     manifest = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       projectId: uuid_(),
       title: folder.getName(),
       description: 'Project imported automatically from Drive.',
@@ -309,6 +326,8 @@ function normalizeProjectStructure_(folder, project, allowCreate) {
   var names = {
     sources: 'Sources',
     documents: 'Generated Documents',
+    templates: 'Templates',
+    flows: 'Flows',
     conversations: 'Conversation Data',
     pdfs: 'PDF Exports'
   };
@@ -336,6 +355,8 @@ function initializeControlSpreadsheet_(spreadsheet, project) {
     'Project Attribute History': ['Attribute', 'Value', 'Valid From', 'Valid To', 'Status', 'Changed By'],
     'Assignments': ['Person', 'Email', 'Role', 'Valid From', 'Valid To', 'Status'],
     'Sources': ['Source ID', 'Name', 'Type', 'Drive ID', 'Status', 'Added At', 'Added By', 'Notes'],
+    'Templates': ['Template ID', 'Name', 'Type', 'Drive ID', 'Status', 'Added At', 'Added By', 'Notes'],
+    'Flows': ['Flow ID', 'Name', 'Drive ID', 'Status', 'Added At', 'Added By', 'Notes'],
     'Conversations': ['Conversation ID', 'Title', 'Created At', 'Updated At', 'Created By', 'Status', 'JSON File ID'],
     'Documents': ['Document ID', 'Name', 'Type', 'Created At', 'Created By', 'Drive ID', 'Source Conversation', 'Notes'],
     'Document Versions': ['Document ID', 'Version', 'Created At', 'Created By', 'Drive ID', 'Notes'],
@@ -363,11 +384,26 @@ function syncProjectControl_(project, initializeIfNeeded) {
     if (initializeIfNeeded || !spreadsheet.getSheetByName('Project Information')) {
       initializeControlSpreadsheet_(spreadsheet, project);
     } else {
+      ensureV15ControlSheets_(spreadsheet);
       syncProjectInformationSheet_(spreadsheet, project);
     }
   } catch (error) {
     console.warn('Project Control could not be updated: ' + error.message);
   }
+}
+
+function ensureV15ControlSheets_(spreadsheet) {
+  var definitions = {
+    'Templates': ['Template ID', 'Name', 'Type', 'Drive ID', 'Status', 'Added At', 'Added By', 'Notes'],
+    'Flows': ['Flow ID', 'Name', 'Drive ID', 'Status', 'Added At', 'Added By', 'Notes']
+  };
+  Object.keys(definitions).forEach(function(name) {
+    if (spreadsheet.getSheetByName(name)) return;
+    var sheet = spreadsheet.insertSheet(name);
+    sheet.getRange(1, 1, 1, definitions[name].length).setValues([definitions[name]])
+      .setFontWeight('bold').setBackground('#e8f0fe');
+    sheet.setFrozenRows(1);
+  });
 }
 
 function syncProjectInformationSheet_(spreadsheet, project) {

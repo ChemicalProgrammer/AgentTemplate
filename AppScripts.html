@@ -1,5 +1,5 @@
 <script>
-  const PROJECT_EMOJIS = Object.freeze(['✨','🧠','📚','🧪','⚙️','📊','💡','🚀','🌱','🎯','🧭','🧩','🔬','🏗️','📝','💼','🎨','🌎','🤖','🗂️']);
+  const PROJECT_EMOJIS = Object.freeze(['✨','🧠','📚','🧪','⚙️','📊','💡','🚀','🌱','🎯','🧭','🧩','🔬','🏗️','📝','💼','🎨','🌎','🤖','🗂️','⚗️','🧬','🧮','📐','🛠️','🏭','🔋','🌡️','💧','🔥','♻️','✅','📈','🔎','🛰️','🛡️','🎓','📋','🔗','🌐']);
   const PROJECT_COLORS = Object.freeze({
     blue:   {label:'Ocean', accent:'#0b57d0', tint:'#e8f0fe', tintStrong:'#d3e3fd'},
     violet: {label:'Violet', accent:'#7451c8', tint:'#f0eafd', tintStrong:'#e4d7fb'},
@@ -8,7 +8,13 @@
     green:  {label:'Fern', accent:'#137333', tint:'#e7f4ea', tintStrong:'#cdebd4'},
     teal:   {label:'Teal', accent:'#00796b', tint:'#e1f3f1', tintStrong:'#c4e8e3'},
     rose:   {label:'Rose', accent:'#a83e72', tint:'#f9e8f0', tintStrong:'#f3cfe0'},
-    slate:  {label:'Slate', accent:'#56616f', tint:'#edf0f4', tintStrong:'#dce2e9'}
+    slate:  {label:'Slate', accent:'#56616f', tint:'#edf0f4', tintStrong:'#dce2e9'},
+    indigo: {label:'Indigo', accent:'#3949ab', tint:'#e8eafc', tintStrong:'#cfd3f6'},
+    cyan:   {label:'Cyan', accent:'#007c91', tint:'#e0f4f7', tintStrong:'#bde7ed'},
+    lime:   {label:'Lime', accent:'#587d13', tint:'#eff7df', tintStrong:'#dcedb7'},
+    orange: {label:'Orange', accent:'#b84d00', tint:'#fff0e3', tintStrong:'#ffd9ba'},
+    plum:   {label:'Plum', accent:'#7c3d82', tint:'#f6e9f7', tintStrong:'#ebd1ee'},
+    graphite:{label:'Graphite', accent:'#3f4752', tint:'#e9edf1', tintStrong:'#d2d9e0'}
   });
 
   const state = {
@@ -22,7 +28,10 @@
     currentConversationId: null,
     currentConversation: null,
     conversationSelections: new Map(),
+    flowSelections: new Map(),
     selectedSources: new Set(),
+    selectedFlows: new Set(),
+    selectedTemplateId: '',
     busy: false,
     activeRequest: null,
     confirmResolver: null,
@@ -43,7 +52,7 @@
     return new Promise((resolve, reject) => {
       const runner = google.script.run
         .withSuccessHandler(resolve)
-        .withFailureHandler(error => reject(new Error(error && error.message ? error.message : String(error))));
+        .withFailureHandler(error => reject(new Error(clientErrorMessage(error))));
       runner[functionName](...args);
     });
   }
@@ -112,8 +121,13 @@
     }));
     document.getElementById('add-source-link').addEventListener('click', () => openModal('source-link-modal'));
     document.getElementById('source-upload').addEventListener('change', uploadSourceFile);
+    document.getElementById('sync-source-index').addEventListener('click', syncSourceIndex);
+    document.getElementById('add-template-link').addEventListener('click', () => openModal('template-link-modal'));
+    document.getElementById('template-link-form').addEventListener('submit', submitTemplateLink);
+    document.getElementById('add-flow-link').addEventListener('click', () => openModal('flow-link-modal'));
+    document.getElementById('flow-link-form').addEventListener('submit', submitFlowLink);
+    document.getElementById('flow-upload').addEventListener('change', uploadFlowFile);
     document.getElementById('add-member-button').addEventListener('click', () => openModal('member-modal'));
-    document.getElementById('export-pdf-button').addEventListener('click', exportPdf);
     document.getElementById('gemini-settings-form').addEventListener('submit', saveGeminiSettings);
     document.getElementById('root-settings-form').addEventListener('submit', saveRootFolderSettings);
     document.getElementById('load-models').addEventListener('click', loadModels);
@@ -274,7 +288,9 @@
       const details = await server('getProjectDetails', projectId);
       state.projectDetails = details; state.documentNodes = details.documentGraph || [];
       state.currentProjectId = projectId; state.currentConversationId = null; state.currentConversation = null;
-      state.conversationSelections = new Map();
+      state.conversationSelections = new Map(); state.flowSelections = new Map();
+      state.selectedFlows = new Set();
+      state.selectedTemplateId = ((details.templates || []).find(item => item.selected) || {}).templateId || '';
       selectDefaultDocuments(); syncProjectSummary(details); renderProjectDetails();
       showSideTab(details.permissions.history ? 'chats' : 'documents');
       if (details.permissions.history && details.conversations.length) await openConversation(details.conversations[0].conversationId);
@@ -301,20 +317,25 @@
     document.getElementById('project-header-icon').disabled = !permissions.edit || !permissions.project;
     const folder = document.getElementById('open-project-folder');
     folder.classList.toggle('hidden', !project.folderUrl); folder.href = project.folderUrl || '#';
-    document.getElementById('export-pdf-button').classList.toggle('hidden', !permissions.history || !permissions.edit);
     document.getElementById('share-project-button').classList.toggle('hidden', project.role !== 'owner');
     document.querySelector('[data-side-tab="chats"]').classList.toggle('hidden', !permissions.history);
     document.querySelector('[data-side-tab="documents"]').classList.toggle('hidden', !permissions.sources && !permissions.documents);
+    document.querySelector('[data-side-tab="templates"]').classList.toggle('hidden', !permissions.documents);
+    document.querySelector('[data-side-tab="flows"]').classList.toggle('hidden', !permissions.sources);
     document.getElementById('new-conversation').classList.toggle('hidden', !permissions.edit);
     document.querySelector('.composer-wrap').classList.toggle('hidden', !permissions.edit || !permissions.history);
     document.getElementById('add-source-link').classList.toggle('hidden', !permissions.edit || !permissions.sources);
     document.querySelector('.file-button').classList.toggle('hidden', !permissions.edit || !permissions.sources);
-    renderConversationList(); renderDocumentGraph(); renderMembers();
+    document.getElementById('sync-source-index').classList.toggle('hidden', !permissions.edit || !permissions.sources);
+    document.getElementById('add-template-link').classList.toggle('hidden', !permissions.edit || !permissions.documents);
+    document.getElementById('add-flow-link').classList.toggle('hidden', !permissions.edit || !permissions.sources);
+    document.querySelector('.flow-file-button').classList.toggle('hidden', !permissions.edit || !permissions.sources);
+    renderConversationList(); renderDocumentGraph(); renderTemplates(); renderFlows(); renderMembers();
   }
 
   function showDashboard() {
     if (state.activeRequest) stopResponse();
-    state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map();
+    state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
     document.getElementById('project-view').classList.add('hidden');
     const dashboard = document.getElementById('dashboard-view'); dashboard.classList.remove('hidden'); dashboard.classList.add('view-entering');
     setWorkspaceMode('dashboard'); renderProjects(); refreshProjects(true); setTimeout(() => dashboard.classList.remove('view-entering'), 360);
@@ -341,11 +362,15 @@
       <button class="conversation-open" data-conversation-id="${escapeHtml(item.conversationId)}">
         <strong>${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${numberValue(item.messageCount)} messages</small>
       </button>
-      ${state.projectDetails.permissions.edit ? `<button class="conversation-delete" data-delete-conversation="${escapeHtml(item.conversationId)}" aria-label="Delete ${escapeHtml(item.title)}" title="Delete chat">🗑</button>` : ''}
+      <div class="conversation-actions">
+        ${state.projectDetails.permissions.edit ? `<button class="conversation-export" data-export-conversation="${escapeHtml(item.conversationId)}" aria-label="Export ${escapeHtml(item.title)} as PDF" title="Export this chat as PDF">⇩</button>` : ''}
+        ${state.projectDetails.permissions.edit ? `<button class="conversation-delete" data-delete-conversation="${escapeHtml(item.conversationId)}" aria-label="Delete ${escapeHtml(item.title)}" title="Delete chat">🗑</button>` : ''}
+      </div>
     </article>`).join('');
     document.getElementById('chat-count-label').textContent = `${conversations.length} ${conversations.length === 1 ? 'conversation' : 'conversations'}`;
     document.getElementById('empty-conversations').classList.toggle('hidden', conversations.length > 0);
     list.querySelectorAll('[data-conversation-id]').forEach(button => button.addEventListener('click', () => openConversation(button.dataset.conversationId, button)));
+    list.querySelectorAll('[data-export-conversation]').forEach(button => button.addEventListener('click', () => exportConversationPdf(button.dataset.exportConversation, button)));
     list.querySelectorAll('[data-delete-conversation]').forEach(button => button.addEventListener('click', () => deleteChat(button.dataset.deleteConversation, button)));
   }
 
@@ -354,10 +379,10 @@
     try {
       const conversation = await server('createConversation', state.currentProjectId, 'New chat');
       state.projectDetails.conversations.unshift({conversationId: conversation.conversationId, title: conversation.title, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, messageCount: 0});
-      state.currentConversationId = conversation.conversationId; state.currentConversation = conversation; selectDefaultDocuments();
+      state.currentConversationId = conversation.conversationId; state.currentConversation = conversation; selectDefaultDocuments(); state.selectedFlows = new Set();
       rememberCurrentSelection();
-      updateProjectCount('conversationCount', state.projectDetails.conversations.length);
-      renderConversationList(); renderDocumentGraph(); renderMessages(); document.getElementById('chat-input').focus();
+      rememberCurrentFlowSelection(); updateProjectCount('conversationCount', state.projectDetails.conversations.length);
+      renderConversationList(); renderDocumentGraph(); renderFlows(); renderMessages(); document.getElementById('chat-input').focus();
       return conversation;
     } catch (error) { showToast(error.message, true); throw error; }
     finally { if (!silent) setBusy(button, false); }
@@ -373,8 +398,13 @@
       } else if (Object.prototype.hasOwnProperty.call(state.currentConversation, 'sourceSelection')) {
         state.selectedSources = new Set(normalizeSelectedDocumentIds(state.currentConversation.sourceSelection));
       } else selectDefaultDocuments();
+      if (state.flowSelections.has(conversationId)) {
+        state.selectedFlows = new Set(state.flowSelections.get(conversationId));
+      } else {
+        state.selectedFlows = new Set(state.currentConversation.flowSelection || []);
+      }
       rememberCurrentSelection();
-      renderDocumentGraph(); renderMessages(); document.getElementById('project-side-panel').classList.remove('mobile-open');
+      rememberCurrentFlowSelection(); renderDocumentGraph(); renderFlows(); renderMessages(); document.getElementById('project-side-panel').classList.remove('mobile-open');
     } catch (error) { showToast(error.message, true); }
     finally { if (button) setBusy(button, false); }
   }
@@ -392,6 +422,7 @@
       await server('deleteConversation', state.currentProjectId, conversationId);
       state.projectDetails.conversations = state.projectDetails.conversations.filter(item => item.conversationId !== conversationId);
       state.conversationSelections.delete(conversationId);
+      state.flowSelections.delete(conversationId);
       updateProjectCount('conversationCount', state.projectDetails.conversations.length);
       if (state.currentConversationId === conversationId) {
         state.currentConversationId = null; state.currentConversation = null;
@@ -423,12 +454,17 @@
 
   function renderMessage(message) {
     const assistant = message.role === 'assistant';
-    const sources = (message.sourcesUsed || []).map(source => `[${escapeHtml(source.label)}] ${escapeHtml(source.name)}`).join(' · ');
+    const sources = (message.sourcesUsed || []).map(source => {
+      const label = `[${escapeHtml(source.label)}] ${escapeHtml(source.name)}${source.pageNumber ? ` · p. ${numberValue(source.pageNumber)}` : ''}`;
+      return source.citationUri ? `<a href="${escapeHtml(source.citationUri)}" target="_blank" rel="noopener">${label}</a>` : label;
+    }).join(' · ');
+    const flows = (message.flowsUsed || []).map(flow => `[${escapeHtml(flow.label)}] ${escapeHtml(flow.name)}`).join(' · ');
     if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div></article>`;
     return `<article class="message assistant" data-message-id="${escapeHtml(message.messageId)}">
       <div class="message-header"><span class="message-avatar">✦</span><span>Gemini</span></div>
       <div id="message-body-${escapeHtml(message.messageId)}" class="message-body ${message.isTyping ? 'typing-cursor' : ''}">${formatMarkdown(message.text)}</div>
       ${sources ? `<div class="message-sources">${sources}</div>` : ''}
+      ${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
       ${!message.isTyping ? `<div class="message-actions"><button data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response">▣</button></div>` : ''}
     </article>`;
   }
@@ -456,14 +492,16 @@
       const temporary = {messageId: `temp-${Date.now()}`, role: 'user', text, createdAt: new Date().toISOString()};
       state.currentConversation.messages.push(temporary); setAgentBusy(true); renderMessages({thinking: true});
       const selection = Array.from(state.selectedSources);
-      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId, text, selection, request.id);
+      const flowSelection = Array.from(state.selectedFlows);
+      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId, text, selection, flowSelection, request.id);
       if (request.cancelled) { await syncCurrentConversation(); showToast('Response stopped.'); return; }
       state.currentConversationId = result.conversationId;
       state.currentConversation.messages = state.currentConversation.messages.filter(item => item.messageId !== temporary.messageId);
       state.currentConversation.messages.push(result.userMessage);
       const assistantMessage = Object.assign({}, result.assistantMessage, {text: '', isTyping: true});
-      state.currentConversation.messages.push(assistantMessage); state.currentConversation.title = result.title; state.currentConversation.sourceSelection = selection;
+      state.currentConversation.messages.push(assistantMessage); state.currentConversation.title = result.title; state.currentConversation.sourceSelection = selection; state.currentConversation.flowSelection = flowSelection;
       state.conversationSelections.set(result.conversationId, selection);
+      state.flowSelections.set(result.conversationId, flowSelection);
       const record = state.projectDetails.conversations.find(item => item.conversationId === result.conversationId);
       if (record) { record.title = result.title; record.updatedAt = result.assistantMessage.createdAt; record.messageCount = result.messageCount; }
       else state.projectDetails.conversations.unshift({conversationId: result.conversationId, title: result.title, updatedAt: result.assistantMessage.createdAt, messageCount: result.messageCount});
@@ -515,11 +553,11 @@
     document.getElementById('chat-input').disabled = busy;
   }
 
-  async function exportPdf() {
-    if (!state.currentConversationId) return showToast('Select a chat to export.', true);
-    const button = document.getElementById('export-pdf-button'); setBusy(button, true);
+  async function exportConversationPdf(conversationId, button) {
+    if (!conversationId) return showToast('Select a chat to export.', true);
+    setBusy(button, true);
     try {
-      const pdf = await server('exportConversationToPdf', state.currentProjectId, state.currentConversationId);
+      const pdf = await server('exportConversationToPdf', state.currentProjectId, conversationId);
       await refreshDocumentGraph(); window.open(pdf.url, '_blank'); showToast('PDF created in Drive.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
@@ -558,6 +596,8 @@
     container.querySelectorAll('[data-document-select]').forEach(input => input.addEventListener('change', () => toggleDocumentSelection(input.dataset.documentSelect, input.checked)));
     container.querySelectorAll('[data-document-menu]').forEach(button => button.addEventListener('click', event => toggleDocumentMenu(event, button)));
     container.querySelectorAll('[data-edit-document-note]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openDocumentNoteModal(button.dataset.editDocumentNote); }));
+    container.querySelectorAll('[data-index-source]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); indexSingleSource(button.dataset.indexSource, button); }));
+    container.querySelectorAll('[data-generate-report]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); generateReport(button.dataset.generateReport, button); }));
     container.querySelectorAll('[data-delete-document]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); deleteDocumentNode(button.dataset.deleteDocument, button); }));
     container.querySelectorAll('.document-card').forEach(card => {
       card.addEventListener('mouseenter', () => highlightDocumentRelations(card.dataset.nodeId));
@@ -576,6 +616,7 @@
   function renderDocumentCard(node) {
     const relation = documentRelationCounts(node.nodeId);
     const canDelete = state.projectDetails.permissions.edit && (node.kind === 'source' ? state.projectDetails.permissions.sources : state.projectDetails.permissions.documents);
+    const indexLabel = ({ready:'Indexed',indexing:'Indexing',uploading:'Uploading',queued:'Queued',failed:'Index failed',not_indexed:'Not indexed'})[node.indexStatus] || '';
     return `<article class="document-card" data-node-id="${escapeHtml(node.nodeId)}" tabindex="0">
       <div class="document-card-top">
         <label class="document-checkbox" title="Use in chat"><input type="checkbox" data-document-select="${escapeHtml(node.nodeId)}" ${state.selectedSources.has(node.nodeId) ? 'checked' : ''}><span></span></label>
@@ -584,15 +625,17 @@
           <button class="document-menu-button" data-document-menu="${escapeHtml(node.nodeId)}" aria-label="Document actions" title="Document actions">⋮</button>
           <div class="document-menu hidden" role="menu">
             ${node.url ? `<a href="${escapeHtml(node.url)}" target="_blank" role="menuitem">Open in Drive <span>↗</span></a>` : ''}
+            ${node.kind === 'source' && canDelete ? `<button data-index-source="${escapeHtml(node.sourceId)}" role="menuitem">${node.indexStatus === 'ready' ? 'Reindex source' : 'Index source'} <span>⌁</span></button>` : ''}
             ${canDelete ? `<button data-edit-document-note="${escapeHtml(node.nodeId)}" role="menuitem">Edit note <span>✎</span></button>` : ''}
             ${canDelete ? `<button data-delete-document="${escapeHtml(node.nodeId)}" class="danger-menu-item" role="menuitem">Move to trash <span>🗑</span></button>` : ''}
             <div class="menu-separator"></div><p>Generate from document</p>
-            <button disabled>Summary <span>Soon</span></button><button disabled>Report <span>Soon</span></button>
+            <button disabled>Summary <span>Soon</span></button><button data-generate-report="${escapeHtml(node.nodeId)}" ${state.projectDetails.permissions.edit && state.projectDetails.permissions.documents ? '' : 'disabled'}>Report <span>↗</span></button>
           </div>
         </div>
       </div>
       <strong title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</strong>
       <div class="document-meta"><span>${escapeHtml(friendlyMime(node.mimeType))}</span><span>${formatFileSize(node.size)}</span><span>${formatDate(node.createdAt)}</span></div>
+      ${node.kind === 'source' ? `<div class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" title="${escapeHtml(node.indexError || '')}"><i></i>${escapeHtml(indexLabel)}</div>` : ''}
       <p class="document-note ${node.note ? '' : 'empty'}">${escapeHtml(node.note || 'No note added')}</p>
       <div class="document-relations"><span>${relation.parents ? `↑ ${relation.parents} parent${relation.parents === 1 ? '' : 's'}` : 'Original'}</span>${relation.children ? `<span>↓ ${relation.children} child${relation.children === 1 ? '' : 'ren'}</span>` : ''}</div>
     </article>`;
@@ -623,8 +666,10 @@
 
   function renderSourceChips() {
     const selected = state.documentNodes.filter(node => state.selectedSources.has(node.nodeId));
-    document.getElementById('active-source-chips').innerHTML = selected.slice(0, 4).map(node => `<button class="source-chip" title="Open Documents panel">${fileTypeIcon(node.mimeType)} ${escapeHtml(node.name)}</button>`).join('') + (selected.length > 4 ? `<button class="source-chip">+${selected.length - 4}</button>` : '');
-    document.querySelectorAll('#active-source-chips .source-chip').forEach(chip => chip.addEventListener('click', () => showSideTab('documents')));
+    const flows = state.projectDetails ? (state.projectDetails.flows || []).filter(flow => state.selectedFlows.has(flow.flowId)) : [];
+    const items = selected.map(node => ({tab:'documents', icon:fileTypeIcon(node.mimeType), name:node.name})).concat(flows.map(flow => ({tab:'flows',icon:'⇄',name:flow.name})));
+    document.getElementById('active-source-chips').innerHTML = items.slice(0, 5).map(item => `<button class="source-chip" data-chip-tab="${item.tab}" title="Open ${item.tab} panel">${item.icon} ${escapeHtml(item.name)}</button>`).join('') + (items.length > 5 ? `<button class="source-chip">+${items.length - 5}</button>` : '');
+    document.querySelectorAll('#active-source-chips [data-chip-tab]').forEach(chip => chip.addEventListener('click', () => showSideTab(chip.dataset.chipTab)));
   }
 
   function documentRelationCounts(nodeId) {
@@ -683,7 +728,8 @@
     try {
       const result = await server('addSourceFromDrive', state.currentProjectId, document.getElementById('source-drive-url').value);
       state.projectDetails.sources.push(...result.added); closeModals(); event.target.reset(); await refreshDocumentGraph();
-      showSideTab('documents'); showToast(`${result.added.length} document(s) imported.`);
+      const pending = (result.added || []).filter(item => item.indexStatus !== 'ready').length;
+      showSideTab('documents'); showToast(result.indexingErrors && result.indexingErrors.length ? `${result.added.length} document(s) imported; ${result.indexingErrors.length} need index repair.` : pending ? `${result.added.length} document(s) imported; ${pending} queued or indexing.` : `${result.added.length} document(s) imported and indexed.`);
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
@@ -695,9 +741,139 @@
     try {
       const base64 = await fileAsBase64(file);
       const source = await server('uploadSource', state.currentProjectId, {name: file.name, mimeType: file.type || 'application/octet-stream', base64});
-      state.projectDetails.sources.push(source); await refreshDocumentGraph(); showSideTab('documents'); showToast('Document uploaded.');
+      state.projectDetails.sources.push(source); await refreshDocumentGraph(); showSideTab('documents'); showToast(source.indexingWarning ? 'Document uploaded; File Search indexing needs repair.' : source.indexStatus === 'ready' ? 'Document uploaded and indexed.' : 'Document uploaded; indexing started.');
     } catch (error) { showToast(error.message, true); }
     finally { event.target.value = ''; setBusy(label, false); }
+  }
+
+  async function syncSourceIndex() {
+    const button = document.getElementById('sync-source-index'); setBusy(button, true);
+    try {
+      const result = await server('syncProjectSourcesIndex', state.currentProjectId);
+      await refreshDocumentGraph();
+      const failed = (result.sources || []).filter(item => item.indexStatus === 'failed').length;
+      showToast(failed ? `Index sync completed with ${failed} failed source(s). Open a source menu for details.` : result.remaining ? `${result.processed} source(s) processed; ${result.remaining} remain. Run Sync index again.` : result.summary && result.summary.indexing ? `${result.summary.indexing} source(s) are still indexing. Refresh or run Sync index again shortly.` : 'All active sources are indexed.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  async function indexSingleSource(sourceId, button) {
+    closeDocumentMenus(); setBusy(button, true);
+    try { await server('indexProjectSource', state.currentProjectId, sourceId); await refreshDocumentGraph(); showToast('Source indexed for semantic search.'); }
+    catch (error) { await refreshDocumentGraph(); showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  async function generateReport(nodeId, button) {
+    closeDocumentMenus(); setBusy(button, true);
+    try {
+      const report = await server('createReportFromDocument', state.currentProjectId, nodeId, state.selectedTemplateId, Array.from(state.selectedFlows));
+      await refreshDocumentGraph(); window.open(report.url, '_blank');
+      showToast(state.selectedTemplateId ? 'Report created from the selected template.' : 'Report created as a Google Doc.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function renderTemplates() {
+    if (!state.projectDetails) return;
+    const templates = state.projectDetails.templates || [];
+    const container = document.getElementById('template-list');
+    container.innerHTML = templates.map(template => `<article class="asset-card ${template.templateId === state.selectedTemplateId ? 'selected' : ''}">
+      <label class="asset-select"><input type="radio" name="report-template" value="${escapeHtml(template.templateId)}" ${template.templateId === state.selectedTemplateId ? 'checked' : ''}><span class="file-type-icon ${fileTypeClass(template.mimeType)}">${fileTypeIcon(template.mimeType)}</span><span><strong>${escapeHtml(template.name)}</strong><small>${escapeHtml(friendlyMime(template.mimeType))} · report output</small></span></label>
+      <div class="asset-actions">${template.url ? `<a href="${escapeHtml(template.url)}" target="_blank" title="Open template">↗</a>` : ''}${state.projectDetails.permissions.edit ? `<button data-delete-template="${escapeHtml(template.templateId)}" title="Move template to trash">×</button>` : ''}</div>
+    </article>`).join('');
+    document.getElementById('template-count-label').textContent = `${templates.length} ${templates.length === 1 ? 'format' : 'formats'}`;
+    document.getElementById('empty-templates').classList.toggle('hidden', templates.length > 0);
+    container.querySelectorAll('input[name="report-template"]').forEach(input => input.addEventListener('change', () => chooseTemplate(input.value)));
+    container.querySelectorAll('[data-delete-template]').forEach(button => button.addEventListener('click', () => deleteTemplate(button.dataset.deleteTemplate, button)));
+  }
+
+  async function submitTemplateLink(event) {
+    event.preventDefault(); setBusy(event.target, true);
+    try {
+      const template = await server('addTemplateFromDrive', state.currentProjectId, document.getElementById('template-drive-url').value);
+      state.projectDetails.templates.push(template);
+      if (template.selected) state.selectedTemplateId = template.templateId;
+      closeModals(); event.target.reset(); renderTemplates(); showSideTab('templates'); showToast('Report template imported.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  async function chooseTemplate(templateId) {
+    try { await server('selectReportTemplate', state.currentProjectId, templateId); state.selectedTemplateId = templateId; renderTemplates(); showToast('Default report template selected.'); }
+    catch (error) { showToast(error.message, true); }
+  }
+
+  async function deleteTemplate(templateId, button) {
+    const template = (state.projectDetails.templates || []).find(item => item.templateId === templateId); if (!template) return;
+    const confirmed = await askConfirmation({title:'Move this template to trash?', message:`“${template.name}” will no longer be available as a report format. Existing reports are not affected.`, action:'Move to trash'});
+    if (!confirmed) return;
+    setBusy(button, true);
+    try {
+      await server('removeTemplate', state.currentProjectId, templateId);
+      state.projectDetails.templates = state.projectDetails.templates.filter(item => item.templateId !== templateId);
+      if (state.selectedTemplateId === templateId) state.selectedTemplateId = '';
+      renderTemplates(); showToast('Template moved to Drive trash.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function renderFlows() {
+    if (!state.projectDetails) return;
+    const flows = state.projectDetails.flows || [];
+    const container = document.getElementById('flow-list');
+    container.innerHTML = flows.map(flow => `<article class="asset-card ${state.selectedFlows.has(flow.flowId) ? 'selected' : ''}">
+      <label class="asset-select"><input type="checkbox" data-flow-select="${escapeHtml(flow.flowId)}" ${state.selectedFlows.has(flow.flowId) ? 'checked' : ''}><span class="file-type-icon type-flow">MD</span><span><strong>${escapeHtml(flow.name)}</strong><small>Procedure · ${formatFileSize(flow.size)}</small></span></label>
+      <div class="asset-actions">${flow.url ? `<a href="${escapeHtml(flow.url)}" target="_blank" title="Open flow">↗</a>` : ''}${state.projectDetails.permissions.edit ? `<button data-delete-flow="${escapeHtml(flow.flowId)}" title="Move flow to trash">×</button>` : ''}</div>
+    </article>`).join('');
+    document.getElementById('flow-count-label').textContent = `${flows.length} ${flows.length === 1 ? 'procedure' : 'procedures'}`;
+    document.getElementById('empty-flows').classList.toggle('hidden', flows.length > 0);
+    container.querySelectorAll('[data-flow-select]').forEach(input => input.addEventListener('change', () => toggleFlowSelection(input.dataset.flowSelect, input.checked)));
+    container.querySelectorAll('[data-delete-flow]').forEach(button => button.addEventListener('click', () => deleteFlow(button.dataset.deleteFlow, button)));
+    renderSourceChips();
+  }
+
+  function toggleFlowSelection(flowId, checked) {
+    checked ? state.selectedFlows.add(flowId) : state.selectedFlows.delete(flowId);
+    rememberCurrentFlowSelection(); renderFlows();
+  }
+
+  function rememberCurrentFlowSelection() {
+    if (state.currentConversationId) state.flowSelections.set(state.currentConversationId, Array.from(state.selectedFlows));
+  }
+
+  async function submitFlowLink(event) {
+    event.preventDefault(); setBusy(event.target, true);
+    try {
+      const flow = await server('addFlowFromDrive', state.currentProjectId, document.getElementById('flow-drive-url').value);
+      state.projectDetails.flows.push(flow); closeModals(); event.target.reset(); renderFlows(); showSideTab('flows'); showToast('Markdown flow imported.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  async function uploadFlowFile(event) {
+    const file = event.target.files[0]; if (!file) return;
+    if (!/\.md$/i.test(file.name)) { event.target.value = ''; return showToast('Flows must use the .md extension.', true); }
+    if (file.size > 6 * 1024 * 1024) { event.target.value = ''; return showToast('The flow exceeds 6 MB. Import it from Drive instead.', true); }
+    const label = document.querySelector('.flow-file-button'); setBusy(label, true);
+    try {
+      const flow = await server('uploadFlow', state.currentProjectId, {name:file.name, mimeType:file.type || 'text/markdown', base64:await fileAsBase64(file)});
+      state.projectDetails.flows.push(flow); renderFlows(); showSideTab('flows'); showToast('Markdown flow uploaded.');
+    } catch (error) { showToast(error.message, true); }
+    finally { event.target.value = ''; setBusy(label, false); }
+  }
+
+  async function deleteFlow(flowId, button) {
+    const flow = (state.projectDetails.flows || []).find(item => item.flowId === flowId); if (!flow) return;
+    const confirmed = await askConfirmation({title:'Move this flow to trash?', message:`“${flow.name}” will no longer be available as a procedure.`, action:'Move to trash'});
+    if (!confirmed) return;
+    setBusy(button, true);
+    try {
+      await server('removeFlow', state.currentProjectId, flowId);
+      state.projectDetails.flows = state.projectDetails.flows.filter(item => item.flowId !== flowId); state.selectedFlows.delete(flowId);
+      rememberCurrentFlowSelection(); renderFlows(); showToast('Flow moved to Drive trash.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
   }
 
   async function deleteDocumentNode(nodeId, button) {
@@ -926,7 +1102,15 @@
   function updateProjectCount(key, value) { const project = state.projects.find(item => item.projectId === state.currentProjectId); if (project) project[key] = value; }
   function fileAsBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); }
   function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-  function showToast(message, error = false) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.toggle('error', error); toast.classList.remove('hidden'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.add('hidden'), 4200); }
+  function showToast(message, error = false) { const toast = document.getElementById('toast'); toast.textContent = String(message || (error ? 'The operation failed. Check Apps Script execution logs for details.' : 'Done.')); toast.classList.toggle('error', error); toast.classList.remove('hidden'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.add('hidden'), 5200); }
+  function clientErrorMessage(error) {
+    if (!error) return 'The server returned an empty error. Check Apps Script execution logs.';
+    if (typeof error === 'string') return error || 'Unknown server error.';
+    if (error.message) return String(error.message);
+    if (error.details && error.details.message) return String(error.details.message);
+    try { const text = JSON.stringify(error); return text && text !== '{}' ? text : String(error); }
+    catch (_) { return String(error); }
+  }
   function numberValue(value) { const number = Number(value); return Number.isFinite(number) && number >= 0 ? number : 0; }
   function statusLabel(status) { return ({active:'Ongoing',planning:'Planning',archived:'Archived'})[status] || status; }
   function projectColorStyle(colorKey) { const color = PROJECT_COLORS[colorKey] || PROJECT_COLORS.blue; return `--project-accent:${color.accent};--project-tint:${color.tint};--project-tint-strong:${color.tintStrong};`; }

@@ -71,8 +71,14 @@ function applyProjectDriveSharing_(project, email, role, scope, permissions) {
   var shareSources = scope === 'sources_documents' || scope === 'custom' && permissions.sources;
   var shareDocuments = scope === 'sources_documents' || scope === 'custom' && permissions.documents;
   var shareHistory = scope === 'history' || scope === 'custom' && permissions.history;
-  if (shareSources) driveRoleMethod_(DriveApp.getFolderById(project.folders.sources), email, driveRole);
-  if (shareDocuments) driveRoleMethod_(DriveApp.getFolderById(project.folders.documents), email, driveRole);
+  if (shareSources) {
+    driveRoleMethod_(DriveApp.getFolderById(project.folders.sources), email, driveRole);
+    if (project.folders.flows) driveRoleMethod_(DriveApp.getFolderById(project.folders.flows), email, driveRole);
+  }
+  if (shareDocuments) {
+    driveRoleMethod_(DriveApp.getFolderById(project.folders.documents), email, driveRole);
+    if (project.folders.templates) driveRoleMethod_(DriveApp.getFolderById(project.folders.templates), email, driveRole);
+  }
   if (shareHistory) {
     driveRoleMethod_(DriveApp.getFolderById(project.folders.conversations), email, driveRole);
     driveRoleMethod_(DriveApp.getFolderById(project.folders.pdfs), email, driveRole);
@@ -80,7 +86,7 @@ function applyProjectDriveSharing_(project, email, role, scope, permissions) {
 }
 
 function removeAllProjectDriveAccess_(project, email) {
-  [project.folderId, project.folders.sources, project.folders.documents, project.folders.conversations, project.folders.pdfs]
+  [project.folderId, project.folders.sources, project.folders.documents, project.folders.templates, project.folders.flows, project.folders.conversations, project.folders.pdfs]
     .filter(Boolean)
     .forEach(function(id) {
       try { removeDriveAccess_(DriveApp.getFolderById(id), email); } catch (error) { console.warn(error.message); }

@@ -104,3 +104,14 @@ function truncate_(text, length) {
   text = String(text || '');
   return text.length > length ? text.slice(0, length) + '\n[Contenido truncado]' : text;
 }
+
+function readableErrorMessage_(error) {
+  if (!error) return 'Unknown error.';
+  if (error.message) return String(error.message);
+  try {
+    var text = JSON.stringify(error);
+    return text && text !== '{}' ? text : String(error);
+  } catch (ignore) {
+    return String(error);
+  }
+}

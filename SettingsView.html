@@ -62,6 +62,20 @@
     <form id="source-link-form"><label>Drive ID or URL<input id="source-drive-url" required></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Import</button></div></form>
   </section>
 
+  <section id="template-link-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="template-link-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">IMPORT TEMPLATE</p><h2 id="template-link-title">Google Workspace template</h2>
+    <p class="muted">Paste a Google Docs, Sheets, or Slides link. A protected project copy will be used to create future reports.</p>
+    <form id="template-link-form"><label>Drive ID or URL<input id="template-drive-url" required></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Import template</button></div></form>
+  </section>
+
+  <section id="flow-link-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="flow-link-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">IMPORT FLOW</p><h2 id="flow-link-title">Markdown procedure</h2>
+    <p class="muted">Paste a Drive link to a .md file containing instructions or an ordered processing flow.</p>
+    <form id="flow-link-form"><label>Drive ID or URL<input id="flow-drive-url" required></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Import flow</button></div></form>
+  </section>
+
   <section id="share-modal" class="modal share-modal hidden" role="dialog" aria-modal="true" aria-labelledby="share-title">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
     <div class="share-heading">

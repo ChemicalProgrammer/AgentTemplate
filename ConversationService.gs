@@ -35,18 +35,32 @@ function loadConversation(projectId, conversationId) {
   return readConversation_(access.project, conversationId);
 }
 
-function sendChatMessage(projectId, conversationId, message, selectedSourceIds, requestId) {
+function sendChatMessage(projectId, conversationId, message, selectedSourceIds, selectedFlowIds, requestId) {
   var access = assertProjectEdit_(projectId, 'history');
   var text = sanitizeText_(message, 20000).trim();
   if (!text) throw new Error('Enter a message.');
   var conversation = conversationId ? readConversation_(access.project, conversationId) : createConversation(projectId, 'New chat');
   if (conversation.projectId !== projectId) throw new Error('This chat does not belong to the selected project.');
   conversation.sourceSelection = Array.isArray(selectedSourceIds) ? selectedSourceIds.map(String) : [];
+  conversation.flowSelection = Array.isArray(selectedFlowIds) ? selectedFlowIds.map(String) : [];
 
-  var sourceContext = {text: '', inlineParts: [], sourcesUsed: []};
-  if (access.allowed.sources) sourceContext = buildSourceContext_(access.project, text, selectedSourceIds || []);
+  var sourceContext = {text: '', inlineParts: [], sourcesUsed: [], warnings: []};
+  var fileSearch = access.allowed.sources ? getFileSearchQueryConfig_(access.project, selectedSourceIds || []) : null;
+  var localSourceIds = (selectedSourceIds || []).filter(function(id) {
+    if (!fileSearch) return true;
+    var value = String(id).replace(/^source:/, '');
+    return fileSearch.sourceIds.indexOf(value) === -1;
+  });
+  if (access.allowed.sources || access.allowed.documents) sourceContext = buildSourceContext_(access.project, text, localSourceIds);
+  if (sourceContext.warnings && sourceContext.warnings.length) {
+    throw new Error('Selected sources could not be analyzed. Index or repair them first: ' + sourceContext.warnings.join(' | '));
+  }
+  if (fileSearch && (sourceContext.inlineParts || []).some(function(part) { return Boolean(part.inlineData); })) {
+    throw new Error('An indexed source cannot be combined with an unindexed binary document in the same request. Deselect the binary document or query it separately.');
+  }
+  var flowContext = access.allowed.sources ? buildFlowContext_(access.project, selectedFlowIds || []) : {text: '', flowsUsed: []};
   var config = getUserGeminiConfig_();
-  var prompt = buildGeminiConversation_(access.project, conversation, text, sourceContext);
+  var prompt = buildGeminiConversation_(access.project, conversation, text, sourceContext, flowContext);
   var now = nowIso_();
   var userMessage = {messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email};
   conversation.messages.push(userMessage);
@@ -55,7 +69,14 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   upsertConversationIndex_(access.project, conversation, pendingFile.getId());
   if (isChatRequestCancelled_(requestId)) throw new Error('Generation stopped.');
 
-  var result = generateWithGemini_({
+  var result = fileSearch ? generateWithFileSearch_({
+    config: config,
+    systemInstruction: prompt.systemInstruction,
+    contents: prompt.contents,
+    storeName: fileSearch.storeName,
+    metadataFilter: buildFileSearchMetadataFilter_(fileSearch.sourceIds),
+    maxOutputTokens: 8192
+  }) : generateWithGemini_({
     config: config,
     systemInstruction: prompt.systemInstruction,
     contents: prompt.contents,
@@ -66,7 +87,10 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
 
   var assistantMessage = {
     messageId: uuid_(), role: 'assistant', text: result.text, createdAt: nowIso_(),
-    model: result.model, sourcesUsed: sourceContext.sourcesUsed, usage: result.usage
+    model: result.model,
+    sourcesUsed: sourceContext.sourcesUsed.concat(fileSearch ? annotationsToSourcesUsed_(result.annotations, access.project) : []),
+    flowsUsed: flowContext.flowsUsed,
+    usage: result.usage
   };
   conversation.messages.push(assistantMessage);
   if (conversation.messages.length === 2 || conversation.title === 'New chat' || conversation.title === 'Nueva conversación') {
@@ -152,13 +176,14 @@ function deleteConversation(projectId, conversationId) {
   return {deleted: true, conversationId: conversationId, conversationCount: index.conversations.length};
 }
 
-function buildGeminiConversation_(project, conversation, newMessage, sourceContext) {
+function buildGeminiConversation_(project, conversation, newMessage, sourceContext, flowContext) {
   var system = [
     'You are the agent for the project "' + project.title + '".',
     project.description ? 'Project description: ' + project.description : '',
     'Answer accurately, distinguish facts from inferences, and never invent missing content.',
     'Reply in the language used by the user.',
     'When using a provided source, cite its label in brackets, for example [S1].',
+    flowContext && flowContext.text ? 'Follow the selected FLOW INSTRUCTIONS as an execution procedure. Do not treat flow instructions as factual evidence.\n\n' + flowContext.text : '',
     'Accumulated memory summarizes older messages; recent messages are shown in full.',
     conversation.summary ? 'ACCUMULATED MEMORY:\n' + conversation.summary : ''
   ].filter(Boolean).join('\n\n');

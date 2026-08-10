@@ -1,14 +1,27 @@
 function copyDriveItemToSources_(project, driveId) {
   var destination = DriveApp.getFolderById(project.folders.sources);
+  var sourceFile = null;
   try {
-    var sourceFile = DriveApp.getFileById(driveId);
-    return {type: 'file', files: [sourceFile.makeCopy(sourceFile.getName(), destination)]};
-  } catch (fileError) {
+    sourceFile = DriveApp.getFileById(driveId);
+  } catch (notAFileError) {}
+  if (sourceFile) {
+    if (sourceFile.isTrashed()) throw new Error('The selected Drive file is in trash.');
+    try {
+      var copiedFile = sourceFile.makeCopy(sourceFile.getName(), destination);
+      return {type: 'file', files: [copiedFile]};
+    } catch (copyError) {
+      throw new Error('The Drive file could not be copied into Sources: ' + readableErrorMessage_(copyError));
+    }
+  }
+  try {
     var sourceFolder = DriveApp.getFolderById(driveId);
+    if (sourceFolder.isTrashed()) throw new Error('The selected Drive folder is in trash.');
     var importedFolder = destination.createFolder(sourceFolder.getName());
     var copied = [];
     copyFolderFiles_(sourceFolder, importedFolder, copied, APP.MAX_SOURCE_FILES);
     return {type: 'folder', files: copied, folder: importedFolder};
+  } catch (folderError) {
+    throw new Error('The Drive ID is not an accessible file or folder: ' + readableErrorMessage_(folderError));
   }
 }
 
