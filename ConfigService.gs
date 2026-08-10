@@ -1,6 +1,6 @@
 var APP = Object.freeze({
   NAME: 'Gemini Project Agent',
-  VERSION: '1.2.0',
+  VERSION: '1.3.0',
   ROOT_NAME: 'Agent Projects',
   SYSTEM_FOLDER: '_System',
   REGISTRY_PREFIX: 'PROJECT_',

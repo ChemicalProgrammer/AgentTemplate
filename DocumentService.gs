@@ -26,6 +26,7 @@ function listProjectDocuments(projectId) {
           status: source.status,
           level: 0,
           parentIds: [],
+          note: source.note || '',
           selectedByDefault: source.status === 'active',
           url: source.driveId ? 'https://drive.google.com/open?id=' + source.driveId : ''
         });
@@ -46,6 +47,7 @@ function listProjectDocuments(projectId) {
         status: 'active',
         level: 1,
         parentIds: normalizeDocumentParentIds_(document.parentIds),
+        note: document.note || '',
         selectedByDefault: false,
         sourceConversation: document.sourceConversation || '',
         url: document.url
@@ -83,6 +85,7 @@ function listGeneratedDocumentsForProject_(project, includePdfs, allowRepair) {
       updatedAt: file.updatedAt,
       kind: record.kind || (file.mimeType === MimeType.PDF ? 'pdf' : 'generated'),
       parentIds: normalizeDocumentParentIds_(record.parentIds),
+      note: record.note || '',
       createdBy: record.createdBy || '',
       sourceConversation: record.sourceConversation || ''
     };
@@ -115,7 +118,7 @@ function saveAssistantMessageAsDocument(projectId, conversationId, messageId, ti
   recordGeneratedDocument_(access.project, file, {
     kind: 'generated', parentIds: parentIds, createdBy: access.email, sourceConversation: conversationId
   });
-  appendControlRow_(access.project, 'Documents', [file.getId(), file.getName(), file.getMimeType(), nowIso_(), access.email, file.getId(), conversationId]);
+  appendControlRow_(access.project, 'Documents', [file.getId(), file.getName(), file.getMimeType(), nowIso_(), access.email, file.getId(), conversationId, '']);
   incrementGeneratedDocumentCount_(projectId, access.project);
   return publicGeneratedFile_(file, 'generated', parentIds, conversationId);
 }
@@ -131,7 +134,7 @@ function createDocumentFromText(projectId, title, content, parentIds) {
   file.moveTo(DriveApp.getFolderById(access.project.folders.documents));
   var normalizedParents = normalizeDocumentParentIds_(parentIds);
   recordGeneratedDocument_(access.project, file, {kind: 'generated', parentIds: normalizedParents, createdBy: access.email, sourceConversation: 'manual'});
-  appendControlRow_(access.project, 'Documents', [file.getId(), file.getName(), file.getMimeType(), nowIso_(), access.email, file.getId(), 'manual']);
+  appendControlRow_(access.project, 'Documents', [file.getId(), file.getName(), file.getMimeType(), nowIso_(), access.email, file.getId(), 'manual', '']);
   incrementGeneratedDocumentCount_(projectId, access.project);
   return publicGeneratedFile_(file, 'generated', normalizedParents, 'manual');
 }
@@ -153,6 +156,36 @@ function removeGeneratedDocument(projectId, nodeId) {
   return {removed: true, nodeId: 'document:' + fileId, documentCount: count};
 }
 
+function updateDocumentNote(projectId, nodeId, note) {
+  nodeId = String(nodeId || '');
+  note = sanitizeText_(note, 1200).trim();
+  if (nodeId.indexOf('source:') === 0) {
+    var sourceAccess = assertProjectEdit_(projectId, 'sources');
+    var sourceId = nodeId.slice('source:'.length);
+    var sourceIndex = readSourceIndex_(sourceAccess.project);
+    var source = sourceIndex.sources.filter(function(item) { return item.sourceId === sourceId && item.status !== 'removed'; })[0];
+    if (!source) throw new Error('Source document not found.');
+    source.note = note;
+    source.updatedAt = nowIso_();
+    writeSourceIndex_(sourceAccess.project, sourceIndex);
+    updateControlEntityNote_(sourceAccess.project, 'Sources', sourceId, note);
+    appendControlRow_(sourceAccess.project, 'Change Log', [nowIso_(), sourceAccess.email, 'UPDATE_DOCUMENT_NOTE', 'Source', sourceId, note]);
+    return {nodeId: nodeId, note: note};
+  }
+
+  var documentAccess = assertProjectEdit_(projectId, 'documents');
+  var fileId = nodeId.replace(/^document:/, '');
+  var documentIndex = readDocumentIndex_(documentAccess.project);
+  var document = documentIndex.documents.filter(function(item) { return item.driveId === fileId; })[0];
+  if (!document) throw new Error('Generated document not found.');
+  document.note = note;
+  document.updatedAt = nowIso_();
+  writeDocumentIndex_(documentAccess.project, documentIndex);
+  updateControlEntityNote_(documentAccess.project, 'Documents', fileId, note);
+  appendControlRow_(documentAccess.project, 'Change Log', [nowIso_(), documentAccess.email, 'UPDATE_DOCUMENT_NOTE', 'Document', fileId, note]);
+  return {nodeId: 'document:' + fileId, note: note};
+}
+
 function getDocumentContextRecords_(project) {
   var records = readSourceIndex_(project).sources
     .filter(function(source) { return source.status !== 'removed'; })
@@ -164,7 +197,8 @@ function getDocumentContextRecords_(project) {
         driveId: source.driveId,
         mimeType: source.mimeType,
         status: 'active',
-        kind: 'source'
+        kind: 'source',
+        note: source.note || ''
       };
     });
   listGeneratedDocumentsForProject_(project, true, true).forEach(function(document) {
@@ -174,7 +208,8 @@ function getDocumentContextRecords_(project) {
       driveId: document.id,
       mimeType: document.mimeType,
       status: 'active',
-      kind: document.kind || 'generated'
+      kind: document.kind || 'generated',
+      note: document.note || ''
     });
   });
   return records;
@@ -194,6 +229,7 @@ function recordGeneratedDocument_(project, file, metadata) {
     createdAt: record && record.createdAt ? record.createdAt : file.getDateCreated().toISOString(),
     createdBy: metadata.createdBy || record && record.createdBy || '',
     sourceConversation: metadata.sourceConversation || record && record.sourceConversation || '',
+    note: metadata.note != null ? sanitizeText_(metadata.note, 1200).trim() : record && record.note || '',
     updatedAt: file.getLastUpdated().toISOString()
   };
   if (record) Object.keys(value).forEach(function(key) { record[key] = value[key]; }); else index.documents.push(value);
@@ -210,7 +246,7 @@ function reconcileDocumentIndex_(project, files) {
       index.documents.push({
         documentId: uuid_(), driveId: file.id, name: file.name, mimeType: file.mimeType,
         kind: file.mimeType === MimeType.PDF ? 'pdf' : 'generated', parentIds: [],
-        createdAt: file.createdAt || file.updatedAt, createdBy: '', sourceConversation: '', updatedAt: file.updatedAt
+        createdAt: file.createdAt || file.updatedAt, createdBy: '', sourceConversation: '', note: '', updatedAt: file.updatedAt
       });
       changed = true;
     } else if (record.name !== file.name || record.mimeType !== file.mimeType || record.updatedAt !== file.updatedAt) {
@@ -223,7 +259,7 @@ function reconcileDocumentIndex_(project, files) {
 
 function readDocumentIndex_(project) {
   var folder = DriveApp.getFolderById(project.folders.documents);
-  var data = readJsonFile_(getFirstFileByName_(folder, DOCUMENT_INDEX_FILE), {schemaVersion: 1, documents: []});
+  var data = readJsonFile_(getFirstFileByName_(folder, DOCUMENT_INDEX_FILE), {schemaVersion: 2, documents: []});
   data.documents = data.documents || [];
   return data;
 }
@@ -276,8 +312,25 @@ function publicGeneratedFile_(file, kind, parentIds, sourceConversation) {
     id: file.getId(), name: file.getName(), mimeType: file.getMimeType(), url: file.getUrl(),
     size: Number(file.getSize() || 0), createdAt: file.getDateCreated().toISOString(),
     updatedAt: file.getLastUpdated().toISOString(), kind: kind || 'generated',
-    parentIds: normalizeDocumentParentIds_(parentIds), sourceConversation: sourceConversation || ''
+    parentIds: normalizeDocumentParentIds_(parentIds), sourceConversation: sourceConversation || '', note: ''
   };
+}
+
+function updateControlEntityNote_(project, sheetName, entityId, note) {
+  if (!project.controlFileId) return;
+  try {
+    var sheet = SpreadsheetApp.openById(project.controlFileId).getSheetByName(sheetName);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getDisplayValues();
+    for (var row = 0; row < ids.length; row++) {
+      if (String(ids[row][0]) === String(entityId)) {
+        sheet.getRange(row + 2, sheet.getLastColumn()).setValue(note);
+        return;
+      }
+    }
+  } catch (error) {
+    console.warn('The document note could not be synchronized to Project Control: ' + error.message);
+  }
 }
 
 function countGeneratedDocuments_(project) {

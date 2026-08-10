@@ -24,9 +24,23 @@
 
   <section id="emoji-modal" class="modal emoji-modal hidden" role="dialog" aria-modal="true" aria-labelledby="emoji-title">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
-    <p class="eyebrow">PROJECT IDENTITY</p><h2 id="emoji-title">Choose an emoji</h2>
-    <p class="muted">Use one memorable symbol to recognize this project across the dashboard.</p>
+    <p class="eyebrow">PROJECT IDENTITY</p><h2 id="emoji-title">Emoji and color</h2>
+    <p class="muted">Choose a memorable symbol and a color for this project's cards and workspace accents.</p>
+    <h3 class="identity-section-title">Emoji</h3>
     <div id="project-emoji-options" class="emoji-options" role="listbox" aria-label="Project emojis"></div>
+    <h3 class="identity-section-title">Color</h3>
+    <div id="project-color-options" class="color-options" role="listbox" aria-label="Project colors"></div>
+    <div class="modal-actions"><button type="button" class="primary-btn" data-close-modal>Done</button></div>
+  </section>
+
+  <section id="document-note-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="document-note-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">DOCUMENT DETAILS</p><h2 id="document-note-title">Document note</h2>
+    <p id="document-note-name" class="muted document-note-name"></p>
+    <form id="document-note-form">
+      <label>Note or description<textarea id="document-note-text" rows="6" maxlength="1200" placeholder="Add context, purpose, assumptions, or review notes"></textarea></label>
+      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Save note</button></div>
+    </form>
   </section>
 
   <section id="source-link-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="source-link-title">

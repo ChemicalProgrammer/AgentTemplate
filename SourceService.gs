@@ -23,10 +23,11 @@ function addSourceFromDrive(projectId, driveUrlOrId) {
       addedAt: now,
       updatedAt: file.getLastUpdated().toISOString(),
       addedBy: access.email,
-      origin: 'drive-copy'
+      origin: 'drive-copy',
+      note: ''
     };
     index.sources.push(record);
-    appendControlRow_(project, 'Sources', [record.sourceId, record.name, record.mimeType, record.driveId, record.status, record.addedAt, record.addedBy]);
+    appendControlRow_(project, 'Sources', [record.sourceId, record.name, record.mimeType, record.driveId, record.status, record.addedAt, record.addedBy, record.note]);
     return record;
   });
   writeSourceIndex_(project, index);
@@ -48,11 +49,11 @@ function uploadSource(projectId, upload) {
   var record = {
     sourceId: uuid_(), name: file.getName(), driveId: file.getId(), mimeType: file.getMimeType(),
     size: Number(file.getSize() || 0), status: 'active', addedAt: nowIso_(),
-    updatedAt: file.getLastUpdated().toISOString(), addedBy: access.email, origin: 'upload'
+    updatedAt: file.getLastUpdated().toISOString(), addedBy: access.email, origin: 'upload', note: ''
   };
   index.sources.push(record);
   writeSourceIndex_(access.project, index);
-  appendControlRow_(access.project, 'Sources', [record.sourceId, record.name, record.mimeType, record.driveId, record.status, record.addedAt, record.addedBy]);
+  appendControlRow_(access.project, 'Sources', [record.sourceId, record.name, record.mimeType, record.driveId, record.status, record.addedAt, record.addedBy, record.note]);
   touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
   return record;
 }
@@ -84,7 +85,7 @@ function removeSource(projectId, sourceId) {
 
 function readSourceIndex_(project) {
   var folder = DriveApp.getFolderById(project.folders.sources);
-  var data = readJsonFile_(getFirstFileByName_(folder, SOURCE_INDEX_FILE), {schemaVersion: 1, sources: []});
+  var data = readJsonFile_(getFirstFileByName_(folder, SOURCE_INDEX_FILE), {schemaVersion: 2, sources: []});
   data.sources = data.sources || [];
   return data;
 }
@@ -113,10 +114,10 @@ function buildSourceContext_(project, query, selectedSourceIds) {
       var label = 'S' + (position + 1);
       if (extracted.text) {
         chunkText_(extracted.text, 6000, 500).forEach(function(chunk, chunkIndex) {
-          candidates.push({source: source, label: label, chunk: chunk, chunkIndex: chunkIndex, score: scoreChunk_(chunk, queryTerms)});
+          candidates.push({source: source, label: label, chunk: chunk, chunkIndex: chunkIndex, score: scoreChunk_((source.note || '') + '\n' + chunk, queryTerms)});
         });
       } else if (extracted.inlineData && inlineBytes + extracted.byteLength <= APP.MAX_INLINE_BYTES) {
-        inlineParts.push({text: '[' + label + '] Binary file: ' + source.name});
+        inlineParts.push({text: '[' + label + '] Binary file: ' + source.name + (source.note ? '\nDocument note: ' + source.note : '')});
         inlineParts.push({inlineData: extracted.inlineData});
         inlineBytes += extracted.byteLength;
         used.push({sourceId: source.sourceId, label: label, name: source.name, mimeType: source.mimeType, kind: source.kind});
@@ -132,7 +133,8 @@ function buildSourceContext_(project, query, selectedSourceIds) {
   var textSections = [];
   chosen.forEach(function(item) {
     if (chars >= APP.MAX_TEXT_CONTEXT_CHARS) return;
-    var section = '[' + item.label + '] ' + item.source.name + ' — excerpt ' + (item.chunkIndex + 1) + '\n' + item.chunk;
+    var section = '[' + item.label + '] ' + item.source.name + ' — excerpt ' + (item.chunkIndex + 1) +
+      (item.source.note ? '\nDocument note: ' + item.source.note : '') + '\n' + item.chunk;
     section = truncate_(section, APP.MAX_TEXT_CONTEXT_CHARS - chars);
     chars += section.length;
     textSections.push(section);

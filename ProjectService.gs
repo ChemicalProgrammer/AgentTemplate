@@ -1,10 +1,7 @@
 var PROJECT_MANIFEST_FILE = 'Project Manifest.json';
 var PROJECT_CONTROL_FILE = 'Project Control';
 var PROJECT_EMOJIS = ['✨', '🧠', '📚', '🧪', '⚙️', '📊', '💡', '🚀', '🌱', '🎯', '🧭', '🧩', '🔬', '🏗️', '📝', '💼', '🎨', '🌎', '🤖', '🗂️'];
-var LEGACY_PROJECT_ICONS = {
-  spark: '✨', science: '🧪', insight: '📊', code: '⚙️', notes: '📝',
-  launch: '🚀', data: '🗂️', idea: '💡'
-};
+var PROJECT_COLORS = ['blue', 'violet', 'coral', 'amber', 'green', 'teal', 'rose', 'slate'];
 
 function listProjects() {
   var email = assertOrganizationMember_();
@@ -39,11 +36,12 @@ function createProject(input) {
   var folder = root.createFolder(title);
   var now = nowIso_();
   var project = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     projectId: uuid_(),
     title: title,
     description: description,
     icon: normalizeProjectIcon_(input.icon),
+    color: normalizeProjectColor_(input.color),
     createdAt: now,
     updatedAt: now,
     owner: email,
@@ -84,6 +82,7 @@ function updateProject(projectId, changes) {
   if (changes.title != null) project.title = normalizeName_(changes.title, project.title);
   if (changes.description != null) project.description = sanitizeText_(changes.description, 800).trim();
   if (changes.icon != null) project.icon = normalizeProjectIcon_(changes.icon);
+  if (changes.color != null) project.color = normalizeProjectColor_(changes.color);
   if (changes.status != null && ['active', 'planning', 'archived'].indexOf(changes.status) !== -1) {
     project.status = changes.status;
   }
@@ -105,13 +104,165 @@ function toggleProjectFavorite(projectId) {
   return {projectId: projectId, favorite: index === -1};
 }
 
+function cloneProject(projectId) {
+  var access = assertProjectAccess_(projectId);
+  if (access.member.scope !== 'full') throw new Error('Full project access is required to clone this project.');
+  var sourceProject = access.project;
+  var root = getRootFolder_();
+  var cloneTitle = buildCloneProjectTitle_(root, sourceProject.title);
+  var destination = root.createFolder(cloneTitle);
+  var idMap = {};
+  try {
+    copyProjectFolderTree_(DriveApp.getFolderById(sourceProject.folderId), destination, idMap);
+    var now = nowIso_();
+    var clone = JSON.parse(JSON.stringify(sourceProject));
+    clone.schemaVersion = 2;
+    clone.projectId = uuid_();
+    clone.title = cloneTitle;
+    clone.createdAt = now;
+    clone.updatedAt = now;
+    clone.owner = access.email;
+    clone.folderId = destination.getId();
+    clone.controlFileId = idMap[sourceProject.controlFileId] || '';
+    clone.icon = normalizeProjectIcon_(sourceProject.icon);
+    clone.color = normalizeProjectColor_(sourceProject.color);
+    clone.status = 'active';
+    clone.members = [{email: access.email, role: 'owner', scope: 'full', addedAt: now}];
+    clone.folders = {};
+    Object.keys(sourceProject.folders || {}).forEach(function(key) {
+      if (idMap[sourceProject.folders[key]]) clone.folders[key] = idMap[sourceProject.folders[key]];
+    });
+    clone.stats = {sourceCount: 0, conversationCount: 0, documentCount: 0, lastActivityAt: now};
+    clone = normalizeProjectStructure_(destination, clone, true);
+    remapClonedProjectData_(sourceProject, clone, idMap);
+    remapClonedControlSpreadsheet_(clone.controlFileId, idMap, sourceProject.projectId, clone.projectId);
+    clone = reconcileProjectStats_(clone);
+    writeProjectManifest_(destination, clone);
+    syncProjectControl_(clone, false);
+    saveRegistryProject_(clone);
+    return publicProject_(clone, clone.members[0], false);
+  } catch (error) {
+    try { destination.setTrashed(true); } catch (cleanupError) { console.warn(cleanupError.message); }
+    throw new Error('The project could not be cloned: ' + error.message);
+  }
+}
+
+function deleteProject(projectId) {
+  var access = assertProjectAccess_(projectId);
+  if (access.member.role !== 'owner') throw new Error('Only the project owner can delete this project.');
+  DriveApp.getFolderById(access.project.folderId).setTrashed(true);
+  withScriptLock_(function() {
+    PropertiesService.getScriptProperties().deleteProperty(APP.REGISTRY_PREFIX + projectId);
+  });
+  var favorites = getFavoriteIds_().filter(function(id) { return id !== projectId; });
+  PropertiesService.getUserProperties().setProperty(APP.USER_FAVORITES, JSON.stringify(favorites));
+  return {deleted: true, projectId: projectId};
+}
+
 function discoverProjects_() {
   var root = getRootFolder_();
   var folders = root.getFolders();
+  var rootFolderIds = {};
   while (folders.hasNext()) {
     var folder = folders.next();
     if (folder.getName() === APP.SYSTEM_FOLDER) continue;
+    rootFolderIds[folder.getId()] = true;
     try { registerFolderAsProject_(folder); } catch (error) { console.warn(error.message); }
+  }
+  removeMissingRegistryProjects_(rootFolderIds);
+}
+
+function removeMissingRegistryProjects_(rootFolderIds) {
+  var props = PropertiesService.getScriptProperties();
+  var values = props.getProperties();
+  var activeIds = [];
+  Object.keys(values).filter(function(key) { return key.indexOf(APP.REGISTRY_PREFIX) === 0; }).forEach(function(key) {
+    var project = safeJsonParse_(values[key], null);
+    if (!project || !rootFolderIds[project.folderId]) {
+      props.deleteProperty(key);
+    } else {
+      activeIds.push(project.projectId);
+    }
+  });
+  var favorites = getFavoriteIds_();
+  var cleaned = favorites.filter(function(id) { return activeIds.indexOf(id) !== -1; });
+  if (cleaned.length !== favorites.length) PropertiesService.getUserProperties().setProperty(APP.USER_FAVORITES, JSON.stringify(cleaned));
+}
+
+function buildCloneProjectTitle_(root, title) {
+  var base = normalizeName_(title + ' Copy', 'Project Copy');
+  if (!root.getFoldersByName(base).hasNext()) return base;
+  for (var number = 2; number < 1000; number++) {
+    var candidate = normalizeName_(title + ' Copy ' + number, 'Project Copy ' + number);
+    if (!root.getFoldersByName(candidate).hasNext()) return candidate;
+  }
+  return normalizeName_(title + ' Copy ' + new Date().getTime(), 'Project Copy');
+}
+
+function remapClonedProjectData_(sourceProject, clone, idMap) {
+  var sourceIndex = readSourceIndex_(clone);
+  sourceIndex.sources.forEach(function(source) {
+    if (idMap[source.driveId]) source.driveId = idMap[source.driveId];
+  });
+  writeSourceIndex_(clone, sourceIndex);
+
+  var documentIndex = readDocumentIndex_(clone);
+  documentIndex.documents.forEach(function(document) {
+    if (idMap[document.driveId]) document.driveId = idMap[document.driveId];
+    document.parentIds = normalizeDocumentParentIds_(document.parentIds).map(function(parentId) {
+      return remapClonedNodeId_(parentId, idMap);
+    });
+  });
+  writeDocumentIndex_(clone, documentIndex);
+
+  var conversationIndex = readConversationIndex_(clone);
+  conversationIndex.conversations.forEach(function(record) {
+    if (idMap[record.fileId]) record.fileId = idMap[record.fileId];
+    try {
+      var file = DriveApp.getFileById(record.fileId);
+      var conversation = readJsonFile_(file, null);
+      if (!conversation) return;
+      conversation.projectId = clone.projectId;
+      conversation.sourceSelection = (conversation.sourceSelection || []).map(function(id) { return remapClonedNodeId_(id, idMap); });
+      (conversation.messages || []).forEach(function(message) {
+        (message.sourcesUsed || []).forEach(function(source) { source.sourceId = remapClonedNodeId_(source.sourceId, idMap); });
+      });
+      file.setContent(JSON.stringify(conversation, null, 2));
+    } catch (error) {
+      console.warn('A cloned chat could not be remapped: ' + error.message);
+    }
+  });
+  writeJsonFile_(DriveApp.getFolderById(clone.folders.conversations), CONVERSATION_INDEX_FILE, conversationIndex);
+}
+
+function remapClonedNodeId_(nodeId, idMap) {
+  nodeId = String(nodeId || '');
+  if (nodeId.indexOf('document:') === 0) {
+    var oldFileId = nodeId.slice('document:'.length);
+    return 'document:' + (idMap[oldFileId] || oldFileId);
+  }
+  return nodeId;
+}
+
+function remapClonedControlSpreadsheet_(controlFileId, idMap, oldProjectId, newProjectId) {
+  if (!controlFileId) return;
+  try {
+    var spreadsheet = SpreadsheetApp.openById(controlFileId);
+    spreadsheet.getSheets().forEach(function(sheet) {
+      var range = sheet.getDataRange();
+      var values = range.getValues();
+      var changed = false;
+      values.forEach(function(row) {
+        row.forEach(function(value, column) {
+          if (typeof value !== 'string') return;
+          var replacement = value === oldProjectId ? newProjectId : idMap[value];
+          if (replacement && replacement !== value) { row[column] = replacement; changed = true; }
+        });
+      });
+      if (changed) range.setValues(values);
+    });
+  } catch (error) {
+    console.warn('The cloned Project Control file could not be fully remapped: ' + error.message);
   }
 }
 
@@ -123,11 +274,12 @@ function registerFolderAsProject_(folder) {
 
   if (!manifest || !manifest.projectId) {
     manifest = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       projectId: uuid_(),
       title: folder.getName(),
       description: 'Project imported automatically from Drive.',
       icon: '✨',
+      color: 'blue',
       createdAt: now,
       updatedAt: now,
       owner: email,
@@ -150,6 +302,7 @@ function registerFolderAsProject_(folder) {
   manifest.folderId = folder.getId();
   manifest.title = manifest.title || folder.getName();
   manifest.icon = normalizeProjectIcon_(manifest.icon);
+  manifest.color = normalizeProjectColor_(manifest.color);
   manifest.members = manifest.members || [{email: manifest.owner || email, role: 'owner', scope: 'full', addedAt: now}];
   manifest.stats = manifest.stats || {sourceCount: 0, conversationCount: 0, documentCount: 0, lastActivityAt: now};
   manifest = normalizeProjectStructure_(folder, manifest, true);
@@ -190,9 +343,9 @@ function initializeControlSpreadsheet_(spreadsheet, project) {
     'Project Information': ['Field', 'Value'],
     'Project Attribute History': ['Attribute', 'Value', 'Valid From', 'Valid To', 'Status', 'Changed By'],
     'Assignments': ['Person', 'Email', 'Role', 'Valid From', 'Valid To', 'Status'],
-    'Sources': ['Source ID', 'Name', 'Type', 'Drive ID', 'Status', 'Added At', 'Added By'],
+    'Sources': ['Source ID', 'Name', 'Type', 'Drive ID', 'Status', 'Added At', 'Added By', 'Notes'],
     'Conversations': ['Conversation ID', 'Title', 'Created At', 'Updated At', 'Created By', 'Status', 'JSON File ID'],
-    'Documents': ['Document ID', 'Name', 'Type', 'Created At', 'Created By', 'Drive ID', 'Source Conversation'],
+    'Documents': ['Document ID', 'Name', 'Type', 'Created At', 'Created By', 'Drive ID', 'Source Conversation', 'Notes'],
     'Document Versions': ['Document ID', 'Version', 'Created At', 'Created By', 'Drive ID', 'Notes'],
     'Members': ['Email', 'Role', 'Scope', 'Added At', 'Added By'],
     'Share Policies': ['Email', 'Sources', 'Documents', 'History', 'Updated At'],
@@ -233,6 +386,7 @@ function syncProjectInformationSheet_(spreadsheet, project) {
     ['Title', project.title],
     ['Description', project.description || ''],
     ['Icon', normalizeProjectIcon_(project.icon)],
+    ['Color', normalizeProjectColor_(project.color)],
     ['Owner', project.owner],
     ['Created At', project.createdAt],
     ['Updated At', project.updatedAt],
@@ -274,6 +428,7 @@ function publicProject_(project, member, favorite) {
     title: project.title,
     description: project.description || '',
     icon: normalizeProjectIcon_(project.icon),
+    color: normalizeProjectColor_(project.color),
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
     owner: project.owner,
@@ -306,9 +461,12 @@ function touchProjectStats_(projectId, changes) {
 
 function normalizeProjectIcon_(value) {
   value = String(value || '✨').trim();
-  var legacy = LEGACY_PROJECT_ICONS[value.toLowerCase()];
-  if (legacy) return legacy;
   return PROJECT_EMOJIS.indexOf(value) !== -1 ? value : '✨';
+}
+
+function normalizeProjectColor_(value) {
+  value = String(value || 'blue').trim().toLowerCase();
+  return PROJECT_COLORS.indexOf(value) !== -1 ? value : 'blue';
 }
 
 function reconcileProjectStats_(project) {

@@ -26,6 +26,24 @@ function copyFolderFiles_(sourceFolder, destinationFolder, copied, limit) {
   }
 }
 
+function copyProjectFolderTree_(sourceFolder, destinationFolder, idMap) {
+  idMap = idMap || {};
+  idMap[sourceFolder.getId()] = destinationFolder.getId();
+  var files = sourceFolder.getFiles();
+  while (files.hasNext()) {
+    var sourceFile = files.next();
+    var copiedFile = sourceFile.makeCopy(sourceFile.getName(), destinationFolder);
+    idMap[sourceFile.getId()] = copiedFile.getId();
+  }
+  var folders = sourceFolder.getFolders();
+  while (folders.hasNext()) {
+    var sourceChild = folders.next();
+    var destinationChild = destinationFolder.createFolder(sourceChild.getName());
+    copyProjectFolderTree_(sourceChild, destinationChild, idMap);
+  }
+  return idMap;
+}
+
 function listFilesRecursive_(folder, output, limit) {
   output = output || [];
   limit = limit || 200;

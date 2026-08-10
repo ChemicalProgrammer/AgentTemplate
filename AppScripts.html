@@ -1,5 +1,15 @@
 <script>
   const PROJECT_EMOJIS = Object.freeze(['✨','🧠','📚','🧪','⚙️','📊','💡','🚀','🌱','🎯','🧭','🧩','🔬','🏗️','📝','💼','🎨','🌎','🤖','🗂️']);
+  const PROJECT_COLORS = Object.freeze({
+    blue:   {label:'Ocean', accent:'#0b57d0', tint:'#e8f0fe', tintStrong:'#d3e3fd'},
+    violet: {label:'Violet', accent:'#7451c8', tint:'#f0eafd', tintStrong:'#e4d7fb'},
+    coral:  {label:'Coral', accent:'#c84031', tint:'#fcebea', tintStrong:'#f7d5d1'},
+    amber:  {label:'Amber', accent:'#a15c00', tint:'#fef4df', tintStrong:'#fbe4b5'},
+    green:  {label:'Fern', accent:'#137333', tint:'#e7f4ea', tintStrong:'#cdebd4'},
+    teal:   {label:'Teal', accent:'#00796b', tint:'#e1f3f1', tintStrong:'#c4e8e3'},
+    rose:   {label:'Rose', accent:'#a83e72', tint:'#f9e8f0', tintStrong:'#f3cfe0'},
+    slate:  {label:'Slate', accent:'#56616f', tint:'#edf0f4', tintStrong:'#dce2e9'}
+  });
 
   const state = {
     bootstrap: null,
@@ -16,11 +26,14 @@
     busy: false,
     activeRequest: null,
     confirmResolver: null,
-    highlightedDocumentId: null
+    highlightedDocumentId: null,
+    editingDocumentId: null,
+    lastProjectRefresh: 0
   };
 
   document.addEventListener('DOMContentLoaded', () => {
     renderEmojiOptions();
+    renderColorOptions();
     bindStaticEvents();
     restorePanelWidth();
     startApp();
@@ -74,16 +87,14 @@
   function bindStaticEvents() {
     document.getElementById('setup-form').addEventListener('submit', configureApp);
     document.getElementById('global-search').addEventListener('input', event => { state.search = event.target.value.toLowerCase(); renderProjects(); });
-    document.getElementById('status-filter').addEventListener('change', event => { state.dashboardFilter = event.target.value; syncNav(); renderProjects(); });
     document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.addEventListener('click', () => {
       state.dashboardFilter = button.dataset.dashboardFilter;
-      document.getElementById('status-filter').value = ['active','planning','archived'].includes(state.dashboardFilter) ? state.dashboardFilter : 'all';
-      syncNav(); renderProjects();
+      syncDashboardFilters(); renderProjects();
     }));
-    ['new-project-button','create-project-heading'].forEach(id => document.getElementById(id).addEventListener('click', openNewProjectModal));
+    document.getElementById('create-project-heading').addEventListener('click', openNewProjectModal);
     document.getElementById('refresh-projects').addEventListener('click', refreshProjects);
     document.getElementById('settings-button').addEventListener('click', openSettings);
-    document.getElementById('menu-toggle').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('open'));
+    document.getElementById('project-settings-button').addEventListener('click', openSettings);
     document.getElementById('back-dashboard').addEventListener('click', showDashboard);
     document.getElementById('toggle-project-panel').addEventListener('click', () => document.getElementById('project-side-panel').classList.toggle('mobile-open'));
     document.getElementById('project-header-icon').addEventListener('click', openProjectEmojiPicker);
@@ -107,6 +118,7 @@
     document.getElementById('load-models').addEventListener('click', loadModels);
     document.getElementById('project-form').addEventListener('submit', submitProject);
     document.getElementById('source-link-form').addEventListener('submit', submitSourceLink);
+    document.getElementById('document-note-form').addEventListener('submit', saveDocumentNote);
     document.getElementById('member-form').addEventListener('submit', submitMember);
     document.getElementById('member-scope').addEventListener('change', event => document.getElementById('custom-permissions').classList.toggle('hidden', event.target.value !== 'custom'));
     document.getElementById('confirm-cancel').addEventListener('click', () => resolveConfirmation(false));
@@ -115,8 +127,14 @@
     document.getElementById('modal-backdrop').addEventListener('click', event => { if (event.target.id === 'modal-backdrop') closeModals(); });
     document.getElementById('project-panel-grip').addEventListener('pointerdown', startPanelResize);
     document.getElementById('project-panel-grip').addEventListener('keydown', resizePanelWithKeyboard);
-    document.addEventListener('click', event => { if (!event.target.closest('.document-menu-wrap')) closeDocumentMenus(); });
-    document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeDocumentMenus(); closeModals(); } });
+    document.addEventListener('click', event => {
+      if (!event.target.closest('.document-menu-wrap')) closeDocumentMenus();
+      if (!event.target.closest('.project-card-menu-wrap')) closeProjectCardMenus();
+    });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeDocumentMenus(); closeProjectCardMenus(); closeModals(); } });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && state.currentProjectId == null && Date.now() - state.lastProjectRefresh > 15000) refreshProjects(true);
+    });
   }
 
   async function configureApp(event) {
@@ -141,8 +159,21 @@
       const matchesFilter = state.dashboardFilter === 'favorite' ? project.favorite : state.dashboardFilter === 'all' || project.status === state.dashboardFilter;
       return matchesText && matchesFilter;
     });
-    grid.innerHTML = projects.map((project, index) => `<article class="project-card" style="--card-index:${index}" data-project-id="${escapeHtml(project.projectId)}" tabindex="0">
-      <div class="card-top"><div class="project-emoji" title="Project emoji">${escapeHtml(project.icon || '✨')}</div><button class="favorite-btn ${project.favorite ? 'on' : ''}" data-favorite-id="${escapeHtml(project.projectId)}" title="Favorite" aria-label="Favorite">★</button></div>
+    grid.innerHTML = projects.map((project, index) => `<article class="project-card" style="--card-index:${index};${projectColorStyle(project.color)}" data-project-id="${escapeHtml(project.projectId)}" tabindex="0">
+      <div class="project-card-accent"></div>
+      <div class="card-top">
+        <div class="project-emoji" title="Project emoji">${escapeHtml(project.icon || '✨')}</div>
+        <div class="project-card-controls">
+          <button class="favorite-btn ${project.favorite ? 'on' : ''}" data-favorite-id="${escapeHtml(project.projectId)}" title="Favorite" aria-label="Favorite">★</button>
+          <div class="project-card-menu-wrap">
+            <button class="project-card-menu-button" data-project-menu="${escapeHtml(project.projectId)}" title="Project actions" aria-label="Project actions">⋮</button>
+            <div class="project-card-menu hidden" role="menu">
+              ${project.scope === 'full' ? `<button data-clone-project="${escapeHtml(project.projectId)}" role="menuitem">Clone project <span>⧉</span></button>` : ''}
+              ${project.role === 'owner' ? `<button data-delete-project="${escapeHtml(project.projectId)}" class="danger-menu-item" role="menuitem">Move to trash <span>🗑</span></button>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
       <h3>${escapeHtml(project.title)}</h3>
       <p class="description">${escapeHtml(project.description || 'No description')}</p>
       <div class="card-meta"><span class="status-pill ${escapeHtml(project.status)}">${escapeHtml(statusLabel(project.status))}</span><span>${formatDate(project.createdAt)}</span></div>
@@ -152,7 +183,7 @@
     document.getElementById('empty-projects').classList.toggle('hidden', projects.length > 0);
     grid.querySelectorAll('.project-card').forEach(card => {
       card.addEventListener('click', () => openProject(card.dataset.projectId));
-      card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProject(card.dataset.projectId); } });
+      card.addEventListener('keydown', event => { if (event.target === card && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openProject(card.dataset.projectId); } });
     });
     grid.querySelectorAll('[data-favorite-id]').forEach(button => button.addEventListener('click', async event => {
       event.stopPropagation(); setBusy(button, true);
@@ -164,12 +195,57 @@
       } catch (error) { showToast(error.message, true); }
       finally { setBusy(button, false); }
     }));
+    grid.querySelectorAll('[data-project-menu]').forEach(button => button.addEventListener('click', event => toggleProjectCardMenu(event, button)));
+    grid.querySelectorAll('[data-clone-project]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); cloneProjectFromDashboard(button.dataset.cloneProject, button); }));
+    grid.querySelectorAll('[data-delete-project]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); deleteProjectFromDashboard(button.dataset.deleteProject, button); }));
   }
 
-  async function refreshProjects() {
+  async function refreshProjects(silent = false) {
     const button = document.getElementById('refresh-projects'); setBusy(button, true);
-    try { state.projects = await server('refreshProjects'); renderProjects(); showToast('Projects refreshed.'); }
+    try { state.projects = await server('refreshProjects'); state.lastProjectRefresh = Date.now(); renderProjects(); if (!silent) showToast('Projects refreshed.'); }
     catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function toggleProjectCardMenu(event, button) {
+    event.stopPropagation();
+    const menu = button.nextElementSibling; const open = menu.classList.contains('hidden');
+    closeProjectCardMenus(); if (open) menu.classList.remove('hidden');
+  }
+
+  function closeProjectCardMenus() { document.querySelectorAll('.project-card-menu').forEach(menu => menu.classList.add('hidden')); }
+
+  async function cloneProjectFromDashboard(projectId, button) {
+    const project = state.projects.find(item => item.projectId === projectId); if (!project) return;
+    closeProjectCardMenus();
+    const confirmed = await askConfirmation({
+      title: 'Clone this project?',
+      message: `A complete copy of “${project.title}” will be created with its sources, generated documents, and chat history. The clone will be private to you until you share it.`,
+      action: 'Clone project', tone: 'primary'
+    });
+    if (!confirmed) return;
+    setBusy(button, true);
+    try {
+      const clone = await server('cloneProject', projectId);
+      state.projects.unshift(clone); renderProjects(); showToast('Project cloned.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  async function deleteProjectFromDashboard(projectId, button) {
+    const project = state.projects.find(item => item.projectId === projectId); if (!project) return;
+    closeProjectCardMenus();
+    const confirmed = await askConfirmation({
+      title: 'Move this project to trash?',
+      message: `“${project.title}” and all of its chats, sources, generated documents, and exports will be moved to Drive trash.`,
+      action: 'Move to trash', tone: 'danger'
+    });
+    if (!confirmed) return;
+    setBusy(button, true);
+    try {
+      await server('deleteProject', projectId);
+      state.projects = state.projects.filter(item => item.projectId !== projectId); renderProjects(); showToast('Project moved to Drive trash.');
+    } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
 
@@ -188,7 +264,6 @@
   }
 
   async function openProject(projectId) {
-    document.getElementById('sidebar').classList.remove('open');
     document.getElementById('project-side-panel').classList.remove('mobile-open');
     document.getElementById('dashboard-view').classList.add('hidden');
     const projectView = document.getElementById('project-view');
@@ -218,6 +293,7 @@
 
   function renderProjectDetails() {
     const {project, permissions} = state.projectDetails;
+    applyProjectColor(project.color);
     document.getElementById('project-title').textContent = project.title;
     document.getElementById('project-description').textContent = project.description || 'Project workspace';
     document.getElementById('project-header-icon').textContent = project.icon || '✨';
@@ -240,7 +316,7 @@
     state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map();
     document.getElementById('project-view').classList.add('hidden');
     const dashboard = document.getElementById('dashboard-view'); dashboard.classList.remove('hidden'); dashboard.classList.add('view-entering');
-    setWorkspaceMode('dashboard'); renderProjects(); setTimeout(() => dashboard.classList.remove('view-entering'), 360);
+    setWorkspaceMode('dashboard'); renderProjects(); refreshProjects(true); setTimeout(() => dashboard.classList.remove('view-entering'), 360);
   }
 
   function setWorkspaceMode(mode) {
@@ -480,6 +556,7 @@
     });
     container.querySelectorAll('[data-document-select]').forEach(input => input.addEventListener('change', () => toggleDocumentSelection(input.dataset.documentSelect, input.checked)));
     container.querySelectorAll('[data-document-menu]').forEach(button => button.addEventListener('click', event => toggleDocumentMenu(event, button)));
+    container.querySelectorAll('[data-edit-document-note]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openDocumentNoteModal(button.dataset.editDocumentNote); }));
     container.querySelectorAll('[data-delete-document]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); deleteDocumentNode(button.dataset.deleteDocument, button); }));
     container.querySelectorAll('.document-card').forEach(card => {
       card.addEventListener('mouseenter', () => highlightDocumentRelations(card.dataset.nodeId));
@@ -506,6 +583,7 @@
           <button class="document-menu-button" data-document-menu="${escapeHtml(node.nodeId)}" aria-label="Document actions" title="Document actions">⋮</button>
           <div class="document-menu hidden" role="menu">
             ${node.url ? `<a href="${escapeHtml(node.url)}" target="_blank" role="menuitem">Open in Drive <span>↗</span></a>` : ''}
+            ${canDelete ? `<button data-edit-document-note="${escapeHtml(node.nodeId)}" role="menuitem">Edit note <span>✎</span></button>` : ''}
             ${canDelete ? `<button data-delete-document="${escapeHtml(node.nodeId)}" class="danger-menu-item" role="menuitem">Move to trash <span>🗑</span></button>` : ''}
             <div class="menu-separator"></div><p>Generate from document</p>
             <button disabled>Summary <span>Soon</span></button><button disabled>Report <span>Soon</span></button>
@@ -514,6 +592,7 @@
       </div>
       <strong title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</strong>
       <div class="document-meta"><span>${escapeHtml(friendlyMime(node.mimeType))}</span><span>${formatFileSize(node.size)}</span><span>${formatDate(node.createdAt)}</span></div>
+      <p class="document-note ${node.note ? '' : 'empty'}">${escapeHtml(node.note || 'No note added')}</p>
       <div class="document-relations"><span>${relation.parents ? `↑ ${relation.parents} parent${relation.parents === 1 ? '' : 's'}` : 'Original'}</span>${relation.children ? `<span>↓ ${relation.children} child${relation.children === 1 ? '' : 'ren'}</span>` : ''}</div>
     </article>`;
   }
@@ -578,6 +657,25 @@
   }
 
   function closeDocumentMenus() { document.querySelectorAll('.document-menu').forEach(menu => menu.classList.add('hidden')); }
+
+  function openDocumentNoteModal(nodeId) {
+    const node = state.documentNodes.find(item => item.nodeId === nodeId); if (!node) return;
+    closeDocumentMenus(); state.editingDocumentId = nodeId;
+    document.getElementById('document-note-name').textContent = node.name;
+    document.getElementById('document-note-text').value = node.note || '';
+    openModal('document-note-modal'); document.getElementById('document-note-text').focus();
+  }
+
+  async function saveDocumentNote(event) {
+    event.preventDefault();
+    const nodeId = state.editingDocumentId; const node = state.documentNodes.find(item => item.nodeId === nodeId); if (!node) return closeModals();
+    setBusy(event.target, true);
+    try {
+      const updated = await server('updateDocumentNote', state.currentProjectId, nodeId, document.getElementById('document-note-text').value);
+      node.note = updated.note || ''; closeModals(); renderDocumentGraph(); showToast('Document note saved.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
 
   async function submitSourceLink(event) {
     event.preventDefault(); setBusy(event.target, true);
@@ -690,11 +788,22 @@
     container.addEventListener('click', event => { const button = event.target.closest('[data-emoji]'); if (button) setProjectEmoji(button.dataset.emoji, button); });
   }
 
+  function renderColorOptions() {
+    const container = document.getElementById('project-color-options');
+    container.innerHTML = Object.entries(PROJECT_COLORS).map(([key, color]) => `<button type="button" class="color-choice" style="--choice-accent:${color.accent};--choice-tint:${color.tint}" data-project-color="${key}" role="option" aria-label="${escapeHtml(color.label)}"><span></span>${escapeHtml(color.label)}</button>`).join('');
+    container.addEventListener('click', event => { const button = event.target.closest('[data-project-color]'); if (button) setProjectColor(button.dataset.projectColor, button); });
+  }
+
   function openProjectEmojiPicker() {
     if (!state.projectDetails || !state.projectDetails.permissions.edit || !state.projectDetails.permissions.project) return;
-    const current = state.projectDetails.project.icon || '✨';
-    document.querySelectorAll('[data-emoji]').forEach(button => { const selected = button.dataset.emoji === current; button.classList.toggle('selected', selected); button.setAttribute('aria-selected', String(selected)); });
+    syncProjectIdentityOptions();
     openModal('emoji-modal');
+  }
+
+  function syncProjectIdentityOptions() {
+    const currentEmoji = state.projectDetails.project.icon || '✨'; const currentColor = state.projectDetails.project.color || 'blue';
+    document.querySelectorAll('[data-emoji]').forEach(button => { const selected = button.dataset.emoji === currentEmoji; button.classList.toggle('selected', selected); button.setAttribute('aria-selected', String(selected)); });
+    document.querySelectorAll('[data-project-color]').forEach(button => { const selected = button.dataset.projectColor === currentColor; button.classList.toggle('selected', selected); button.setAttribute('aria-selected', String(selected)); });
   }
 
   async function setProjectEmoji(emoji, button) {
@@ -703,9 +812,24 @@
       const updated = await server('updateProject', state.currentProjectId, {icon: emoji});
       const local = state.projects.find(item => item.projectId === state.currentProjectId); if (local) Object.assign(local, updated);
       Object.assign(state.projectDetails.project, updated); document.getElementById('project-header-icon').textContent = emoji;
-      closeModals(); renderProjects(); showToast('Project emoji updated.');
+      syncProjectIdentityOptions(); renderProjects(); showToast('Project emoji updated.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
+  }
+
+  async function setProjectColor(color, button) {
+    setBusy(button, true);
+    try {
+      const updated = await server('updateProject', state.currentProjectId, {color});
+      const local = state.projects.find(item => item.projectId === state.currentProjectId); if (local) Object.assign(local, updated);
+      Object.assign(state.projectDetails.project, updated); applyProjectColor(updated.color); syncProjectIdentityOptions(); renderProjects(); showToast('Project color updated.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function applyProjectColor(colorKey) {
+    const color = PROJECT_COLORS[colorKey] || PROJECT_COLORS.blue; const view = document.getElementById('project-view');
+    view.style.setProperty('--project-accent', color.accent); view.style.setProperty('--project-tint', color.tint); view.style.setProperty('--project-tint-strong', color.tintStrong);
   }
 
   function startPanelResize(event) {
@@ -730,11 +854,14 @@
 
   function restorePanelWidth() { try { const value = parseInt(localStorage.getItem('gpa.projectPanelWidth'), 10); if (Number.isFinite(value)) setPanelWidth(value); } catch (_) {} }
 
-  function askConfirmation({title, message, action}) {
+  function askConfirmation({title, message, action, tone = 'danger'}) {
     if (state.confirmResolver) state.confirmResolver(false);
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-message').textContent = message;
-    document.getElementById('confirm-action').textContent = action || 'Continue';
+    const confirmAction = document.getElementById('confirm-action');
+    confirmAction.textContent = action || 'Continue';
+    confirmAction.classList.toggle('danger-filled-btn', tone === 'danger');
+    confirmAction.classList.toggle('primary-btn', tone !== 'danger');
     openModal('confirm-modal');
     return new Promise(resolve => { state.confirmResolver = resolve; });
   }
@@ -755,9 +882,10 @@
     if (state.confirmResolver) { const resolver = state.confirmResolver; state.confirmResolver = null; resolver(false); }
     document.getElementById('modal-backdrop').classList.add('hidden');
     document.querySelectorAll('.modal').forEach(modal => { modal.classList.add('hidden'); modal.classList.remove('modal-visible'); });
+    state.editingDocumentId = null;
   }
 
-  function syncNav() { document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.classList.toggle('active', button.dataset.dashboardFilter === state.dashboardFilter)); }
+  function syncDashboardFilters() { document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.classList.toggle('active', button.dataset.dashboardFilter === state.dashboardFilter)); }
   function autoSizeComposer() { const el = document.getElementById('chat-input'); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 180) + 'px'; }
   function scrollChatToBottom() { const region = document.getElementById('chat-scroll-region'); requestAnimationFrame(() => { region.scrollTop = region.scrollHeight; }); }
   function setBusy(element, busy) {
@@ -773,6 +901,7 @@
   function showToast(message, error = false) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.toggle('error', error); toast.classList.remove('hidden'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.add('hidden'), 4200); }
   function numberValue(value) { const number = Number(value); return Number.isFinite(number) && number >= 0 ? number : 0; }
   function statusLabel(status) { return ({active:'Ongoing',planning:'Planning',archived:'Archived'})[status] || status; }
+  function projectColorStyle(colorKey) { const color = PROJECT_COLORS[colorKey] || PROJECT_COLORS.blue; return `--project-accent:${color.accent};--project-tint:${color.tint};--project-tint-strong:${color.tintStrong};`; }
   function initials(value) { return String(value || 'U').split(/[.\s_-]+/).filter(Boolean).slice(0,2).map(part => part[0].toUpperCase()).join('') || 'U'; }
   function shortEmail(email) { return String(email || '').split('@')[0]; }
   function formatDate(value) { if (!value) return ''; try { return new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric'}).format(new Date(value)); } catch (_) { return String(value); } }
