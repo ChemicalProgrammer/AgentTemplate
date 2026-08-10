@@ -42,7 +42,7 @@ function listProjectDocuments(projectId) {
   }
 
   if (access.allowed.documents) {
-    listGeneratedDocumentsForProject_(access.project, Boolean(access.allowed.history), Boolean(access.allowed.edit)).forEach(function(document) {
+    listGeneratedDocumentsForProject_(access.project, Boolean(access.allowed.history), false).forEach(function(document) {
       nodes.push({
         nodeId: 'document:' + document.id,
         driveId: document.id,
@@ -204,12 +204,12 @@ function getDocumentContextRecords_(project) {
         name: source.name,
         driveId: source.driveId,
         mimeType: source.mimeType,
-        status: 'active',
+        status: source.status || 'active',
         kind: 'source',
         note: source.note || ''
       };
     });
-  listGeneratedDocumentsForProject_(project, true, true).forEach(function(document) {
+  listGeneratedDocumentsForProject_(project, true, false).forEach(function(document) {
     records.push({
       sourceId: 'document:' + document.id,
       name: document.name,

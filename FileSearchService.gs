@@ -617,7 +617,8 @@ function publicFileSearchState_(source, state) {
 function getFileSearchQueryConfig_(project, selectedSourceIds) {
   var store = getFileSearchStoreState_(project.projectId, true);
   if (!store) return null;
-  var requested = (selectedSourceIds || []).map(String);
+  var requested = (selectedSourceIds || []).map(String).filter(Boolean);
+  if (!requested.length) return null;
   var ready = readSourceIndex_(project).sources.filter(function(source) {
     var nodeId = 'source:' + source.sourceId;
     if (source.status !== 'active' || requested.indexOf(source.sourceId) === -1 && requested.indexOf(nodeId) === -1) return false;
@@ -627,18 +628,24 @@ function getFileSearchQueryConfig_(project, selectedSourceIds) {
 }
 
 function buildFileSearchMetadataFilter_(sourceIds) {
-  return (sourceIds || []).map(function(sourceId) {
-    return 'source_id="' + String(sourceId).replace(/["\\]/g, '') + '"';
-  }).join(' OR ');
+  var clauses = (sourceIds || []).map(function(sourceId) {
+    sourceId = String(sourceId || '').trim();
+    if (!/^[a-zA-Z0-9_-]+$/.test(sourceId)) throw new Error('A selected source has an invalid File Search identifier.');
+    return 'source_id = "' + sourceId + '"';
+  });
+  if (!clauses.length) throw new Error('File Search requires at least one verified selected source.');
+  return clauses.length === 1 ? clauses[0] : '(' + clauses.join(' OR ') + ')';
 }
 
 function generateWithFileSearch_(options) {
   var config = options.config || getUserGeminiConfig_();
+  var metadataFilter = String(options.metadataFilter || '').trim();
+  if (!metadataFilter) throw new Error('File Search was blocked because no source-isolation filter was provided.');
   var body = {
     model: normalizeModel_(options.model || config.model),
     system_instruction: String(options.systemInstruction || ''),
     input: flattenInteractionInput_(options.contents || []),
-    tools: [{type: 'file_search', file_search_store_names: [options.storeName], metadata_filter: options.metadataFilter || ''}],
+    tools: [{type: 'file_search', file_search_store_names: [options.storeName], metadata_filter: metadataFilter, top_k: Number(options.topK || 12)}],
     generation_config: {max_output_tokens: options.maxOutputTokens || 8192},
     store: false
   };
@@ -654,7 +661,42 @@ function generateWithFileSearch_(options) {
   });
   text = text.trim();
   if (!text) throw new Error('Gemini File Search returned no content.');
-  return {text: text, model: body.model, usage: payload.usage || {}, annotations: annotations, raw: payload};
+  var retrievalAudit = assertFileSearchAnnotationsScoped_(annotations, options.allowedSourceIds || []);
+  return {text: text, model: body.model, usage: payload.usage || {}, annotations: annotations, retrievalAudit: retrievalAudit, raw: payload};
+}
+
+function annotationMetadataItems_(annotation) {
+  var metadata = annotation && (annotation.custom_metadata || annotation.customMetadata) || [];
+  if (Array.isArray(metadata)) return metadata;
+  if (metadata && metadata.key) return [metadata];
+  return Object.keys(metadata || {}).map(function(key) {
+    return {key: key, stringValue: String(metadata[key])};
+  });
+}
+
+function fileSearchAnnotationSourceId_(annotation) {
+  var sourceId = '';
+  annotationMetadataItems_(annotation).forEach(function(item) {
+    if (item.key === 'source_id') sourceId = item.string_value || item.stringValue || '';
+  });
+  return String(sourceId || '');
+}
+
+function assertFileSearchAnnotationsScoped_(annotations, allowedSourceIds) {
+  var allowed = (allowedSourceIds || []).map(String);
+  var citations = (annotations || []).filter(function(annotation) {
+    return !annotation.type || annotation.type === 'file_citation';
+  });
+  var observed = [];
+  citations.forEach(function(annotation) {
+    var sourceId = fileSearchAnnotationSourceId_(annotation);
+    if (!sourceId) throw new Error('Gemini returned a File Search citation without source_id metadata. The response was blocked because its source could not be verified.');
+    if (allowed.indexOf(sourceId) === -1) {
+      throw new Error('Gemini retrieved a document outside the current selection. The response was blocked and no unselected source content was saved.');
+    }
+    if (observed.indexOf(sourceId) === -1) observed.push(sourceId);
+  });
+  return {citationCount: citations.length, sourceIds: observed, verified: citations.length > 0};
 }
 
 function flattenInteractionInput_(contents) {
@@ -667,14 +709,11 @@ function flattenInteractionInput_(contents) {
 
 function annotationsToSourcesUsed_(annotations, project) {
   var byId = {};
-  readSourceIndex_(project).sources.forEach(function(source) { byId[source.sourceId] = source; });
+  readSourceIndex_(project).sources.filter(function(source) { return source.status !== 'removed'; }).forEach(function(source) { byId[source.sourceId] = source; });
   var used = [];
   (annotations || []).forEach(function(annotation) {
-    var metadata = annotation.custom_metadata || annotation.customMetadata || [];
-    var sourceId = '';
-    metadata.forEach(function(item) {
-      if (item.key === 'source_id') sourceId = item.string_value || item.stringValue || '';
-    });
+    var sourceId = fileSearchAnnotationSourceId_(annotation);
+    if (!sourceId || !byId[sourceId]) return;
     var source = byId[sourceId] || {};
     var key = sourceId + ':' + String(annotation.page_number || annotation.pageNumber || '') + ':' + String(annotation.source || '');
     if (used.some(function(item) { return item._key === key; })) return;
@@ -694,12 +733,104 @@ function annotationsToSourcesUsed_(annotations, project) {
 }
 
 function deleteFileSearchDocumentForSource_(projectId, sourceId) {
-  var state = getFileSearchSourceState_(projectId, sourceId);
-  try {
-    if (state && state.documentName) deleteFileSearchDocument_(projectId, state.documentName);
-  } finally {
-    PropertiesService.getUserProperties().deleteProperty(fileSearchSourcePropertyKey_(projectId, sourceId));
+  var project = getProjectFromRoot_(projectId);
+  if (!project) return {deleted: 0, storesChecked: 0, warnings: ['Project not found.']};
+  var source = readSourceIndex_(project).sources.filter(function(item) { return item.sourceId === sourceId; })[0];
+  if (!source) source = {sourceId: sourceId, driveId: ''};
+  return purgeFileSearchDocumentsForSource_(projectId, source);
+}
+
+function purgeFileSearchDocumentsForSource_(projectId, source) {
+  source = source || {};
+  var props = PropertiesService.getUserProperties();
+  var state = getFileSearchSourceState_(projectId, source.sourceId) || {};
+  var result = {deleted: 0, storesChecked: 0, warnings: []};
+  var config;
+  try { config = getUserGeminiConfig_(); } catch (keyError) {
+    result.warnings.push('Remote cleanup requires the Gemini API key that created the index.');
+    return result;
   }
+  var storeState = null;
+  try { storeState = getFileSearchStoreState_(projectId, true); } catch (storeError) { result.warnings.push(readableErrorMessage_(storeError)); }
+  var storeNames = [];
+  if (state.storeName) storeNames.push(state.storeName);
+  if (storeState && storeState.storeName) storeNames.push(storeState.storeName);
+  if (storeState && storeState.legacyStoreNames) storeNames = storeNames.concat(storeState.legacyStoreNames);
+  storeNames = storeNames.filter(function(name, index, all) { return name && all.indexOf(name) === index; });
+  var deletedNames = [];
+  storeNames.forEach(function(storeName) {
+    try {
+      result.storesChecked++;
+      var documents = listFileSearchDocumentsForSource_(storeName, source, config.apiKey);
+      documents.forEach(function(document) {
+        if (!document.name) return;
+        try {
+          deleteFileSearchDocumentByName_(document.name, config.apiKey);
+          deletedNames.push(document.name);
+          result.deleted++;
+        } catch (deleteError) {
+          result.warnings.push(readableErrorMessage_(deleteError));
+        }
+      });
+    } catch (listError) {
+      result.warnings.push(readableErrorMessage_(listError));
+    }
+  });
+  if (state.documentName && deletedNames.indexOf(state.documentName) === -1) {
+    try {
+      deleteFileSearchDocumentByName_(state.documentName, config.apiKey);
+      result.deleted++;
+    } catch (directDeleteError) {
+      if (!/404|not found/i.test(readableErrorMessage_(directDeleteError))) result.warnings.push(readableErrorMessage_(directDeleteError));
+    }
+  }
+  if (!result.warnings.length) props.deleteProperty(fileSearchSourcePropertyKey_(projectId, source.sourceId));
+  return result;
+}
+
+function cleanupProjectFileSearchOrphans(projectId) {
+  var access = assertProjectEdit_(projectId, 'sources');
+  var activeSources = readSourceIndex_(access.project).sources.filter(function(source) { return source.status === 'active'; });
+  var activeBySourceId = {};
+  var activeByDriveId = {};
+  activeSources.forEach(function(source) {
+    activeBySourceId[source.sourceId] = true;
+    if (source.driveId) activeByDriveId[source.driveId] = true;
+  });
+  var result = {deleted: 0, checked: 0, warnings: []};
+  var config;
+  var storeState;
+  try {
+    config = getUserGeminiConfig_();
+    storeState = getFileSearchStoreState_(projectId, true);
+  } catch (error) {
+    return {deleted: 0, checked: 0, warnings: [readableErrorMessage_(error)], skipped: true};
+  }
+  if (!storeState || !storeState.storeName) return result;
+  var stores = [storeState.storeName].concat(storeState.legacyStoreNames || []).filter(function(name, index, all) { return name && all.indexOf(name) === index; });
+  stores.forEach(function(storeName) {
+    try {
+      listFileSearchDocuments_(storeName, config.apiKey).forEach(function(document) {
+        result.checked++;
+        var sourceId = String(fileSearchMetadataValue_(document, 'source_id') || '');
+        var driveId = String(fileSearchMetadataValue_(document, 'drive_id') || '');
+        if (sourceId && activeBySourceId[sourceId] || !sourceId && driveId && activeByDriveId[driveId]) return;
+        if (!document.name) return;
+        try { deleteFileSearchDocumentByName_(document.name, config.apiKey); result.deleted++; }
+        catch (deleteError) { result.warnings.push(readableErrorMessage_(deleteError)); }
+      });
+    } catch (listError) {
+      result.warnings.push(readableErrorMessage_(listError));
+    }
+  });
+  var props = PropertiesService.getUserProperties();
+  var prefix = APP.USER_FILE_SEARCH_SOURCE_PREFIX + projectId + '_';
+  Object.keys(props.getProperties()).forEach(function(key) {
+    if (key.indexOf(prefix) !== 0) return;
+    var sourceId = key.slice(prefix.length);
+    if (!activeBySourceId[sourceId]) props.deleteProperty(key);
+  });
+  return result;
 }
 
 function deleteFileSearchDocument_(projectId, documentName) {
@@ -761,7 +892,8 @@ function fileSearchMetadataValue_(document, key) {
 
 function listFileSearchDocumentsForSource_(storeName, source, apiKey) {
   return listFileSearchDocuments_(storeName, apiKey).filter(function(document) {
-    return fileSearchMetadataValue_(document, 'source_id') === source.sourceId || fileSearchMetadataValue_(document, 'drive_id') === source.driveId;
+    return Boolean(source.sourceId && fileSearchMetadataValue_(document, 'source_id') === source.sourceId) ||
+      Boolean(source.driveId && fileSearchMetadataValue_(document, 'drive_id') === source.driveId);
   });
 }
 

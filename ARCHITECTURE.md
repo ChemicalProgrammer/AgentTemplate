@@ -1,6 +1,6 @@
 # Arquitectura técnica
 
-Versión de referencia: 1.5.4.
+Versión de referencia: 1.6.0.
 
 ## Flujo principal
 
@@ -29,7 +29,7 @@ flowchart TD
 - `Flows Index.json`: procedimientos Markdown disponibles para consultas.
 - Carpetas de Drive: permisos reales y documentos.
 
-No existe un registro central de proyectos en propiedades del script. En cada carga se enumeran únicamente las carpetas activas que son hijas directas de la raíz y se lee su manifiesto. El manifiesto permite que una copia manual conserve su estructura; si dos carpetas activas presentan el mismo `projectId`, se genera uno nuevo para la segunda. El clonado desde la interfaz copia el árbol completo y remapea IDs de Drive, chats y relaciones documentales.
+No existe un registro central persistente de proyectos en propiedades del script. El catálogo ligero y la relación `projectId → folderId` usan `CacheService` durante tres minutos; en un fallo de caché se vuelve a Drive y se valida que la carpeta siga siendo hija directa de la raíz. El arranque normal solo lee manifiestos: las reparaciones de estructura, índices y `Project Control` ocurren al crear, modificar o reparar explícitamente. El manifiesto permite que una copia manual conserve su estructura; si dos carpetas activas presentan el mismo `projectId`, se genera uno nuevo para la segunda. El clonado desde la interfaz copia el árbol completo y remapea IDs de Drive, chats y relaciones documentales.
 
 ## Memoria y recuperación híbrida
 
@@ -46,7 +46,15 @@ La memoria no depende del estado remoto de una conversación de Gemini. Cada sol
 
 Cada llave personal crea su propio almacén File Search por proyecto. Los IDs del almacén y documentos remotos permanecen en `UserProperties`; el PDF, Google Sheet u otro archivo original permanece en Drive como fuente de verdad. Esta estrategia conserva el historial completo en Drive y evita que el proyecto dependa de un identificador de conversación externo.
 
+Si la consulta tiene documentos seleccionados, el resumen acumulativo se omite y la ventana reciente se filtra por la selección/citas guardadas en cada respuesta. El filtro remoto de `source_id` es obligatorio y las anotaciones de File Search se validan antes de persistir: un `source_id` no autorizado hace fallar la solicitud. Esto evita que una fuente no seleccionada reaparezca por el almacén o por el historial del chat.
+
 Las fuentes locales de hasta 100 MB se cargan primero a Drive mediante una sesión reanudable en bloques de 2 MB. La transferencia posterior a File Search conserva URL, offset, etapa, inicio del intento y progreso en `UserProperties` y avanza un bloque de 8 MB por llamada, evitando que un libro grande dependa de una sola ejecución de Apps Script. File Search fragmenta con 200 tokens y 20 de superposición; antes de iniciar una carga, la app limita defensivamente el tamaño a 512 tokens. El diagnóstico reconcilia la operación de larga duración con la lista de documentos remotos asociados mediante `source_id` o `drive_id`: `failed` exige un fallo confirmado, `unknown` cubre una operación huérfana o no verificable, y `ready` exige un documento `STATE_ACTIVE`. Un reintento forzado elimina primero todos los documentos remotos de esa fuente.
+
+La eliminación marca primero la fuente como `removed`, la retira de cualquier filtro elegible y después purga todos los documentos remotos que coincidan por `source_id` o `drive_id`, incluso en almacenes heredados. Al cargar Documents se ejecuta una reconciliación no bloqueante que elimina documentos remotos sin una fuente activa correspondiente.
+
+## Carga progresiva
+
+La apertura obtiene primero un shell mínimo de identidad y permisos. Chats —incluida la conversación más reciente— y Documents se solicitan en paralelo y cada región controla su propio spinner. Templates y Flows se leen únicamente al abrir su pestaña; Members únicamente al abrir Share. El navegador descarta respuestas tardías mediante un token de carga si el usuario cambia de proyecto. Los estados `ready` de File Search se leen localmente y solo los estados transitorios o desconocidos consultan la operación remota.
 
 ## Grafo documental
 

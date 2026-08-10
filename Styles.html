@@ -210,6 +210,8 @@
   .panel-empty > span { margin-bottom: 8px; font-size: 28px; }
   .panel-empty strong { color: var(--ink); }
   .panel-empty p { max-width: 210px; margin: 4px 0; font-size: 11px; }
+  .panel-loader { min-height: 150px; display: grid; place-items: center; padding: 28px; }
+  .panel-loader .spinner { width: 24px; height: 24px; border-width: 2px; }
 
   .panel-grip { position: relative; width: 8px; height: 100%; padding: 0; border: 0; background: var(--surface-container-low); cursor: col-resize; touch-action: none; z-index: 5; }
   .panel-grip::before { content: ''; position: absolute; inset: 0 2px; border-radius: 4px; background: transparent; transition: background .2s; }
@@ -283,6 +285,8 @@
 
   .chat-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: radial-gradient(circle at 50% 0,rgba(211,227,253,.22),transparent 32%),var(--surface); }
   .chat-scroll-region { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+  .chat-panel-loader { min-height: 100%; display: grid; place-items: center; }
+  .chat-panel-loader .spinner { width: 34px; height: 34px; }
   .chat-empty { min-height: 100%; display: grid; place-content: center; justify-items: center; padding: 36px; text-align: center; animation: emptyEnter .5s var(--motion-standard); }
   @keyframes emptyEnter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
   .gemini-orb { width: 50px; height: 50px; display: grid; place-items: center; margin-bottom: 14px; border-radius: 18px; color: white; background: linear-gradient(135deg,#4285f4,#9b72cb 55%,#d96570); box-shadow: 0 8px 24px rgba(123,97,255,.2); font-size: 26px; }

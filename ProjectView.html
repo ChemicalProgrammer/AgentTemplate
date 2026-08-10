@@ -33,6 +33,7 @@
           </div>
           <button id="new-conversation" class="tonal-icon-btn" aria-label="New chat" title="New chat">＋</button>
         </div>
+        <div id="chats-panel-loader" class="panel-loader" role="status" aria-label="Loading chats"><span class="spinner"></span></div>
         <div id="conversation-list" class="conversation-list"></div>
         <div id="empty-conversations" class="panel-empty hidden">
           <span>💬</span>
@@ -54,6 +55,7 @@
           </div>
         </div>
         <p class="panel-help">Select the documents Gemini may use in this chat.</p>
+        <div id="documents-panel-loader" class="panel-loader" role="status" aria-label="Loading documents"><span class="spinner"></span></div>
         <div id="document-levels" class="document-levels"></div>
         <div id="empty-documents" class="panel-empty hidden">
           <span>📄</span>
@@ -68,6 +70,7 @@
           <button id="add-template-link" class="tonal-icon-btn" aria-label="Import template from Drive" title="Import Google Docs, Sheets, or Slides template">＋</button>
         </div>
         <p class="panel-help">Choose one output format for reports. The template is copied; the original stays unchanged.</p>
+        <div id="templates-panel-loader" class="panel-loader" role="status" aria-label="Loading templates"><span class="spinner"></span></div>
         <div id="template-list" class="asset-list"></div>
         <div id="empty-templates" class="panel-empty hidden"><span>▧</span><strong>No templates yet</strong><p>Import a Google Docs, Sheets, or Slides file from Drive.</p></div>
       </section>
@@ -81,6 +84,7 @@
           </div>
         </div>
         <p class="panel-help">Select the Markdown procedures Gemini must follow for this chat.</p>
+        <div id="flows-panel-loader" class="panel-loader" role="status" aria-label="Loading flows"><span class="spinner"></span></div>
         <div id="flow-list" class="asset-list"></div>
         <div id="empty-flows" class="panel-empty hidden"><span>⇄</span><strong>No flows yet</strong><p>Add a .md file with ordered instructions or a processing workflow.</p></div>
       </section>
@@ -90,7 +94,8 @@
 
     <section class="chat-panel" aria-label="Agent conversation">
       <div id="chat-scroll-region" class="chat-scroll-region">
-        <div id="chat-empty" class="chat-empty">
+        <div id="chat-panel-loader" class="chat-panel-loader" role="status" aria-label="Loading conversation"><span class="spinner"></span></div>
+        <div id="chat-empty" class="chat-empty hidden">
           <div class="gemini-orb" aria-hidden="true">✦</div>
           <h2>How can I help with this project?</h2>
           <p>Ask a question, explore your documents, or develop a new idea.</p>

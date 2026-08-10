@@ -5,7 +5,7 @@ var PROJECT_COLORS = ['blue', 'violet', 'coral', 'amber', 'green', 'teal', 'rose
 
 function listProjects() {
   var email = assertOrganizationMember_();
-  var projects = discoverProjects_();
+  var projects = discoverProjects_(false);
   var favorites = getFavoriteIds_();
   return projects
     .filter(function(project) {
@@ -22,7 +22,23 @@ function listProjects() {
 
 function refreshProjects() {
   assertOrganizationMember_();
-  return listProjects();
+  return listProjectsFromManifests_(discoverProjects_(true));
+}
+
+function listProjectsFromManifests_(projects) {
+  var email = assertOrganizationMember_();
+  var favorites = getFavoriteIds_();
+  return (projects || [])
+    .filter(function(project) {
+      return (project.members || []).some(function(member) {
+        return String(member.email).toLowerCase() === email;
+      });
+    })
+    .map(function(project) {
+      var member = project.members.filter(function(item) { return String(item.email).toLowerCase() === email; })[0];
+      return publicProject_(project, member, favorites.indexOf(project.projectId) !== -1);
+    })
+    .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 }
 
 function createProject(input) {
@@ -54,7 +70,50 @@ function createProject(input) {
   project = normalizeProjectStructure_(folder, project, true);
   writeProjectManifest_(folder, project);
   syncProjectControl_(project, true);
+  invalidateProjectCaches_(project.projectId);
+  cacheProjectLocator_(project.projectId, folder.getId());
   return publicProject_(project, project.members[0], false);
+}
+
+function getProjectShell(projectId) {
+  var access = assertProjectAccess_(projectId);
+  return {
+    project: publicProject_(access.project, access.member, getFavoriteIds_().indexOf(projectId) !== -1),
+    permissions: access.allowed
+  };
+}
+
+function getProjectChatPanel(projectId) {
+  var access = assertProjectAccess_(projectId, 'history');
+  var conversations = readConversationIndex_(access.project).conversations.filter(function(item) {
+    return item.status !== 'archived';
+  }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  var firstConversation = null;
+  if (conversations.length) {
+    var firstRecord = conversations[0];
+    var file = firstRecord.fileId
+      ? DriveApp.getFileById(firstRecord.fileId)
+      : getFirstFileByName_(DriveApp.getFolderById(access.project.folders.conversations), 'Conversation - ' + firstRecord.conversationId + '.json');
+    firstConversation = readJsonFile_(file, null);
+    if (!firstConversation) throw new Error('The most recent chat file is damaged.');
+  }
+  return {conversations: conversations, firstConversation: firstConversation};
+}
+
+function getProjectDocumentsPanel(projectId) {
+  return {documentGraph: listProjectDocuments(projectId)};
+}
+
+function getProjectTemplatesPanel(projectId) {
+  return {templates: listTemplates(projectId)};
+}
+
+function getProjectFlowsPanel(projectId) {
+  return {flows: listFlows(projectId)};
+}
+
+function getProjectMembersPanel(projectId) {
+  return {members: listProjectMembers(projectId)};
 }
 
 function getProjectDetails(projectId) {
@@ -91,6 +150,8 @@ function updateProject(projectId, changes) {
   if (folder.getName() !== project.title) folder.setName(project.title);
   writeProjectManifest_(folder, project);
   syncProjectControl_(project, false);
+  invalidateProjectCaches_(projectId);
+  cacheProjectLocator_(projectId, folder.getId());
   return publicProject_(project, access.member, getFavoriteIds_().indexOf(projectId) !== -1);
 }
 
@@ -138,6 +199,8 @@ function cloneProject(projectId) {
     clone = reconcileProjectStats_(clone);
     writeProjectManifest_(destination, clone);
     syncProjectControl_(clone, false);
+    invalidateProjectCaches_(clone.projectId);
+    cacheProjectLocator_(clone.projectId, destination.getId());
     return publicProject_(clone, clone.members[0], false);
   } catch (error) {
     try { destination.setTrashed(true); } catch (cleanupError) { console.warn(cleanupError.message); }
@@ -153,10 +216,19 @@ function deleteProject(projectId) {
   var favorites = getFavoriteIds_().filter(function(id) { return id !== projectId; });
   PropertiesService.getUserProperties().setProperty(APP.USER_FAVORITES, JSON.stringify(favorites));
   PropertiesService.getUserProperties().deleteProperty(APP.USER_TEMPLATE_PREFIX + projectId);
+  invalidateProjectCaches_(projectId);
   return {deleted: true, projectId: projectId};
 }
 
-function discoverProjects_() {
+function discoverProjects_(forceRefresh) {
+  var cache = CacheService.getScriptCache();
+  if (!forceRefresh) {
+    var cached = safeJsonParse_(cache.get(APP.PROJECT_CATALOG_CACHE_KEY), null);
+    if (cached && Array.isArray(cached.projects)) {
+      cached.projects.forEach(function(project) { if (project.projectId && project.folderId) cacheProjectLocator_(project.projectId, project.folderId); });
+      return cached.projects;
+    }
+  }
   var root = getRootFolder_();
   var folders = root.getFolders();
   var projects = [];
@@ -165,14 +237,35 @@ function discoverProjects_() {
     var folder = folders.next();
     if (folder.isTrashed() || folder.getName() === APP.SYSTEM_FOLDER) continue;
     try {
-      projects.push(registerFolderAsProject_(folder, seenProjectIds));
+      var manifest = readJsonFile_(getFirstFileByName_(folder, PROJECT_MANIFEST_FILE), null);
+      if (!manifest || !manifest.projectId || seenProjectIds[manifest.projectId]) {
+        manifest = registerFolderAsProject_(folder, seenProjectIds);
+      } else {
+        manifest = lightweightProjectManifest_(folder, manifest);
+        seenProjectIds[manifest.projectId] = folder.getId();
+      }
+      projects.push(manifest);
+      cacheProjectLocator_(manifest.projectId, folder.getId());
     } catch (error) {
       console.warn('Project folder skipped: ' + error.message);
     }
   }
-  clearLegacyProjectRegistry_();
   cleanMissingFavorites_(projects.map(function(project) { return project.projectId; }));
+  try { cache.put(APP.PROJECT_CATALOG_CACHE_KEY, JSON.stringify({projects: projects}), APP.PROJECT_CACHE_SECONDS); } catch (cacheError) { console.warn(cacheError.message); }
   return projects;
+}
+
+function lightweightProjectManifest_(folder, manifest) {
+  var now = nowIso_();
+  var email = getCurrentIdentity_().email;
+  manifest.folderId = folder.getId();
+  manifest.title = manifest.title || folder.getName();
+  manifest.icon = normalizeProjectIcon_(manifest.icon);
+  manifest.color = normalizeProjectColor_(manifest.color);
+  manifest.status = manifest.status || 'active';
+  manifest.members = manifest.members || [{email: manifest.owner || email, role: 'owner', scope: 'full', addedAt: manifest.createdAt || now}];
+  manifest.stats = manifest.stats || {sourceCount: 0, conversationCount: 0, documentCount: 0, lastActivityAt: manifest.updatedAt || manifest.createdAt || now};
+  return manifest;
 }
 
 function clearLegacyProjectRegistry_() {
@@ -435,9 +528,24 @@ function persistProjectManifest_(project) {
   var folder = getActiveProjectFolderById_(project.folderId);
   if (!folder) throw new Error('The project folder is no longer inside the configured project folder.');
   writeProjectManifest_(folder, project);
+  invalidateProjectCaches_(project.projectId);
+  cacheProjectLocator_(project.projectId, project.folderId);
 }
 
 function getProjectFromRoot_(projectId) {
+  projectId = String(projectId || '');
+  var cache = CacheService.getScriptCache();
+  var cachedFolderId = cache.get(APP.PROJECT_LOCATOR_CACHE_PREFIX + projectId);
+  if (cachedFolderId) {
+    try {
+      var cachedFolder = getActiveProjectFolderById_(cachedFolderId);
+      var cachedManifest = cachedFolder && readJsonFile_(getFirstFileByName_(cachedFolder, PROJECT_MANIFEST_FILE), null);
+      if (cachedManifest && cachedManifest.projectId === projectId) return lightweightProjectManifest_(cachedFolder, cachedManifest);
+    } catch (cacheError) {
+      console.warn('Cached project location could not be used: ' + cacheError.message);
+    }
+    cache.remove(APP.PROJECT_LOCATOR_CACHE_PREFIX + projectId);
+  }
   var root = getRootFolder_();
   var folders = root.getFolders();
   while (folders.hasNext()) {
@@ -445,20 +553,37 @@ function getProjectFromRoot_(projectId) {
     if (folder.isTrashed() || folder.getName() === APP.SYSTEM_FOLDER) continue;
     var manifest = readJsonFile_(getFirstFileByName_(folder, PROJECT_MANIFEST_FILE), null);
     if (manifest && manifest.projectId === projectId) {
-      manifest.folderId = folder.getId();
-      return manifest;
+      cacheProjectLocator_(projectId, folder.getId());
+      return lightweightProjectManifest_(folder, manifest);
     }
   }
   return null;
 }
 
 function getActiveProjectFolderById_(folderId) {
-  var folders = getRootFolder_().getFolders();
-  while (folders.hasNext()) {
-    var folder = folders.next();
-    if (!folder.isTrashed() && folder.getId() === folderId) return folder;
-  }
+  if (!folderId) return null;
+  var folder;
+  try { folder = DriveApp.getFolderById(folderId); } catch (error) { return null; }
+  if (!folder || folder.isTrashed()) return null;
+  var rootId = getRootFolder_().getId();
+  var parents = folder.getParents();
+  while (parents.hasNext()) if (parents.next().getId() === rootId) return folder;
   return null;
+}
+
+function cacheProjectLocator_(projectId, folderId) {
+  if (!projectId || !folderId) return;
+  try { CacheService.getScriptCache().put(APP.PROJECT_LOCATOR_CACHE_PREFIX + projectId, folderId, APP.PROJECT_CACHE_SECONDS); } catch (error) { console.warn(error.message); }
+}
+
+function invalidateProjectCaches_(projectId) {
+  try {
+    var cache = CacheService.getScriptCache();
+    cache.remove(APP.PROJECT_CATALOG_CACHE_KEY);
+    if (projectId) cache.remove(APP.PROJECT_LOCATOR_CACHE_PREFIX + projectId);
+  } catch (error) {
+    console.warn(error.message);
+  }
 }
 
 function publicProject_(project, member, favorite) {
@@ -496,7 +621,6 @@ function touchProjectStats_(projectId, changes) {
   project.stats.lastActivityAt = nowIso_();
   project.updatedAt = project.stats.lastActivityAt;
   persistProjectManifest_(project);
-  try { writeProjectManifest_(DriveApp.getFolderById(project.folderId), project); } catch (error) { console.warn(error.message); }
 }
 
 function normalizeProjectIcon_(value) {

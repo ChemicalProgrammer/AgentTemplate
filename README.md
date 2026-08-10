@@ -20,6 +20,8 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
 - Estados visibles `Queued`, `Uploading`, `Indexing`, `Indexed`, `Status unknown` e `Index failed`, con diagnóstico remoto, etapa, hora, progreso, error exacto y reintento.
 - El diagnóstico reconcilia la operación de larga duración con los documentos reales de la fuente, distingue sus intentos de los contadores globales, detecta operaciones huérfanas y elimina intentos fallidos antes de reintentar.
 - Citas con archivo y página cuando Gemini devuelve ese dato.
+- Aislamiento estricto por selección: cada consulta usa un filtro obligatorio de `source_id`, excluye del historial la memoria asociada con otras fuentes y bloquea respuestas que citen un documento no seleccionado.
+- Eliminación completa de fuentes: la tarjeta desaparece de Drive/UI, se purgan todos sus documentos de File Search y una reconciliación en segundo plano retira índices huérfanos heredados.
 - Pestaña Templates para importar Google Docs, Sheets o Slides como formatos de salida sin modificar la plantilla original.
 - Generación de reportes desde cualquier tarjeta documental, con formato estándar o la plantilla seleccionada.
 - Pestaña Flows para importar o subir instrucciones `.md` seleccionables por conversación y reporte.
@@ -34,6 +36,8 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
 - Versión instalada visible junto al título de Settings.
 - Interfaz responsiva completamente en inglés, basada en superficies de Material 3, densidad de shadcn/ui y patrones de Google Workspace.
 - Vista de proyecto con encabezado compacto, Share en la parte superior y panel izquierdo Chats/Documents/Templates/Flows redimensionable.
+- Apertura progresiva del proyecto: encabezado inmediato, Chats y Documents en paralelo, Templates/Flows bajo demanda, miembros al abrir Share y spinners independientes sin textos `Loading`.
+- Caché transitoria de ubicación de proyectos y catálogo ligero; el arranque normal ya no repara índices, recorre documentos ni sincroniza `Project Control`.
 - Emojis y colores de proyecto editables únicamente dentro del workspace del proyecto.
 - Grafo de documentos por niveles: fuentes iniciales en Level 0 y documentos derivados en los niveles posteriores.
 - Selección individual o por nivel de los documentos que Gemini puede utilizar en cada chat.
@@ -137,7 +141,7 @@ Resumen:
 
 ## Cómo funciona la memoria
 
-La conversación completa siempre se conserva en el archivo JSON del proyecto. Para cada consulta, el agente envía:
+La conversación completa siempre se conserva en el archivo JSON del proyecto. En una consulta general, el agente envía:
 
 - instrucciones y descripción permanentes del proyecto;
 - memoria acumulativa de los mensajes antiguos;
@@ -147,6 +151,8 @@ La conversación completa siempre se conserva en el archivo JSON del proyecto. P
 - el mensaje nuevo.
 
 Cada ocho mensajes que quedan fuera de la ventana reciente, Gemini consolida la memoria. Si esa consolidación falla, la respuesta y el historial se guardan de todas maneras.
+
+Cuando hay documentos seleccionados, la consulta cambia a modo aislado: no se envía la memoria acumulada y solo se conservan intercambios anteriores cuya selección o citas pertenecen a los documentos autorizados actualmente. File Search recibe siempre un `metadata_filter` no vacío. Las citas se validan contra esa misma lista antes de guardar la respuesta; una cita externa bloquea la respuesta completa.
 
 ## Templates y reportes
 
@@ -182,6 +188,7 @@ La app vuelve a validar el rol y el alcance en el servidor; ocultar un botón en
 - El dominio se verifica en cada operación de servidor.
 - No se transmiten tokens OAuth de Google al navegador ni a Gemini.
 - Al retirar una fuente, documento generado o chat, el archivo se mueve a la papelera de Drive y puede recuperarse.
+- Al retirar una fuente, su estado local deja de ser elegible antes de llamar a Gemini. La app elimina todos los documentos remotos con su `source_id` o `drive_id` y vuelve a buscar huérfanos al cargar Documents.
 
 ## Límites prácticos
 
@@ -203,6 +210,12 @@ Todos estos límites se concentran en `ConfigService.gs` para poder ajustarlos.
 El valor inicial es `gemini-3.6-flash`. Al guardar la llave, la app consulta los modelos disponibles mediante la API; si el modelo solicitado no está habilitado para esa llave, selecciona automáticamente el primer modelo Flash compatible con `generateContent`.
 
 ## Versión
+
+`1.6.0` — corrige la eliminación incompleta y la contaminación entre fuentes, aplica aislamiento estricto por selección/citas, limpia índices huérfanos y añade carga progresiva con caché de proyectos, paneles paralelos o diferidos y spinners independientes.
+
+`1.5.4` — migra los almacenes documentales a `gemini-embedding-001`, usa fragmentación PDF nativa y muestra la versión instalada en Settings.
+
+`1.5.3` — reconcilia operaciones de indexación con los documentos remotos reales y añade reintento limpio por fuente.
 
 `1.5.2` — corrige la inicialización de File Search con fragmentos compatibles de 200 tokens y 20 tokens de superposición, y protege la solicitud para que nunca exceda el máximo de 512 tokens aceptado por la API.
 

@@ -133,6 +133,7 @@ function generateReportContent_(project, source, flowContext) {
       contents: [{role: 'user', parts: [{text: request}]}],
       storeName: fileSearch.storeName,
       metadataFilter: buildFileSearchMetadataFilter_(fileSearch.sourceIds),
+      allowedSourceIds: fileSearch.sourceIds,
       maxOutputTokens: 8192
     });
   }

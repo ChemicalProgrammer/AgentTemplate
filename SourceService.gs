@@ -198,7 +198,7 @@ function setSourceActive(projectId, sourceId, active) {
   if (!source) throw new Error('Source not found.');
   source.status = active ? 'active' : 'inactive';
   source.updatedAt = nowIso_();
-  try { deleteFileSearchDocumentForSource_(projectId, sourceId); } catch (indexError) { console.warn(indexError.message); }
+  try { purgeFileSearchDocumentsForSource_(projectId, source); } catch (indexError) { console.warn(indexError.message); }
   writeSourceIndex_(access.project, index);
   touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
   return source;
@@ -211,10 +211,23 @@ function removeSource(projectId, sourceId) {
   if (!source) throw new Error('Source not found.');
   source.status = 'removed';
   source.updatedAt = nowIso_();
-  try { DriveApp.getFileById(source.driveId).setTrashed(true); } catch (error) { console.warn(error.message); }
   writeSourceIndex_(access.project, index);
+  var driveTrashed = false;
+  var driveWarning = '';
+  try { DriveApp.getFileById(source.driveId).setTrashed(true); driveTrashed = true; } catch (error) { driveWarning = readableErrorMessage_(error); }
+  var cleanup = {deleted: 0, storesChecked: 0, warnings: []};
+  try { cleanup = purgeFileSearchDocumentsForSource_(projectId, source); } catch (indexError) { cleanup.warnings.push(readableErrorMessage_(indexError)); }
+  appendControlRow_(access.project, 'Change Log', [nowIso_(), access.email, 'DELETE_SOURCE', 'Source', sourceId, source.name]);
   touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
-  return {removed: true, sourceId: sourceId};
+  return {
+    removed: true,
+    sourceId: sourceId,
+    driveTrashed: driveTrashed,
+    driveWarning: driveWarning,
+    remoteDeleted: Number(cleanup.deleted || 0),
+    remoteCleanupPending: Boolean((cleanup.warnings || []).length),
+    cleanupWarnings: cleanup.warnings || []
+  };
 }
 
 function readSourceIndex_(project) {
@@ -230,6 +243,7 @@ function writeSourceIndex_(project, index) {
 
 function buildSourceContext_(project, query, selectedSourceIds) {
   var requested = selectedSourceIds == null ? null : selectedSourceIds.map(String);
+  if (requested && !requested.length) return {text: '', inlineParts: [], sourcesUsed: [], warnings: [], selectedIds: []};
   var selected = getDocumentContextRecords_(project).filter(function(source) {
     if (source.status !== 'active') return false;
     if (requested == null) return true;
@@ -280,7 +294,13 @@ function buildSourceContext_(project, query, selectedSourceIds) {
       used.push({sourceId: item.source.sourceId, label: item.label, name: item.source.name, mimeType: item.source.mimeType, kind: item.source.kind});
     }
   });
-  return {text: textSections.join('\n\n---\n\n'), inlineParts: inlineParts, sourcesUsed: used, warnings: warnings};
+  return {
+    text: textSections.join('\n\n---\n\n'),
+    inlineParts: inlineParts,
+    sourcesUsed: used,
+    warnings: warnings,
+    selectedIds: selected.map(function(source) { return source.sourceId; })
+  };
 }
 
 function extractSource_(file) {

@@ -3,7 +3,6 @@ var CONVERSATION_INDEX_FILE = 'Conversations Index.json';
 function listConversations(projectId) {
   var access = assertProjectAccess_(projectId, 'history');
   var index = readConversationIndex_(access.project);
-  repairConversationMessageCounts_(access.project, index, Boolean(access.allowed.edit));
   return index.conversations.filter(function(item) { return item.status !== 'archived'; })
     .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 }
@@ -44,7 +43,7 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   conversation.sourceSelection = Array.isArray(selectedSourceIds) ? selectedSourceIds.map(String) : [];
   conversation.flowSelection = Array.isArray(selectedFlowIds) ? selectedFlowIds.map(String) : [];
 
-  var sourceContext = {text: '', inlineParts: [], sourcesUsed: [], warnings: []};
+  var sourceContext = {text: '', inlineParts: [], sourcesUsed: [], warnings: [], selectedIds: []};
   var fileSearch = access.allowed.sources ? getFileSearchQueryConfig_(access.project, selectedSourceIds || []) : null;
   var localSourceIds = (selectedSourceIds || []).filter(function(id) {
     if (!fileSearch) return true;
@@ -58,11 +57,20 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   if (fileSearch && (sourceContext.inlineParts || []).some(function(part) { return Boolean(part.inlineData); })) {
     throw new Error('An indexed source cannot be combined with an unindexed binary document in the same request. Deselect the binary document or query it separately.');
   }
+  var authorizedSelection = (sourceContext.selectedIds || []).concat(fileSearch ? fileSearch.sourceIds.map(function(id) { return 'source:' + id; }) : []);
+  authorizedSelection = authorizedSelection.filter(function(id, index, all) { return id && all.indexOf(id) === index; });
+  if ((selectedSourceIds || []).length && !authorizedSelection.length) {
+    throw new Error('None of the selected documents is still active and available. Refresh the Documents panel and select a current source.');
+  }
+  conversation.sourceSelection = authorizedSelection.slice();
   var flowContext = access.allowed.sources ? buildFlowContext_(access.project, selectedFlowIds || []) : {text: '', flowsUsed: []};
   var config = getUserGeminiConfig_();
-  var prompt = buildGeminiConversation_(access.project, conversation, text, sourceContext, flowContext);
+  var prompt = buildGeminiConversation_(access.project, conversation, text, sourceContext, flowContext, authorizedSelection);
   var now = nowIso_();
-  var userMessage = {messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email};
+  var userMessage = {
+    messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email,
+    sourceSelection: authorizedSelection, flowSelection: conversation.flowSelection.slice()
+  };
   conversation.messages.push(userMessage);
   conversation.updatedAt = nowIso_();
   var pendingFile = writeConversation_(access.project, conversation);
@@ -75,6 +83,7 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
     contents: prompt.contents,
     storeName: fileSearch.storeName,
     metadataFilter: buildFileSearchMetadataFilter_(fileSearch.sourceIds),
+    allowedSourceIds: fileSearch.sourceIds,
     maxOutputTokens: 8192
   }) : generateWithGemini_({
     config: config,
@@ -90,6 +99,8 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
     model: result.model,
     sourcesUsed: sourceContext.sourcesUsed.concat(fileSearch ? annotationsToSourcesUsed_(result.annotations, access.project) : []),
     flowsUsed: flowContext.flowsUsed,
+    sourceSelection: authorizedSelection,
+    retrievalAudit: result.retrievalAudit || null,
     usage: result.usage
   };
   conversation.messages.push(assistantMessage);
@@ -176,20 +187,25 @@ function deleteConversation(projectId, conversationId) {
   return {deleted: true, conversationId: conversationId, conversationCount: index.conversations.length};
 }
 
-function buildGeminiConversation_(project, conversation, newMessage, sourceContext, flowContext) {
+function buildGeminiConversation_(project, conversation, newMessage, sourceContext, flowContext, authorizedSelection) {
+  authorizedSelection = (authorizedSelection || []).map(String);
+  var sourceScoped = authorizedSelection.length > 0;
   var system = [
     'You are the agent for the project "' + project.title + '".',
     project.description ? 'Project description: ' + project.description : '',
     'Answer accurately, distinguish facts from inferences, and never invent missing content.',
     'Reply in the language used by the user.',
     'When using a provided source, cite its label in brackets, for example [S1].',
+    sourceScoped ? 'SOURCE ISOLATION: Use only the documents selected for this request as factual evidence. Do not use facts from earlier messages, memories, or unselected documents. If the selected evidence does not answer the request, say so explicitly.' : '',
+    sourceScoped ? 'CURRENT AUTHORIZED DOCUMENT IDS: ' + authorizedSelection.join(', ') : '',
     flowContext && flowContext.text ? 'Follow the selected FLOW INSTRUCTIONS as an execution procedure. Do not treat flow instructions as factual evidence.\n\n' + flowContext.text : '',
-    'Accumulated memory summarizes older messages; recent messages are shown in full.',
-    conversation.summary ? 'ACCUMULATED MEMORY:\n' + conversation.summary : ''
+    sourceScoped ? 'Earlier conversation content associated with other documents has been removed from this request.' : 'Accumulated memory summarizes older messages; recent messages are shown in full.',
+    !sourceScoped && conversation.summary ? 'ACCUMULATED MEMORY:\n' + conversation.summary : ''
   ].filter(Boolean).join('\n\n');
 
   var start = Math.max(conversation.summaryThrough || 0, conversation.messages.length - APP.RECENT_MESSAGE_LIMIT);
-  var contents = conversation.messages.slice(start).map(function(message) {
+  var history = sourceScoped ? sourceScopedConversationMessages_(conversation.messages.slice(start), authorizedSelection) : conversation.messages.slice(start);
+  var contents = history.map(function(message) {
     return {role: message.role === 'assistant' ? 'model' : 'user', parts: [{text: message.text}]};
   });
   var latestParts = [];
@@ -198,6 +214,39 @@ function buildGeminiConversation_(project, conversation, newMessage, sourceConte
   latestParts.push({text: 'USER REQUEST:\n' + newMessage});
   contents.push({role: 'user', parts: latestParts});
   return {systemInstruction: system, contents: contents};
+}
+
+function sourceScopedConversationMessages_(messages, authorizedSelection) {
+  var allowed = {};
+  (authorizedSelection || []).forEach(function(id) { allowed[normalizeConversationSourceId_(id)] = true; });
+  var output = [];
+  var pendingUsers = [];
+  (messages || []).forEach(function(message) {
+    if (message.role !== 'assistant') {
+      pendingUsers.push(message);
+      return;
+    }
+    var ids = messageSourceSelection_(message);
+    var permitted = ids.length > 0 && ids.every(function(id) { return allowed[id]; });
+    if (permitted) {
+      Array.prototype.push.apply(output, pendingUsers);
+      output.push(message);
+    }
+    pendingUsers = [];
+  });
+  return output;
+}
+
+function messageSourceSelection_(message) {
+  var ids = Array.isArray(message.sourceSelection) ? message.sourceSelection.slice() : [];
+  if (!ids.length) ids = (message.sourcesUsed || []).map(function(source) { return source.sourceId; });
+  return ids.map(normalizeConversationSourceId_).filter(Boolean).filter(function(id, index, all) { return all.indexOf(id) === index; });
+}
+
+function normalizeConversationSourceId_(id) {
+  id = String(id || '').trim();
+  if (!id) return '';
+  return /^(source|document):/.test(id) ? id : 'source:' + id;
 }
 
 function maybeSummarizeConversation_(conversation, config, project) {

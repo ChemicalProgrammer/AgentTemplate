@@ -1,6 +1,6 @@
 var APP = Object.freeze({
   NAME: 'Gemini Project Agent',
-  VERSION: '1.5.4',
+  VERSION: '1.6.0',
   ROOT_NAME: 'Agent Projects',
   SYSTEM_FOLDER: '_System',
   PROP_ROOT_ID: 'ROOT_FOLDER_ID',
@@ -14,6 +14,9 @@ var APP = Object.freeze({
   USER_FILE_SEARCH_STORE_PREFIX: 'FILE_SEARCH_STORE_',
   USER_FILE_SEARCH_SOURCE_PREFIX: 'FILE_SEARCH_SOURCE_',
   USER_SOURCE_UPLOAD_PREFIX: 'SOURCE_UPLOAD_SESSION_',
+  PROJECT_CATALOG_CACHE_KEY: 'GPA_PROJECT_CATALOG_V160',
+  PROJECT_LOCATOR_CACHE_PREFIX: 'GPA_PROJECT_LOCATOR_V160_',
+  PROJECT_CACHE_SECONDS: 180,
   DEFAULT_MODEL: 'gemini-3.6-flash',
   MAX_FLOW_UPLOAD_BYTES: 6 * 1024 * 1024,
   LOCAL_SOURCE_UPLOAD_CHUNK_BYTES: 2 * 1024 * 1024,
@@ -59,6 +62,7 @@ function setupApplication(settings) {
     ORGANIZATION_DOMAIN: domain,
     ADMIN_EMAIL: identity.email
   }, false);
+  invalidateProjectCaches_('');
 
   return getBootstrap();
 }
@@ -96,6 +100,7 @@ function updateRootFolderSettings(settings) {
     ROOT_FOLDER_NAME: root.getName()
   }, false);
   clearLegacyProjectRegistry_();
+  invalidateProjectCaches_('');
   return getBootstrap();
 }
 

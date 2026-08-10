@@ -38,7 +38,10 @@
     highlightedDocumentId: null,
     editingDocumentId: null,
     diagnosingSourceId: null,
-    lastProjectRefresh: 0
+    lastProjectRefresh: 0,
+    projectLoadToken: 0,
+    panelLoaded: {chats:false, documents:false, templates:false, flows:false, members:false},
+    panelLoading: {chats:false, documents:false, templates:false, flows:false, members:false}
   };
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -282,33 +285,183 @@
   }
 
   async function openProject(projectId) {
+    const loadToken = ++state.projectLoadToken;
+    const cachedProject = state.projects.find(item => item.projectId === projectId) || {projectId, title:'Project', description:'', icon:'✨', color:'blue', role:'', scope:''};
     document.getElementById('project-side-panel').classList.remove('mobile-open');
     document.getElementById('dashboard-view').classList.add('hidden');
     const projectView = document.getElementById('project-view');
     projectView.classList.remove('hidden'); projectView.classList.add('view-entering');
-    setWorkspaceMode('project'); document.getElementById('project-title').textContent = 'Loading…';
+    setWorkspaceMode('project');
+    state.currentProjectId = projectId; state.currentConversationId = null; state.currentConversation = null;
+    state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map();
+    state.selectedSources = new Set(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
+    state.panelLoaded = {chats:false, documents:false, templates:false, flows:false, members:false};
+    state.panelLoading = {chats:false, documents:false, templates:false, flows:false, members:false};
+    state.projectDetails = {
+      project: cachedProject,
+      permissions: optimisticPermissions_(cachedProject),
+      conversations: [], sources: [], documents: [], templates: [], flows: [], members: []
+    };
+    renderProjectDetails();
+    prepareProjectLoadingUi();
+    showSideTab(state.projectDetails.permissions.history ? 'chats' : 'documents', false);
     try {
-      const details = await server('getProjectDetails', projectId);
-      state.projectDetails = details; state.documentNodes = details.documentGraph || [];
-      state.currentProjectId = projectId; state.currentConversationId = null; state.currentConversation = null;
-      state.conversationSelections = new Map(); state.flowSelections = new Map();
-      state.selectedFlows = new Set();
-      state.selectedTemplateId = ((details.templates || []).find(item => item.selected) || {}).templateId || '';
-      selectDefaultDocuments(); syncProjectSummary(details); renderProjectDetails();
-      showSideTab(details.permissions.history ? 'chats' : 'documents');
-      if (details.permissions.history && details.conversations.length) await openConversation(details.conversations[0].conversationId);
-      else renderChatEmpty(!details.permissions.history);
+      const shell = await server('getProjectShell', projectId);
+      if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
+      state.projectDetails.project = shell.project;
+      state.projectDetails.permissions = shell.permissions;
+      syncProjectSummary(state.projectDetails); renderProjectDetails();
+      const initialTab = shell.permissions.history ? 'chats' : 'documents';
+      showSideTab(initialTab, false);
+      const tasks = [];
+      if (shell.permissions.history) tasks.push(loadProjectChats_(projectId, loadToken));
+      else { setPanelLoading_('chats', false); setChatPanelLoading_(false); renderChatEmpty(true); }
+      if (shell.permissions.sources || shell.permissions.documents) tasks.push(loadProjectDocuments_(projectId, loadToken));
+      else setPanelLoading_('documents', false);
+      Promise.allSettled(tasks).then(() => {
+        if (loadToken === state.projectLoadToken) updateComposerAvailability_();
+      });
     } catch (error) { showToast(error.message, true); showDashboard(); }
     finally { setTimeout(() => projectView.classList.remove('view-entering'), 360); }
+  }
+
+  function optimisticPermissions_(project) {
+    const full = project.scope === 'full';
+    return {
+      project: full,
+      sources: full || project.scope === 'sources_documents',
+      documents: full || project.scope === 'sources_documents',
+      history: full || project.scope === 'history',
+      share: project.role === 'owner',
+      edit: project.role && project.role !== 'viewer'
+    };
+  }
+
+  function prepareProjectLoadingUi() {
+    ['chats','documents','templates','flows'].forEach(name => setPanelLoading_(name, true));
+    state.panelLoading.templates = false;
+    state.panelLoading.flows = false;
+    setChatPanelLoading_(true);
+    document.getElementById('members-table').innerHTML = '';
+    document.getElementById('chat-input').disabled = true;
+  }
+
+  function setPanelLoading_(name, busy) {
+    state.panelLoading[name] = Boolean(busy);
+    const loader = document.getElementById(name + '-panel-loader');
+    if (loader) loader.classList.toggle('hidden', !busy);
+    const contentIds = {chats:'conversation-list', documents:'document-levels', templates:'template-list', flows:'flow-list'};
+    const content = document.getElementById(contentIds[name]);
+    if (content) content.classList.toggle('hidden', Boolean(busy));
+    const empty = document.getElementById('empty-' + name);
+    if (empty && busy) empty.classList.add('hidden');
+  }
+
+  function setChatPanelLoading_(busy) {
+    const loader = document.getElementById('chat-panel-loader');
+    loader.classList.toggle('hidden', !busy);
+    if (busy) {
+      document.getElementById('chat-empty').classList.add('hidden');
+      document.getElementById('chat-messages').classList.add('hidden');
+    } else {
+      document.getElementById('chat-messages').classList.remove('hidden');
+    }
+  }
+
+  async function loadProjectChats_(projectId, loadToken) {
+    setPanelLoading_('chats', true); setChatPanelLoading_(true);
+    try {
+      const data = await server('getProjectChatPanel', projectId);
+      if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
+      state.projectDetails.conversations = data.conversations || [];
+      state.currentConversation = data.firstConversation || null;
+      state.currentConversationId = state.currentConversation ? state.currentConversation.conversationId : null;
+      state.panelLoaded.chats = true;
+      applyCurrentConversationSelections_();
+      renderConversationList();
+      if (state.currentConversation) renderMessages(); else renderChatEmpty(false);
+    } catch (error) {
+      if (loadToken === state.projectLoadToken) showToast('Chats could not be loaded: ' + error.message, true);
+    } finally {
+      if (loadToken === state.projectLoadToken) { setPanelLoading_('chats', false); setChatPanelLoading_(false); updateComposerAvailability_(); }
+    }
+  }
+
+  async function loadProjectDocuments_(projectId, loadToken) {
+    setPanelLoading_('documents', true);
+    try {
+      const data = await server('getProjectDocumentsPanel', projectId);
+      if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
+      state.documentNodes = data.documentGraph || [];
+      state.projectDetails.sources = state.documentNodes.filter(node => node.kind === 'source');
+      state.projectDetails.documents = state.documentNodes.filter(node => node.kind !== 'source');
+      state.panelLoaded.documents = true;
+      applyCurrentConversationSelections_();
+      syncProjectSummary(state.projectDetails); renderDocumentGraph();
+      server('cleanupProjectFileSearchOrphans', projectId).then(result => {
+        if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
+        if (result && result.deleted) showToast(`${result.deleted} stale File Search record${result.deleted === 1 ? '' : 's'} removed.`);
+      }).catch(() => {});
+    } catch (error) {
+      if (loadToken === state.projectLoadToken) showToast('Documents could not be loaded: ' + error.message, true);
+    } finally {
+      if (loadToken === state.projectLoadToken) { setPanelLoading_('documents', false); updateComposerAvailability_(); }
+    }
+  }
+
+  async function ensurePanelLoaded_(name) {
+    if (!state.currentProjectId || state.panelLoaded[name] || state.panelLoading[name]) return;
+    const projectId = state.currentProjectId; const loadToken = state.projectLoadToken;
+    const endpoints = {templates:'getProjectTemplatesPanel', flows:'getProjectFlowsPanel'};
+    if (!endpoints[name]) return;
+    setPanelLoading_(name, true);
+    try {
+      const data = await server(endpoints[name], projectId);
+      if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
+      state.projectDetails[name] = data[name] || [];
+      state.panelLoaded[name] = true;
+      if (name === 'templates') {
+        state.selectedTemplateId = (state.projectDetails.templates.find(item => item.selected) || {}).templateId || '';
+        renderTemplates();
+      } else {
+        applyCurrentConversationSelections_(); renderFlows();
+      }
+    } catch (error) {
+      if (loadToken === state.projectLoadToken) showToast(`${name[0].toUpperCase() + name.slice(1)} could not be loaded: ${error.message}`, true);
+    } finally {
+      if (loadToken === state.projectLoadToken) setPanelLoading_(name, false);
+    }
+  }
+
+  function applyCurrentConversationSelections_() {
+    if (state.panelLoaded.documents) {
+      if (state.currentConversation && Object.prototype.hasOwnProperty.call(state.currentConversation, 'sourceSelection')) {
+        state.selectedSources = new Set(normalizeSelectedDocumentIds(state.currentConversation.sourceSelection));
+      } else if (!state.currentConversation) selectDefaultDocuments();
+    }
+    if (state.currentConversation) state.selectedFlows = new Set(state.currentConversation.flowSelection || []);
+    rememberCurrentSelection(); rememberCurrentFlowSelection();
+    if (state.panelLoaded.documents) renderDocumentGraph();
+    if (state.panelLoaded.flows) renderFlows();
+  }
+
+  function updateComposerAvailability_() {
+    if (!state.projectDetails) return;
+    const permissions = state.projectDetails.permissions;
+    const documentsReady = !permissions.sources && !permissions.documents || state.panelLoaded.documents;
+    const chatsReady = !permissions.history || state.panelLoaded.chats;
+    const available = Boolean(permissions.edit && permissions.history && documentsReady && chatsReady && !state.busy);
+    document.getElementById('chat-input').disabled = !available;
+    document.getElementById('send-message').disabled = !available;
   }
 
   function syncProjectSummary(details) {
     const local = state.projects.find(item => item.projectId === details.project.projectId);
     if (!local) return;
     Object.assign(local, details.project);
-    if (details.permissions.sources) local.sourceCount = state.documentNodes.filter(item => item.kind === 'source').length;
-    if (details.permissions.history) local.conversationCount = (details.conversations || []).filter(item => item.status !== 'archived').length;
-    if (details.permissions.documents) local.documentCount = state.documentNodes.filter(item => item.kind !== 'source').length;
+    if (details.permissions.sources && state.panelLoaded.documents) local.sourceCount = state.documentNodes.filter(item => item.kind === 'source').length;
+    if (details.permissions.history && state.panelLoaded.chats) local.conversationCount = (details.conversations || []).filter(item => item.status !== 'archived').length;
+    if (details.permissions.documents && state.panelLoaded.documents) local.documentCount = state.documentNodes.filter(item => item.kind !== 'source').length;
   }
 
   function renderProjectDetails() {
@@ -333,11 +486,15 @@
     document.getElementById('add-template-link').classList.toggle('hidden', !permissions.edit || !permissions.documents);
     document.getElementById('add-flow-link').classList.toggle('hidden', !permissions.edit || !permissions.sources);
     document.querySelector('.flow-file-button').classList.toggle('hidden', !permissions.edit || !permissions.sources);
-    renderConversationList(); renderDocumentGraph(); renderTemplates(); renderFlows(); renderMembers();
+    if (state.panelLoaded.chats) renderConversationList();
+    if (state.panelLoaded.documents) renderDocumentGraph();
+    if (state.panelLoaded.templates) renderTemplates();
+    if (state.panelLoaded.flows) renderFlows();
   }
 
   function showDashboard() {
     if (state.activeRequest) stopResponse();
+    state.projectLoadToken++;
     state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
     document.getElementById('project-view').classList.add('hidden');
     const dashboard = document.getElementById('dashboard-view'); dashboard.classList.remove('hidden'); dashboard.classList.add('view-entering');
@@ -349,13 +506,14 @@
     shell.classList.toggle('dashboard-mode', mode === 'dashboard'); shell.classList.toggle('project-mode', mode === 'project');
   }
 
-  function showSideTab(name) {
+  function showSideTab(name, load = true) {
     document.querySelectorAll('[data-side-tab]').forEach(tab => {
       const active = tab.dataset.sideTab === name; tab.classList.toggle('active', active); tab.setAttribute('aria-selected', String(active));
     });
     document.querySelectorAll('.side-panel-content').forEach(panel => { panel.classList.add('hidden'); panel.classList.remove('active'); });
     const panel = document.getElementById('side-panel-' + name);
     if (panel) { panel.classList.remove('hidden'); requestAnimationFrame(() => panel.classList.add('active')); }
+    if (load) ensurePanelLoaded_(name);
   }
 
   function renderConversationList() {
@@ -393,6 +551,7 @@
 
   async function openConversation(conversationId, button) {
     if (state.busy) return; if (button) setBusy(button, true);
+    setChatPanelLoading_(true);
     try {
       state.currentConversationId = conversationId; renderConversationList();
       state.currentConversation = await server('loadConversation', state.currentProjectId, conversationId);
@@ -409,7 +568,7 @@
       rememberCurrentSelection();
       rememberCurrentFlowSelection(); renderDocumentGraph(); renderFlows(); renderMessages(); document.getElementById('project-side-panel').classList.remove('mobile-open');
     } catch (error) { showToast(error.message, true); }
-    finally { if (button) setBusy(button, false); }
+    finally { setChatPanelLoading_(false); if (button) setBusy(button, false); updateComposerAvailability_(); }
   }
 
   async function deleteChat(conversationId, button) {
@@ -554,6 +713,7 @@
     document.getElementById('send-message').classList.toggle('hidden', busy);
     document.getElementById('stop-response').classList.toggle('hidden', !busy);
     document.getElementById('chat-input').disabled = busy;
+    if (!busy) updateComposerAvailability_();
   }
 
   async function exportConversationPdf(conversationId, button) {
@@ -876,7 +1036,7 @@
   }
 
   function renderTemplates() {
-    if (!state.projectDetails) return;
+    if (!state.projectDetails || !state.panelLoaded.templates) return;
     const templates = state.projectDetails.templates || [];
     const container = document.getElementById('template-list');
     container.innerHTML = templates.map(template => `<article class="asset-card ${template.templateId === state.selectedTemplateId ? 'selected' : ''}">
@@ -920,7 +1080,7 @@
   }
 
   function renderFlows() {
-    if (!state.projectDetails) return;
+    if (!state.projectDetails || !state.panelLoaded.flows) return;
     const flows = state.projectDetails.flows || [];
     const container = document.getElementById('flow-list');
     container.innerHTML = flows.map(flow => `<article class="asset-card ${state.selectedFlows.has(flow.flowId) ? 'selected' : ''}">
@@ -984,9 +1144,11 @@
     if (!confirmed) return;
     setBusy(button, true);
     try {
-      if (node.kind === 'source') await server('removeSource', state.currentProjectId, node.sourceId);
-      else await server('removeGeneratedDocument', state.currentProjectId, node.nodeId);
-      state.selectedSources.delete(node.nodeId); await refreshDocumentGraph(); showToast('Document moved to Drive trash.');
+      const result = node.kind === 'source'
+        ? await server('removeSource', state.currentProjectId, node.sourceId)
+        : await server('removeGeneratedDocument', state.currentProjectId, node.nodeId);
+      state.selectedSources.delete(node.nodeId); await refreshDocumentGraph();
+      showToast(result && result.remoteCleanupPending ? 'Source removed from the project. Remote cleanup will be retried automatically.' : 'Document moved to Drive trash.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
@@ -998,27 +1160,45 @@
     state.selectedSources = new Set(state.documentNodes.filter(node => previousSelection.has(node.nodeId) || !previousIds.has(node.nodeId) && node.selectedByDefault).map(node => node.nodeId));
     rememberCurrentSelection();
     state.projectDetails.documentGraph = state.documentNodes;
-    state.projectDetails.sources = state.projectDetails.sources.filter(source => state.documentNodes.some(node => node.sourceId === source.sourceId));
+    state.projectDetails.sources = state.documentNodes.filter(node => node.kind === 'source');
     state.projectDetails.documents = state.documentNodes.filter(node => node.kind !== 'source');
+    state.panelLoaded.documents = true;
     updateProjectCount('sourceCount', state.documentNodes.filter(node => node.kind === 'source').length);
     updateProjectCount('documentCount', state.documentNodes.filter(node => node.kind !== 'source').length);
     renderDocumentGraph();
   }
 
   function renderMembers() {
-    if (!state.projectDetails) return;
+    if (!state.projectDetails || !state.panelLoaded.members) return;
     const members = state.projectDetails.members || [];
     document.getElementById('members-table').innerHTML = members.map(member => `<div class="member-row"><div class="member-avatar">${escapeHtml(initials(member.email))}</div><div class="member-info"><strong>${escapeHtml(member.email)}</strong><span>${escapeHtml(scopeLabel(member.scope))}</span></div><span class="role-pill">${escapeHtml(member.role)}</span>${member.role !== 'owner' ? `<button class="icon-btn member-remove" data-remove-member="${escapeHtml(member.email)}" title="Remove access" aria-label="Remove access">×</button>` : '<span></span>'}</div>`).join('');
     document.querySelectorAll('[data-remove-member]').forEach(button => button.addEventListener('click', () => removeMember(button.dataset.removeMember, button)));
   }
 
-  function openShareModal() { renderMembers(); openModal('share-modal'); }
+  async function openShareModal() {
+    openModal('share-modal');
+    const loader = document.getElementById('members-panel-loader');
+    const table = document.getElementById('members-table');
+    if (state.panelLoaded.members) { loader.classList.add('hidden'); table.classList.remove('hidden'); renderMembers(); return; }
+    loader.classList.remove('hidden'); table.classList.add('hidden'); state.panelLoading.members = true;
+    const projectId = state.currentProjectId; const loadToken = state.projectLoadToken;
+    try {
+      const data = await server('getProjectMembersPanel', projectId);
+      if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
+      state.projectDetails.members = data.members || [];
+      state.panelLoaded.members = true; renderMembers();
+    } catch (error) { showToast('Project members could not be loaded: ' + error.message, true); }
+    finally {
+      if (loadToken === state.projectLoadToken) { state.panelLoading.members = false; loader.classList.add('hidden'); table.classList.remove('hidden'); }
+    }
+  }
 
   async function submitMember(event) {
     event.preventDefault(); setBusy(event.target, true); const permissions = {};
     document.querySelectorAll('#custom-permissions input').forEach(input => permissions[input.value] = input.checked);
     try {
       state.projectDetails.members = await server('shareProject', {projectId: state.currentProjectId, email: document.getElementById('member-email').value, role: document.getElementById('member-role').value, scope: document.getElementById('member-scope').value, permissions});
+      state.panelLoaded.members = true;
       event.target.reset(); document.getElementById('custom-permissions').classList.add('hidden'); renderMembers(); openModal('share-modal'); showToast('Access updated.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
@@ -1028,7 +1208,7 @@
     const confirmed = await askConfirmation({title: 'Remove access?', message: `${email} will no longer be able to open the shared project content.`, action: 'Remove access'});
     if (!confirmed) { openShareModal(); return; }
     setBusy(button, true);
-    try { state.projectDetails.members = await server('removeProjectMember', state.currentProjectId, email); renderMembers(); openShareModal(); showToast('Access removed.'); }
+    try { state.projectDetails.members = await server('removeProjectMember', state.currentProjectId, email); state.panelLoaded.members = true; renderMembers(); openShareModal(); showToast('Access removed.'); }
     catch (error) { openShareModal(); showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
