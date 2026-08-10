@@ -15,6 +15,7 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
 - Fuentes desde archivos o carpetas de Drive y carga directa reanudable de hasta 100 MB.
 - Lectura nativa de Google Docs, Sheets, Slides, TXT, Markdown, CSV, JSON y XML.
 - File Search persistente por proyecto y por llave de usuario: cada fuente se fragmenta e indexa una vez y las consultas recuperan semánticamente solo el contenido pertinente.
+- Perfil de indexación documental `gemini-embedding-001`: los PDF usan la fragmentación nativa de File Search y los archivos textuales conservan fragmentos de 200 tokens con 20 de superposición. Los almacenes heredados con perfil multimodal se migran en un reintento limpio.
 - Libros y archivos de hasta 100 MB, tanto desde Drive como desde la computadora: el navegador carga a Drive en bloques de 2 MB y File Search recibe bloques de 8 MB entre ejecuciones.
 - Estados visibles `Queued`, `Uploading`, `Indexing`, `Indexed`, `Status unknown` e `Index failed`, con diagnóstico remoto, etapa, hora, progreso, error exacto y reintento.
 - El diagnóstico reconcilia la operación de larga duración con los documentos reales de la fuente, distingue sus intentos de los contadores globales, detecta operaciones huérfanas y elimina intentos fallidos antes de reintentar.
@@ -30,6 +31,7 @@ Aplicación web modular para crear agentes por proyecto, conversar con Gemini us
   - Personalizado.
 - Roles Owner, Editor, Colaborador y Lector.
 - Llave y modelo de Gemini configurados por usuario; la llave vuelve a aparecer en el campo protegido de Settings al recargar.
+- Versión instalada visible junto al título de Settings.
 - Interfaz responsiva completamente en inglés, basada en superficies de Material 3, densidad de shadcn/ui y patrones de Google Workspace.
 - Vista de proyecto con encabezado compacto, Share en la parte superior y panel izquierdo Chats/Documents/Templates/Flows redimensionable.
 - Emojis y colores de proyecto editables únicamente dentro del workspace del proyecto.

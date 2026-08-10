@@ -33,7 +33,7 @@ clasp open
 
 1. En Apps Script, selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 1.5.2`.
+3. Descripción: `Version 1.5.4`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Quién tiene acceso: **Cualquier usuario del dominio** o la opción equivalente de tu organización.
 6. Autoriza los permisos solicitados.
@@ -95,6 +95,8 @@ El administrador puede cambiar la ubicación desde **Settings > Project location
 20. Importa un Google Sheet mediante su enlace de Drive y confirma que se copia e indexa sin mostrar una notificación vacía.
 21. Importa un Google Doc, Sheet o Slides en Templates, selecciónalo y genera un Report desde el menú de una tarjeta documental.
 22. Sube un archivo `.md` en Flows, selecciónalo y confirma que aparece como procedimiento utilizado en la siguiente respuesta.
+23. Abre Settings y confirma que el encabezado muestre `Version 1.5.4`.
+24. Para un PDF que falló en una versión anterior, abre su diagnóstico y pulsa **Retry cleanly**; confirma que el perfil cambie a `gemini-embedding-001 · PDF default chunking`.
 
 ## Actualizaciones
 

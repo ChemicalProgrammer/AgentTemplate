@@ -1,6 +1,6 @@
 var APP = Object.freeze({
   NAME: 'Gemini Project Agent',
-  VERSION: '1.5.3',
+  VERSION: '1.5.4',
   ROOT_NAME: 'Agent Projects',
   SYSTEM_FOLDER: '_System',
   PROP_ROOT_ID: 'ROOT_FOLDER_ID',
@@ -23,6 +23,7 @@ var APP = Object.freeze({
   MAX_INLINE_BYTES: 12 * 1024 * 1024,
   MAX_FILE_SEARCH_BYTES: 100 * 1024 * 1024,
   FILE_SEARCH_CHUNK_BYTES: 8 * 1024 * 1024,
+  FILE_SEARCH_EMBEDDING_MODEL: 'models/gemini-embedding-001',
   FILE_SEARCH_MAX_TOKENS_PER_CHUNK: 200,
   FILE_SEARCH_OVERLAP_TOKENS: 20,
   FILE_SEARCH_BATCH_SIZE: 5,

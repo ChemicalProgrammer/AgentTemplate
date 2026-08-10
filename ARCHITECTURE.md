@@ -1,5 +1,7 @@
 # Arquitectura técnica
 
+Versión de referencia: 1.5.4.
+
 ## Flujo principal
 
 ```mermaid

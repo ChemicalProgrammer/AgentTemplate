@@ -92,10 +92,12 @@ function indexSourceForCurrentUser_(project, source, force) {
     var store = ensureFileSearchStore_(project, config);
     storeName = store.storeName;
     stage = 'starting_file_search_upload';
-    var uploadUrl = startFileSearchUpload_(project, source, descriptor, storeName, config.apiKey);
+    var upload = startFileSearchUpload_(project, source, descriptor, storeName, config.apiKey);
     var state = saveFileSearchSourceState_(project.projectId, source.sourceId, {
       status: 'uploading', stage: 'uploading_to_file_search', storeName: storeName, revision: revision,
-      uploadUrl: uploadUrl, offset: 0, totalBytes: descriptor.size, progress: 0,
+      uploadUrl: upload.uploadUrl, offset: 0, totalBytes: descriptor.size, progress: 0,
+      embeddingModel: store.embeddingModel || APP.FILE_SEARCH_EMBEDDING_MODEL,
+      chunkingMode: upload.chunkingMode,
       operationName: '', documentName: '', indexedAt: '', error: '', checkError: '',
       attemptStartedAt: nowIso_(), operationDone: false, updatedAt: nowIso_()
     });
@@ -112,15 +114,43 @@ function indexSourceForCurrentUser_(project, source, force) {
 function ensureFileSearchStore_(project, config) {
   var existing = getFileSearchStoreState_(project.projectId, false);
   var fingerprint = geminiKeyFingerprint_(config.apiKey);
-  if (existing && existing.keyFingerprint === fingerprint && existing.storeName) return existing;
+  var desiredModel = normalizeFileSearchEmbeddingModel_(APP.FILE_SEARCH_EMBEDDING_MODEL);
+  if (existing && existing.keyFingerprint === fingerprint && existing.storeName) {
+    try {
+      var remote = fileSearchFetchJson_(FILE_SEARCH_API_ROOT + existing.storeName, {method: 'get', apiKey: config.apiKey});
+      existing.embeddingModel = normalizeFileSearchEmbeddingModel_(remote.embeddingModel || existing.embeddingModel);
+      if (existing.embeddingModel === desiredModel) {
+        PropertiesService.getUserProperties().setProperty(APP.USER_FILE_SEARCH_STORE_PREFIX + project.projectId, JSON.stringify(existing));
+        return existing;
+      }
+    } catch (storeCheckError) {
+      console.warn('The previous File Search store could not be reused: ' + readableErrorMessage_(storeCheckError));
+    }
+  }
   var response = fileSearchFetchJson_(FILE_SEARCH_API_ROOT + 'fileSearchStores', {
     method: 'post', apiKey: config.apiKey,
-    body: {displayName: truncate_('GPA - ' + project.title + ' - ' + project.projectId, 480), embeddingModel: 'models/gemini-embedding-2'}
+    body: {displayName: truncate_('GPA - ' + project.title + ' - ' + project.projectId, 480), embeddingModel: desiredModel}
   });
   if (!response.name) throw new Error('Gemini did not return a File Search store identifier.');
-  var state = {storeName: response.name, keyFingerprint: fingerprint, createdAt: nowIso_(), projectId: project.projectId};
+  var legacyStoreNames = existing && existing.legacyStoreNames || [];
+  if (existing && existing.storeName && existing.storeName !== response.name) legacyStoreNames.push(existing.storeName);
+  legacyStoreNames = legacyStoreNames.filter(function(name, index, values) { return name && name !== response.name && values.indexOf(name) === index; });
+  var state = {
+    storeName: response.name,
+    keyFingerprint: fingerprint,
+    embeddingModel: normalizeFileSearchEmbeddingModel_(response.embeddingModel || desiredModel),
+    legacyStoreNames: legacyStoreNames,
+    createdAt: nowIso_(),
+    projectId: project.projectId
+  };
   PropertiesService.getUserProperties().setProperty(APP.USER_FILE_SEARCH_STORE_PREFIX + project.projectId, JSON.stringify(state));
   return state;
+}
+
+function normalizeFileSearchEmbeddingModel_(value) {
+  var model = String(value || '').trim();
+  if (!model) return '';
+  return model.indexOf('models/') === 0 ? model : 'models/' + model;
 }
 
 function getFileSearchStoreState_(projectId, validateKey) {
@@ -134,16 +164,16 @@ function getFileSearchStoreState_(projectId, validateKey) {
 }
 
 function startFileSearchUpload_(project, source, descriptor, storeName, apiKey) {
-  var whiteSpaceConfig = getFileSearchWhiteSpaceConfig_();
+  var useServiceDefault = descriptor.mimeType === 'application/pdf';
   var metadata = {
     displayName: descriptor.name,
     customMetadata: [
       {key: 'project_id', stringValue: project.projectId},
       {key: 'source_id', stringValue: source.sourceId},
       {key: 'drive_id', stringValue: source.driveId}
-    ],
-    chunkingConfig: {whiteSpaceConfig: whiteSpaceConfig}
+    ]
   };
+  if (!useServiceDefault) metadata.chunkingConfig = {whiteSpaceConfig: getFileSearchWhiteSpaceConfig_()};
   var start = UrlFetchApp.fetch(FILE_SEARCH_UPLOAD_ROOT + storeName + ':uploadToFileSearchStore', {
     method: 'post',
     headers: {
@@ -160,7 +190,7 @@ function startFileSearchUpload_(project, source, descriptor, storeName, apiKey) 
   assertHttpSuccess_(start, 'File Search upload could not be started');
   var uploadUrl = getHeaderIgnoreCase_(start.getAllHeaders(), 'x-goog-upload-url');
   if (!uploadUrl) throw new Error('Gemini did not provide a resumable upload URL.');
-  return uploadUrl;
+  return {uploadUrl: uploadUrl, chunkingMode: useServiceDefault ? 'service_default_pdf' : 'whitespace_200_20'};
 }
 
 function getFileSearchWhiteSpaceConfig_() {
@@ -206,7 +236,7 @@ function advanceFileSearchUpload_(project, source, state, apiKey) {
 
   var operation = safeJsonParse_(response.getContentText(), {});
   if (!operation.name && !operation.done) throw new Error('Gemini did not return an indexing operation.');
-  if (operation.done && operation.error) throw new Error(operation.error.message || 'File Search indexing failed.');
+  if (operation.done && operation.error) throw new Error(fileSearchOperationErrorMessage_(operation.error));
   state = saveFileSearchSourceState_(project.projectId, source.sourceId, {
     status: 'indexing',
     stage: 'processing_embeddings',
@@ -306,7 +336,7 @@ function refreshFileSearchSourceState_(project, source, waitForCompletion) {
     if (operation.done && operation.error) {
       state.status = 'failed';
       state.stage = 'processing_embeddings';
-      state.error = operation.error.message || 'File Search indexing failed.';
+      state.error = fileSearchOperationErrorMessage_(operation.error);
     } else if (operation.done) {
       state = applyCompletedFileSearchOperation_(project, source, state, operation, config.apiKey);
     } else {
@@ -354,6 +384,7 @@ function getProjectSourceIndexDiagnostic(projectId, sourceId) {
     try {
       var config = getUserGeminiConfig_();
       var store = fileSearchFetchJson_(FILE_SEARCH_API_ROOT + state.storeName, {method: 'get', apiKey: config.apiKey});
+      state.embeddingModel = normalizeFileSearchEmbeddingModel_(store.embeddingModel || state.embeddingModel);
       storeCounts = {
         active: Number(store.activeDocumentsCount || 0),
         pending: Number(store.pendingDocumentsCount || 0),
@@ -387,6 +418,9 @@ function getProjectSourceIndexDiagnostic(projectId, sourceId) {
     storeCounts: storeCounts,
     sourceCounts: sourceCounts,
     operationState: state.operationName ? state.operationDone ? 'completed' : 'running' : 'not_available',
+    embeddingModel: state.embeddingModel || '',
+    chunkingMode: state.chunkingMode || '',
+    indexProfile: fileSearchIndexProfileLabel_(state),
     message: fileSearchDiagnosticMessage_(state, remoteVerified, driveAvailable, sourceCounts, storeCounts)
   };
 }
@@ -395,6 +429,7 @@ function fileSearchDiagnosticMessage_(state, remoteVerified, driveAvailable, sou
   if (!driveAvailable) return 'The project copy is not available in Drive, so it cannot be indexed.';
   if (state.status === 'ready' && remoteVerified) return 'The index was verified directly in Gemini File Search and is ready for queries.';
   if (state.status === 'ready') return 'Gemini reported the operation as complete, but the indexed document could not be verified yet.';
+  if (state.status === 'failed' && normalizeFileSearchEmbeddingModel_(state.embeddingModel) === 'models/gemini-embedding-2') return 'The legacy multimodal index rejected this document during ' + humanFileSearchStage_(state.stage) + '. Retry cleanly to migrate this project to the text-document index.';
   if (state.status === 'failed') return 'Indexing genuinely failed during ' + humanFileSearchStage_(state.stage) + '. Use the error below to correct the cause, then retry.';
   if (state.status === 'unknown' && sourceCounts && !sourceCounts.pending && storeCounts && !storeCounts.pending) return 'The saved operation still appears to be running, but Gemini has no document pending for this source or this project. It is safe to perform a clean retry.';
   if (state.status === 'unknown') return 'The app could not verify the remote operation. This does not prove that indexing failed.';
@@ -414,8 +449,43 @@ function humanFileSearchStage_(stage) {
   })[stage] || String(stage || 'the indexing process').replace(/_/g, ' ');
 }
 
+function fileSearchIndexProfileLabel_(state) {
+  var model = normalizeFileSearchEmbeddingModel_(state.embeddingModel);
+  var modelLabel = model ? model.replace(/^models\//, '') : 'unknown model';
+  var chunkingLabel = ({
+    service_default_pdf: 'PDF default chunking',
+    whitespace_200_20: 'text chunks 200/20'
+  })[state.chunkingMode] || 'chunking not recorded';
+  return modelLabel + ' · ' + chunkingLabel;
+}
+
+function fileSearchOperationErrorMessage_(error) {
+  error = error || {};
+  var parts = [];
+  if (error.code != null) parts.push('Code ' + error.code);
+  if (error.status) parts.push(String(error.status));
+  if (error.message) parts.push(String(error.message));
+  (error.details || []).forEach(function(detail) {
+    var reason = detail.reason || detail.errorInfo && detail.errorInfo.reason || '';
+    var domain = detail.domain || detail.errorInfo && detail.errorInfo.domain || '';
+    if (reason) parts.push(String(reason) + (domain ? ' (' + domain + ')' : ''));
+  });
+  return parts.join(' · ') || 'File Search indexing failed without an error payload.';
+}
+
+function fileSearchDocumentFailureMessage_(document, state, source) {
+  document = document || {};
+  var remoteError = document.error || document.status && document.status.error || null;
+  if (remoteError) return fileSearchOperationErrorMessage_(remoteError);
+  var model = normalizeFileSearchEmbeddingModel_(state && state.embeddingModel);
+  if (source && source.mimeType === 'application/pdf' && model === 'models/gemini-embedding-2') {
+    return 'Gemini returned STATE_FAILED without an error payload. This multi-page PDF used the legacy gemini-embedding-2 profile; Retry cleanly will migrate it to gemini-embedding-001 with PDF-native chunking.';
+  }
+  return 'Gemini marked the latest document attempt as STATE_FAILED, but did not publish a more specific error payload.';
+}
+
 function applyCompletedFileSearchOperation_(project, source, state, operation, apiKey) {
-  if (operation.error) throw new Error(operation.error.message || 'File Search indexing failed.');
+  if (operation.error) throw new Error(fileSearchOperationErrorMessage_(operation.error));
   state.documentName = extractFileSearchDocumentName_(operation) || state.documentName || findFileSearchDocumentForSource_(state.storeName, source.sourceId, apiKey) || '';
   if (!state.documentName) {
     state.status = 'unknown';
@@ -428,7 +498,7 @@ function applyCompletedFileSearchOperation_(project, source, state, operation, a
   if (document.state === 'STATE_FAILED') {
     state.status = 'failed';
     state.stage = 'processing_embeddings';
-    state.error = 'Gemini reports STATE_FAILED: one or more document chunks could not be processed.';
+    state.error = fileSearchDocumentFailureMessage_(document, state, source);
     state.checkError = '';
   } else if (document.state === 'STATE_PENDING') {
     state.status = 'indexing';
@@ -474,7 +544,7 @@ function reconcileFileSearchDocuments_(project, source, state, documents, storeC
     } else if (latest.state === 'STATE_FAILED') {
       state.status = 'failed';
       state.stage = 'processing_embeddings';
-      state.error = state.error || 'Gemini marked the latest document attempt as STATE_FAILED. The file was received, but its chunks or embeddings could not be processed.';
+      state.error = fileSearchDocumentFailureMessage_(latest, state, source);
       state.checkError = '';
     }
   } else if (state.status === 'indexing' && storeCounts && Number(storeCounts.pending || 0) === 0) {
@@ -645,9 +715,17 @@ function deleteFileSearchStoreForProject_(projectId) {
   var props = PropertiesService.getUserProperties();
   try {
     var state = getFileSearchStoreState_(projectId, true);
-    if (state && state.storeName) {
+    if (state) {
       var config = getUserGeminiConfig_();
-      fileSearchFetchJson_(FILE_SEARCH_API_ROOT + state.storeName + '?force=true', {method: 'delete', apiKey: config.apiKey});
+      [state.storeName].concat(state.legacyStoreNames || []).filter(function(name, index, values) {
+        return name && values.indexOf(name) === index;
+      }).forEach(function(name) {
+        try {
+          fileSearchFetchJson_(FILE_SEARCH_API_ROOT + name + '?force=true', {method: 'delete', apiKey: config.apiKey});
+        } catch (deleteError) {
+          console.warn('A File Search store could not be deleted: ' + readableErrorMessage_(deleteError));
+        }
+      });
     }
   } finally {
     var prefix = APP.USER_FILE_SEARCH_SOURCE_PREFIX + projectId + '_';
