@@ -312,7 +312,7 @@
 
   function renderAgentResourceList_(id, items = [], icon, canEdit) {
     const container = document.getElementById(id);
-    container.innerHTML = items.length ? items.map(item => `<article class="agent-resource-item file-card ${fileTypeClass(item.mimeType,item.name)}"><span class="resource-icon file-type-icon ${fileTypeClass(item.mimeType,item.name)}">${fileTypeIcon(item.mimeType,item.name) || icon}</span><span class="resource-copy"><strong title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong><small title="${escapeHtml(item.relativePath || '')}">${escapeHtml(friendlyMime(item.mimeType,item.name))} · ${formatFileSize(item.size)}</small></span><span class="resource-actions">${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" title="Open in Drive">↗</a>` : ''}${canEdit ? `<button data-remove-agent-asset="${escapeHtml(item.driveId)}" title="Remove from draft">×</button>` : ''}</span></article>`).join('') : '<div class="resource-empty">No resources in this section.</div>';
+    container.innerHTML = items.length ? items.map(item => `<article class="agent-resource-item file-card ${fileTypeClass(item.mimeType,item.name)}"><span class="resource-icon file-type-icon ${fileTypeClass(item.mimeType,item.name)}">${fileTypeIcon(item.mimeType,item.name) || icon}</span><span class="resource-copy"><strong title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong><small title="${escapeHtml(item.relativePath || '')}"><span class="resource-format-pill">${escapeHtml(friendlyMime(item.mimeType,item.name))}</span><span>${formatFileSize(item.size)}</span></small></span><span class="resource-actions">${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" title="Open in Drive">↗</a>` : ''}${canEdit ? `<button data-remove-agent-asset="${escapeHtml(item.driveId)}" title="Remove from draft">×</button>` : ''}</span></article>`).join('') : '<div class="resource-empty">No resources in this section.</div>';
   }
 
   async function saveAgentDraft() {
@@ -486,11 +486,15 @@
 
   function toggleProjectCardMenu(event, button) {
     event.stopPropagation();
-    const menu = button.nextElementSibling; const open = menu.classList.contains('hidden');
-    closeProjectCardMenus(); if (open) menu.classList.remove('hidden');
+    const menu = button.nextElementSibling; const card = button.closest('.project-card'); const open = menu.classList.contains('hidden');
+    closeProjectCardMenus();
+    if (open) { menu.classList.remove('hidden'); if (card) card.classList.add('menu-open'); }
   }
 
-  function closeProjectCardMenus() { document.querySelectorAll('.project-card-menu').forEach(menu => menu.classList.add('hidden')); }
+  function closeProjectCardMenus() {
+    document.querySelectorAll('.project-card-menu').forEach(menu => menu.classList.add('hidden'));
+    document.querySelectorAll('.project-card.menu-open').forEach(card => card.classList.remove('menu-open'));
+  }
 
   async function cloneProjectFromDashboard(projectId, button) {
     const project = state.projects.find(item => item.projectId === projectId); if (!project) return;
@@ -1094,7 +1098,7 @@
       <div class="document-card-top">
         <label class="document-checkbox" title="${node.locked ? 'Mandatory agent knowledge' : 'Use in chat'}"><input type="checkbox" data-document-select="${escapeHtml(node.nodeId)}" ${state.selectedSources.has(node.nodeId) ? 'checked' : ''} ${node.locked ? 'disabled' : ''}><span></span></label>
         <span class="file-type-icon ${fileTypeClass(node.mimeType,node.name)}">${fileTypeIcon(node.mimeType,node.name)}</span>
-        <div class="document-card-copy"><strong title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</strong><div class="document-meta"><span>${escapeHtml(friendlyMime(node.mimeType,node.name))}</span><span>${formatFileSize(node.size)}</span><span>${formatDate(node.createdAt)}</span></div></div>
+        <div class="document-card-copy"><strong title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</strong><div class="document-meta"><span class="file-format-pill">${escapeHtml(friendlyMime(node.mimeType,node.name))}</span><span>${formatFileSize(node.size)}</span><span>${formatDate(node.createdAt)}</span></div></div>
         <div class="document-menu-wrap">
           <button class="document-menu-button" data-document-menu="${escapeHtml(node.nodeId)}" aria-label="Document actions" title="Document actions">⋮</button>
           <div class="document-menu hidden" role="menu">

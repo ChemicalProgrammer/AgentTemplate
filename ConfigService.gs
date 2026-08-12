@@ -1,6 +1,6 @@
 var APP = Object.freeze({
   NAME: 'Agent Console',
-  VERSION: '1.8.0',
+  VERSION: '1.8.1',
   ROOT_NAME: 'Agent Console',
   AGENTS_FOLDER: 'Agents',
   PROJECTS_FOLDER: 'Projects',

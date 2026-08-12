@@ -1,10 +1,19 @@
 # Agent Console para Google Apps Script
 
-Versión 1.8.0.
+Versión 1.8.1.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
 
-## Qué cambia en 1.8.0
+## Qué cambia en 1.8.1
+
+- Encabezados de Agents y Projects basados en la misma familia visual, con identidad de ruta, gradiente propio, búsqueda y acciones consistentes.
+- Filtros de Projects trasladados a una banda independiente para mejorar jerarquía, espacio y adaptación móvil.
+- Tarjetas de proyecto y agente con el mismo recorte, radio, franja interna, elevación y animación.
+- Corrección del desbordamiento de la franja superior en proyectos: la tarjeta solo permite `overflow` mientras su menú contextual está abierto.
+- Tarjetas de recursos más coloridas mediante fondo, borde, franja lateral, halo, icono sólido y etiqueta de formato derivados del tipo de archivo.
+- Identidad cromática preservada en conocimiento del agente, fuentes originales y documentos generados, sin perder sus etiquetas de origen e indexación.
+
+## Base conservada de 1.8.0
 
 - Sistema de tarjetas unificado para agentes y proyectos: misma jerarquía, proporciones, acento, métricas, estados y pie contextual.
 - Catálogo de Projects rediseñado con el mismo nivel visual que Agents.
@@ -16,7 +25,7 @@ Consola web para construir agentes autocontenidos y versionados, y cargarlos den
 - Cada release publicado captura su propia identidad visual y copia del logo.
 - `Agent Manifest` y `Release Manifest` schema 2, con migración automática y compatible desde schema 1.
 
-## Base conservada de 1.7.0
+### Base funcional de 1.7.0
 
 - Portada con dos rutas: **Agents** para construir y **Projects** para usar.
 - Raíz de Drive separada en `Agents`, `Projects` y `_System`.
@@ -158,6 +167,8 @@ Los límites se concentran en `ConfigService.gs`.
 - La eliminación normal usa la papelera de Drive.
 
 ## Versión
+
+`1.8.1` — renueva el encabezado de Projects, corrige el desbordamiento de tarjetas y refuerza el color semántico de todos los recursos.
 
 `1.8.0` — estandariza tarjetas, compacta fuentes y documentos, agrega colores por formato e identidad de agente mediante icono/logo y color portable.
 

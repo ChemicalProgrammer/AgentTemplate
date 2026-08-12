@@ -1,6 +1,6 @@
 # Arquitectura técnica
 
-Versión de referencia: 1.8.0.
+Versión de referencia: 1.8.1.
 
 ## Modelo de la consola
 
