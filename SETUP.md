@@ -23,7 +23,7 @@ clasp open
 
 1. Selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 1.7.0`.
+3. Descripción: `Version 1.8.0`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Acceso: usuarios del dominio de la organización.
 6. Autoriza Drive, Docs, Sheets, Slides y conexiones externas.
@@ -48,9 +48,9 @@ La migración es idempotente y conserva IDs de proyecto, chats, fuentes y docume
 
 Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del agente y del proyecto se crean por llave. Un colaborador nuevo debe ejecutar **Sync index** para construir sus propios índices.
 
-## Prueba recomendada de 1.7.0
+## Prueba recomendada de 1.8.0
 
-1. Confirma `Version 1.7.0` en Settings.
+1. Confirma `Version 1.8.0` en Settings.
 2. Verifica que la portada muestre **Agents** y **Projects**.
 3. Abre Agents y confirma que exista `General Project Assistant` publicado.
 4. Crea un agente de prueba.
@@ -70,6 +70,11 @@ Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del ag
 18. Abre el chat anterior y confirma que indique la versión previa.
 19. Copia una carpeta completa de agente dentro de `Agents`, pulsa **Scan agents** y confirma que aparezca.
 20. Si la copia duplicó un agente existente, confirma que se registre como borrador independiente.
+21. En Agent Builder, cambia el icono y el color, guarda y confirma que la tarjeta y el encabezado se actualicen.
+22. Importa un logo cuadrado desde Drive y confirma que aparezca en Agents y, después de publicar/cargar esa versión, dentro del proyecto.
+23. Copia la carpeta del agente, pulsa **Scan agents** y comprueba que el logo de la copia use el archivo copiado en su propia carpeta `Assets`.
+24. Abre Documents y verifica los colores de PDF, Sheets/CSV, Markdown, Docs, Slides e imágenes.
+25. Confirma que cada tarjeta indique `Agent`, `Original` o `Generated` sin mezclar esos ámbitos.
 
 ## Actualización del despliegue
 

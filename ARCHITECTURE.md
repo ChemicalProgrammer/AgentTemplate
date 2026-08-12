@@ -1,6 +1,6 @@
 # Arquitectura técnica
 
-Versión de referencia: 1.7.0.
+Versión de referencia: 1.8.0.
 
 ## Modelo de la consola
 
@@ -43,6 +43,8 @@ Agents/Technical Governance Agent/
 └── _Runtime/
 ```
 
+`Agent Manifest.json` schema 2 agrega `logoPath`, `logoDriveId` y `logoMimeType`. `logoPath` es la referencia portable y apunta a un archivo dentro de `Assets`; `logoDriveId` es una referencia local reconstruible. Al escanear una carpeta copiada, la ruta lógica resuelve el nuevo ID de Drive. El icono y el color permanecen como respaldo cuando no hay logo.
+
 La carpeta es la unidad portable. Al copiarla dentro de `Agents` y pulsar **Scan agents**, la consola:
 
 1. valida o crea el manifiesto;
@@ -56,6 +58,7 @@ La carpeta es la unidad portable. Al copiarla dentro de `Agents` y pulsar **Scan
 
 - Las carpetas superiores son el borrador editable.
 - **Publish** crea una instantánea completa e inmutable en `Releases/{version}`.
+- La identidad publicada —icono, color y logo— pertenece a esa versión y no cambia cuando se edita el borrador.
 - Cada proyecto guarda `agentId` y `agentVersion`.
 - Publicar una versión nueva no modifica proyectos existentes.
 - Cambiar el agente o su versión crea un chat nuevo.
@@ -124,6 +127,13 @@ Las plantillas y workflows del agente aparecen dentro del proyecto como recursos
 - Templates y Flows cargan bajo demanda.
 - Members carga al abrir Share.
 - Los catálogos y localizadores usan `CacheService` durante tres minutos.
+
+## Sistema visual
+
+- Agents y Projects usan un componente conceptual común de tarjeta de entidad.
+- Agent Knowledge, Project Sources y Generated Documents usan una tarjeta documental compacta con una insignia de origen.
+- El color de formato se deriva de MIME y extensión; el origen no reemplaza el color del formato.
+- El logo se carga como miniatura de Drive y nunca se guarda como base64 en manifiestos o catálogos.
 
 ## Seguridad
 

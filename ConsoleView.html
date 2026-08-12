@@ -40,7 +40,7 @@
   <header class="agent-editor-header">
     <div class="agent-editor-identity">
       <button id="agent-editor-back" class="icon-btn" aria-label="Back to agents">←</button>
-      <div id="agent-editor-icon" class="agent-avatar">✦</div>
+      <div id="agent-editor-icon" class="entity-mark agent-avatar"><span>✦</span></div>
       <div><p class="eyebrow">AGENT BUILDER</p><h1 id="agent-editor-name">Agent</h1><div class="agent-status-line"><span id="agent-editor-status" class="status-pill">Draft</span><span id="agent-editor-version" class="version-pill">Not published</span></div></div>
     </div>
     <div class="agent-editor-actions"><a id="open-agent-folder" class="secondary-btn" target="_blank">Open folder ↗</a><button id="clone-agent" class="secondary-btn">Clone</button><button id="save-agent" class="primary-btn btn-style">Save draft</button><button id="publish-agent" class="primary-btn btn-gemini">Publish</button></div>
@@ -58,6 +58,18 @@
     <main class="agent-builder-content">
       <section id="agent-section-definition" class="agent-builder-card">
         <div class="section-heading"><div><p class="eyebrow">DEFINITION</p><h2>Identity and instructions</h2></div><span id="agent-validation-badge" class="section-badge blue">Editable draft</span></div>
+        <div id="agent-identity-builder" class="agent-identity-builder">
+          <div class="agent-identity-preview">
+            <div id="agent-logo-preview" class="entity-mark agent-logo-preview"><span>✦</span></div>
+            <div><strong>Agent identity</strong><p>Use an emoji or short symbol, or import a square logo from Drive. The color is used consistently in cards and project accents.</p></div>
+          </div>
+          <div class="agent-identity-controls">
+            <label>Icon or symbol<input id="edit-agent-icon" maxlength="8" placeholder="✦"></label>
+            <input id="edit-agent-color" type="hidden" value="violet">
+            <div class="agent-logo-actions"><button id="import-agent-logo" type="button" class="secondary-btn compact-btn">Import logo</button><button id="remove-agent-logo" type="button" class="text-btn danger-text-btn">Remove logo</button></div>
+          </div>
+          <div class="agent-color-field"><span class="field-label">Agent color</span><div id="agent-color-options" class="color-options compact-color-options" role="listbox" aria-label="Agent colors"></div></div>
+        </div>
         <div class="form-grid"><label>Name<input id="edit-agent-name" maxlength="120"></label><label>Description<input id="edit-agent-description" maxlength="1000"></label></div>
         <label>System instructions<textarea id="edit-agent-instructions" rows="14" maxlength="120000" placeholder="Role, goals, boundaries, behavior, and quality criteria"></textarea></label>
       </section>

@@ -1,10 +1,22 @@
 # Agent Console para Google Apps Script
 
-Versión 1.7.0.
+Versión 1.8.0.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
 
-## Qué cambia en 1.7.0
+## Qué cambia en 1.8.0
+
+- Sistema de tarjetas unificado para agentes y proyectos: misma jerarquía, proporciones, acento, métricas, estados y pie contextual.
+- Catálogo de Projects rediseñado con el mismo nivel visual que Agents.
+- Tarjetas de fuentes y documentos más compactas, con nombre, metadatos, origen, indexación y relaciones en una estructura horizontal.
+- Colores por formato: PDF rojo; Sheets, Excel y CSV verde; Markdown amarillo-naranja; Docs y Word azul; Slides y PowerPoint naranja; imágenes violeta; JSON teal; archivos comprimidos y genéricos neutros.
+- Identificación visible de conocimiento del agente, fuentes originales del proyecto y documentos generados.
+- Icono o símbolo y color editables para cada agente desde Agent Builder.
+- Logo opcional importado desde Drive, copiado dentro de `Assets` y conservado mediante una ruta lógica portable.
+- Cada release publicado captura su propia identidad visual y copia del logo.
+- `Agent Manifest` y `Release Manifest` schema 2, con migración automática y compatible desde schema 1.
+
+## Base conservada de 1.7.0
 
 - Portada con dos rutas: **Agents** para construir y **Projects** para usar.
 - Raíz de Drive separada en `Agents`, `Projects` y `_System`.
@@ -20,7 +32,7 @@ Consola web para construir agentes autocontenidos y versionados, y cargarlos den
 - Cambio explícito de agente o versión con creación de un chat nuevo.
 - Historial etiquetado con agente y versión.
 - Workflows y plantillas heredados del agente como recursos de solo lectura.
-- Estilo visual renovado con gradientes funcionales, tarjetas de rutas, botones con estados activos y colores inspirados en Docs Assistant v0.4.0.
+- Estilo visual con gradientes funcionales, botones con estados activos y colores inspirados en Docs Assistant v0.4.0.
 
 ## Estructura de Drive
 
@@ -147,6 +159,8 @@ Los límites se concentran en `ConfigService.gs`.
 
 ## Versión
 
-`1.7.0` — introduce Agent Console, agentes autocontenidos y portables, releases inmutables, raíz Agents/Projects, asociación agente-versión por proyecto, stores aislados y nueva interfaz.
+`1.8.0` — estandariza tarjetas, compacta fuentes y documentos, agrega colores por formato e identidad de agente mediante icono/logo y color portable.
+
+`1.7.0` — introduce Agent Console, agentes autocontenidos y portables, releases inmutables, raíz Agents/Projects, asociación agente-versión por proyecto y stores aislados.
 
 `1.6.0` — corrige eliminación incompleta y contaminación entre fuentes; agrega aislamiento por selección/citas, limpieza de huérfanos, caché y carga progresiva.

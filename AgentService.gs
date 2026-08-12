@@ -2,6 +2,7 @@ var AGENT_MANIFEST_FILE = 'Agent Manifest.json';
 var AGENT_RELEASE_MANIFEST_FILE = 'Release Manifest.json';
 var AGENT_INSTRUCTIONS_FILE = 'System Instructions.md';
 var GENERAL_AGENT_NAME = 'General Project Assistant';
+var AGENT_LOGO_MAX_BYTES = 5 * 1024 * 1024;
 var AGENT_SECTION_NAMES = Object.freeze({
   instructions: 'Instructions',
   knowledge: 'Knowledge',
@@ -52,11 +53,11 @@ function ensureGeneralAgent_(agentsFolder) {
   var now = nowIso_();
   var folder = agentsFolder.createFolder(GENERAL_AGENT_NAME);
   var agent = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     agentId: uuid_(),
     name: GENERAL_AGENT_NAME,
     description: 'General-purpose project assistant for existing and new projects.',
-    icon: '✦', color: 'violet', status: 'draft', owner: email,
+    icon: '✦', color: 'violet', logoPath: '', logoDriveId: '', logoMimeType: '', status: 'draft', owner: email,
     createdAt: now, updatedAt: now, publishedVersion: '', versions: [], folders: {}
   };
   agent = normalizeAgentStructure_(folder, agent, true);
@@ -89,9 +90,10 @@ function createAgent(input) {
   var folder = getAgentsFolder_().createFolder(name);
   var now = nowIso_();
   var agent = {
-    schemaVersion: 1, agentId: uuid_(), name: name,
+    schemaVersion: 2, agentId: uuid_(), name: name,
     description: sanitizeText_(input.description, 1000).trim(),
     icon: normalizeAgentIcon_(input.icon), color: normalizeProjectColor_(input.color || 'violet'),
+    logoPath: '', logoDriveId: '', logoMimeType: '',
     status: 'draft', owner: email, createdAt: now, updatedAt: now,
     publishedVersion: '', versions: [], folders: {}
   };
@@ -137,6 +139,47 @@ function updateAgent(agentId, changes) {
   return getAgentDetails(agentId);
 }
 
+function setAgentLogoFromDrive(agentId, driveUrlOrId) {
+  var access = assertAgentAccess_(agentId, true);
+  var driveId = extractDriveId_(driveUrlOrId);
+  var source;
+  try { source = DriveApp.getFileById(driveId); }
+  catch (error) { throw new Error('The Drive image could not be opened. Check the link and your access.'); }
+  if (!source || source.isTrashed()) throw new Error('The selected logo is unavailable in Drive.');
+  var mimeType = String(source.getMimeType() || '').toLowerCase();
+  if (!/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(mimeType)) throw new Error('Agent logos must be PNG, JPG, GIF, WebP, or SVG images.');
+  if (Number(source.getSize() || 0) > AGENT_LOGO_MAX_BYTES) throw new Error('Agent logos must be 5 MB or smaller.');
+  var extension = ({'image/png':'.png','image/jpeg':'.jpg','image/gif':'.gif','image/webp':'.webp','image/svg+xml':'.svg'})[mimeType] || '';
+  var assetsFolder = DriveApp.getFolderById(access.agent.folders.assets);
+  var copy = source.makeCopy('Agent Logo' + extension, assetsFolder);
+  var previousId = String(access.agent.logoDriveId || '');
+  access.agent.logoPath = 'Assets/' + copy.getName();
+  access.agent.logoDriveId = copy.getId();
+  access.agent.logoMimeType = mimeType;
+  access.agent.updatedAt = nowIso_();
+  access.agent.draftChangedAt = access.agent.updatedAt;
+  writeAgentManifest_(DriveApp.getFolderById(access.agent.folderId), access.agent);
+  if (previousId && previousId !== copy.getId()) {
+    try { DriveApp.getFileById(previousId).setTrashed(true); } catch (trashError) { console.warn(trashError.message); }
+  }
+  invalidateAgentCaches_(agentId);
+  return getAgentDetails(agentId);
+}
+
+function removeAgentLogo(agentId) {
+  var access = assertAgentAccess_(agentId, true);
+  var driveId = String(access.agent.logoDriveId || '');
+  clearAgentLogoFields_(access.agent);
+  access.agent.updatedAt = nowIso_();
+  access.agent.draftChangedAt = access.agent.updatedAt;
+  writeAgentManifest_(DriveApp.getFolderById(access.agent.folderId), access.agent);
+  if (driveId) {
+    try { DriveApp.getFileById(driveId).setTrashed(true); } catch (trashError) { console.warn(trashError.message); }
+  }
+  invalidateAgentCaches_(agentId);
+  return getAgentDetails(agentId);
+}
+
 function addAgentAssetFromDrive(agentId, assetType, driveUrlOrId, knowledgeMode) {
   var access = assertAgentAccess_(agentId, true);
   var target = resolveAgentAssetTarget_(access.agent, assetType, knowledgeMode);
@@ -168,6 +211,7 @@ function removeAgentAsset(agentId, driveId) {
   var allowed = scanAgentDraftAssets_(access.agent).all.some(function(asset) { return asset.driveId === driveId; });
   if (!allowed) throw new Error('This file is not part of the editable agent draft.');
   DriveApp.getFileById(driveId).setTrashed(true);
+  if (String(access.agent.logoDriveId || '') === driveId) clearAgentLogoFields_(access.agent);
   access.agent.updatedAt = nowIso_();
   access.agent.draftChangedAt = access.agent.updatedAt;
   writeAgentManifest_(DriveApp.getFolderById(access.agent.folderId), access.agent);
@@ -282,7 +326,7 @@ function registerAgentFolder_(folder, manifest, seen) {
   var email = getCurrentIdentity_().email;
   var now = nowIso_();
   if (!manifest || !manifest.agentId) {
-    manifest = {schemaVersion:1, agentId:uuid_(), name:folder.getName(), description:'Agent imported from Drive.', icon:'✦', color:'violet', status:'draft', owner:email, createdAt:now, updatedAt:now, publishedVersion:'', versions:[], folders:{}};
+    manifest = {schemaVersion:2, agentId:uuid_(), name:folder.getName(), description:'Agent imported from Drive.', icon:'✦', color:'violet', logoPath:'', logoDriveId:'', logoMimeType:'', status:'draft', owner:email, createdAt:now, updatedAt:now, publishedVersion:'', versions:[], folders:{}};
   } else if (seen && seen[manifest.agentId] && seen[manifest.agentId] !== folder.getId()) {
     manifest.agentId = uuid_(); manifest.name = folder.getName(); manifest.owner = email;
     manifest.createdAt = now; manifest.updatedAt = now; manifest.status = 'draft';
@@ -332,6 +376,7 @@ function reconcileAgentReleaseManifests_(agent) {
 }
 
 function normalizeAgentStructure_(folder, agent, allowCreate) {
+  agent.schemaVersion = Math.max(Number(agent.schemaVersion || 1), 2);
   agent.folders = agent.folders || {};
   Object.keys(AGENT_SECTION_NAMES).forEach(function(key) {
     var child = getFirstFolderByName_(folder, AGENT_SECTION_NAMES[key]);
@@ -351,6 +396,7 @@ function normalizeAgentStructure_(folder, agent, allowCreate) {
   agent.name = agent.name || folder.getName();
   agent.icon = normalizeAgentIcon_(agent.icon);
   agent.color = normalizeProjectColor_(agent.color || 'violet');
+  resolveAgentLogoReference_(agent);
   agent.status = agent.status || 'draft';
   agent.versions = agent.versions || [];
   return agent;
@@ -361,6 +407,9 @@ function lightweightAgentManifest_(folder, agent) {
   agent.name = agent.name || folder.getName();
   agent.icon = normalizeAgentIcon_(agent.icon);
   agent.color = normalizeProjectColor_(agent.color || 'violet');
+  agent.logoPath = String(agent.logoPath || '');
+  agent.logoDriveId = String(agent.logoDriveId || '');
+  agent.logoMimeType = String(agent.logoMimeType || '');
   agent.versions = agent.versions || [];
   return agent;
 }
@@ -404,6 +453,7 @@ function publicAgent_(agent, email) {
   return {
     agentId: agent.agentId, name: agent.name, description: agent.description || '',
     icon: normalizeAgentIcon_(agent.icon), color: normalizeProjectColor_(agent.color || 'violet'),
+    logoPath: String(agent.logoPath || ''), logoUrl: agentLogoUrl_(agent.logoDriveId),
     status: agent.status || 'draft', owner: agent.owner || '', createdAt: agent.createdAt, updatedAt: agent.updatedAt,
     publishedVersion: agent.publishedVersion || '', versionCount: (agent.versions || []).length,
     versions: (agent.versions || []).map(function(item){return {version:item.version,releasedAt:item.releasedAt};}),
@@ -432,6 +482,31 @@ function invalidateAgentCaches_(agentId) {
 function normalizeAgentIcon_(value) {
   value = String(value || '✦').trim();
   return value.slice(0, 8) || '✦';
+}
+
+function resolveAgentLogoReference_(agent) {
+  agent.logoPath = String(agent.logoPath || '');
+  agent.logoDriveId = String(agent.logoDriveId || '');
+  agent.logoMimeType = String(agent.logoMimeType || '');
+  if (!agent.folders || !agent.folders.assets) return agent;
+  var assets = scanFolderAssets_(DriveApp.getFolderById(agent.folders.assets), 'Assets');
+  var match = agent.logoPath ? assets.filter(function(asset) { return asset.relativePath === agent.logoPath; })[0] : assets.filter(function(asset) { return asset.driveId === agent.logoDriveId; })[0];
+  if (!match) { clearAgentLogoFields_(agent); return agent; }
+  agent.logoPath = match.relativePath;
+  agent.logoDriveId = match.driveId;
+  agent.logoMimeType = match.mimeType;
+  return agent;
+}
+
+function clearAgentLogoFields_(agent) {
+  agent.logoPath = '';
+  agent.logoDriveId = '';
+  agent.logoMimeType = '';
+}
+
+function agentLogoUrl_(driveId) {
+  driveId = String(driveId || '').replace(/[^A-Za-z0-9_-]/g, '');
+  return driveId ? 'https://drive.google.com/thumbnail?id=' + driveId + '&sz=w160' : '';
 }
 
 function normalizeAgentVersion_(value) {
@@ -525,9 +600,11 @@ function buildAgentReleaseManifest_(agent, releaseFolder, version, email) {
   var optional = optionalFolder ? scanFolderAssets_(optionalFolder, 'Knowledge/Optional Sources') : [];
   var knowledge = mandatory.map(function(asset) { return releaseKnowledgeRecord_(asset, true, agent, version); })
     .concat(optional.map(function(asset) { return releaseKnowledgeRecord_(asset, false, agent, version); }));
+  var releaseLogo = resolveReleaseLogoAsset_(releaseFolder, agent.logoPath);
   return {
-    schemaVersion: 1, agentId: agent.agentId, agentName: agent.name, version: version,
+    schemaVersion: 2, agentId: agent.agentId, agentName: agent.name, version: version,
     description: agent.description || '', icon: agent.icon, color: agent.color,
+    logoPath: releaseLogo ? releaseLogo.relativePath : '', logoDriveId: releaseLogo ? releaseLogo.driveId : '', logoMimeType: releaseLogo ? releaseLogo.mimeType : '',
     releasedAt: nowIso_(), releasedBy: email, releaseFolderId: releaseFolder.getId(),
     instructions: readReleaseTextSection_(releaseFolder, AGENT_SECTION_NAMES.instructions, 120000),
     policiesText: readReleaseTextSection_(releaseFolder, AGENT_SECTION_NAMES.policies, 60000),
@@ -538,6 +615,14 @@ function buildAgentReleaseManifest_(agent, releaseFolder, version, email) {
     examples: releaseAssetRecords_(releaseFolder, AGENT_SECTION_NAMES.examples, 'agent-example'),
     evaluations: releaseAssetRecords_(releaseFolder, AGENT_SECTION_NAMES.evaluations, 'agent-evaluation')
   };
+}
+
+function resolveReleaseLogoAsset_(releaseFolder, logoPath) {
+  logoPath = String(logoPath || '');
+  if (!logoPath) return null;
+  var assetsFolder = getFirstFolderByName_(releaseFolder, AGENT_SECTION_NAMES.assets);
+  if (!assetsFolder) return null;
+  return scanFolderAssets_(assetsFolder, 'Assets').filter(function(asset) { return asset.relativePath === logoPath; })[0] || null;
 }
 
 function releaseKnowledgeRecord_(asset, mandatory, agent, version) {
@@ -607,7 +692,7 @@ function getProjectAgentRelease_(project) {
 }
 
 function publicAgentRelease_(release) {
-  return {agentId:release.agentId, name:release.agentName, version:release.version, icon:release.icon || '✦', color:release.color || 'violet', sourceCount:(release.knowledgeSources || []).length, workflowCount:(release.workflows || []).length, templateCount:(release.templates || []).length, releasedAt:release.releasedAt};
+  return {agentId:release.agentId, name:release.agentName, version:release.version, icon:release.icon || '✦', color:release.color || 'violet', logoPath:release.logoPath || '', logoUrl:agentLogoUrl_(release.logoDriveId), sourceCount:(release.knowledgeSources || []).length, workflowCount:(release.workflows || []).length, templateCount:(release.templates || []).length, releasedAt:release.releasedAt};
 }
 
 function agentRuntimeId_(agentId, version) { return 'agent_' + String(agentId).replace(/[^A-Za-z0-9_-]/g, '') + '_' + String(version).replace(/[^A-Za-z0-9_-]/g, '_'); }

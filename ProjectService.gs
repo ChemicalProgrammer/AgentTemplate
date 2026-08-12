@@ -657,7 +657,8 @@ function publicProject_(project, member, favorite) {
     agentId: project.agentId || '',
     agentVersion: project.agentVersion || '',
     agentName: agent ? agent.name : 'Agent unavailable',
-    agentIcon: agent ? agent.icon : '✦'
+    agentIcon: agent ? agent.icon : '✦',
+    agentLogoUrl: agent ? agentLogoUrl_(agent.logoDriveId) : ''
   };
 }
 
