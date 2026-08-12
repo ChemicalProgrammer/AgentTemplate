@@ -1,137 +1,102 @@
 # Instalación y despliegue
 
-## Opción A: instalación manual
+## Instalación manual
 
-Esta opción no requiere instalar software.
+1. Abre `script.google.com` con la cuenta de Google Workspace administradora.
+2. Crea un proyecto independiente llamado, por ejemplo, `Agent Console`.
+3. Crea un archivo de secuencia de comandos por cada `.gs` del paquete.
+4. Crea un archivo HTML por cada `.html`, incluido `ConsoleView.html`.
+5. Activa la visualización de `appsscript.json` y reemplázalo por el manifiesto incluido.
+6. Guarda todos los archivos.
 
-1. Abre [script.google.com](https://script.google.com) con la cuenta de Google Workspace que administrará la app.
-2. Crea un **Proyecto nuevo** independiente y asígnale un nombre, por ejemplo `Gemini Project Agent`.
-3. En el editor, crea un archivo de secuencia de comandos por cada archivo `.gs` del ZIP y pega su contenido.
-4. Crea un archivo HTML por cada `.html` del ZIP y pega su contenido.
-5. Abre **Configuración del proyecto** y activa **Mostrar el archivo de manifiesto `appsscript.json` en el editor**.
-6. Reemplaza el contenido del manifiesto por el archivo incluido en este paquete.
-7. Guarda todos los archivos.
-
-## Opción B: instalación con clasp
-
-Si ya tienes Node.js y `clasp`:
+## Instalación con clasp
 
 ```bash
 npm install -g @google/clasp
 clasp login
-clasp create --type standalone --title "Gemini Project Agent"
-```
-
-Copia el contenido de la carpeta del ZIP junto al archivo `.clasp.json` creado y ejecuta:
-
-```bash
+clasp create --type standalone --title "Agent Console"
 clasp push
 clasp open
 ```
 
-## Despliegue correcto
+## Despliegue
 
-1. En Apps Script, selecciona **Implementar > Nueva implementación**.
+1. Selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 1.6.0`.
+3. Descripción: `Version 1.7.0`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
-5. Quién tiene acceso: **Cualquier usuario del dominio** o la opción equivalente de tu organización.
-6. Autoriza los permisos solicitados.
-7. Abre la URL terminada en `/exec`.
+5. Acceso: usuarios del dominio de la organización.
+6. Autoriza Drive, Docs, Sheets, Slides y conexiones externas.
+7. Abre la URL `/exec`.
 
-No uses “Ejecutar como yo”. Esa modalidad impediría el aislamiento correcto de las llaves por usuario y alteraría el modelo de permisos selectivos de Drive.
+No uses “Ejecutar como yo”: rompería el aislamiento de llaves por usuario y cambiaría el modelo de permisos de Drive.
 
-## Primera configuración
+## Primera configuración o actualización desde 1.6.0
 
-La primera cuenta que abre la app se convierte en administradora.
+La primera cuenta se convierte en administradora.
 
-1. Confirma el dominio de la organización.
-2. Opcionalmente pega el ID o URL de una carpeta raíz existente.
-3. Si dejas el campo vacío, la app crea `Agent Projects` en Mi unidad.
-4. Comparte la carpeta raíz como Editor únicamente con quienes deban crear o copiar proyectos directamente en ella.
+1. Confirma el dominio.
+2. Pega la carpeta raíz existente de v1.6.0 o deja vacío para crear `Agent Console`.
+3. La consola crea `Agents`, `Projects` y `_System`.
+4. Los proyectos existentes directamente bajo la raíz se mueven a `Projects`.
+5. Se crea y publica `General Project Assistant 1.0.0`.
+6. Los proyectos heredados se asocian automáticamente con ese agente.
 
-Los usuarios que solo reciban un proyecto selectivo no necesitan acceso a la carpeta raíz.
+La migración es idempotente y conserva IDs de proyecto, chats, fuentes y documentos.
 
 ## Llave individual de Gemini
 
-Cada usuario debe:
+Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del agente y del proyecto se crean por llave. Un colaborador nuevo debe ejecutar **Sync index** para construir sus propios índices.
 
-1. Obtener una llave en Google AI Studio o mediante el mecanismo aprobado por la organización.
-2. Abrir el engrane de la app.
-3. Pegar la llave y elegir el modelo.
-4. Pulsa **Validate and save**.
+## Prueba recomendada de 1.7.0
 
-La pantalla superior muestra solo los cuatro últimos caracteres. Al volver a abrir Settings, el campo protegido vuelve a contener la llave completa para el mismo usuario.
+1. Confirma `Version 1.7.0` en Settings.
+2. Verifica que la portada muestre **Agents** y **Projects**.
+3. Abre Agents y confirma que exista `General Project Assistant` publicado.
+4. Crea un agente de prueba.
+5. Escribe sus instrucciones.
+6. Agrega una fuente obligatoria y otra opcional.
+7. Agrega un workflow Markdown y una plantilla de Google Workspace.
+8. Publica `1.0.0`.
+9. Crea un proyecto seleccionando ese agente y versión.
+10. Abre Documents y confirma dos secciones: Agent knowledge y Project sources.
+11. Verifica que la fuente obligatoria no pueda desactivarse.
+12. Ejecuta **Sync index** y confirma que procese conocimiento del agente y fuentes del proyecto.
+13. Pregunta por una fuente del agente y comprueba sus citas.
+14. Agrega una fuente particular al proyecto y pregunta usando ambas capas.
+15. Confirma que Templates y Flows muestren recursos heredados del agente como solo lectura.
+16. Publica `1.0.1` del agente y verifica que el proyecto continúe en `1.0.0`.
+17. Cambia el proyecto a `1.0.1`; debe crearse un chat nuevo.
+18. Abre el chat anterior y confirma que indique la versión previa.
+19. Copia una carpeta completa de agente dentro de `Agents`, pulsa **Scan agents** y confirma que aparezca.
+20. Si la copia duplicó un agente existente, confirma que se registre como borrador independiente.
 
-## Carpeta de proyectos
+## Actualización del despliegue
 
-El administrador puede cambiar la ubicación desde **Settings > Project location** pegando el ID o URL de otra carpeta. La carpeta configurada puede moverse a otra ubicación de Drive sin volver a configurarla porque la app conserva su ID.
-
-- Si la carpeta raíz entra en la papelera, la app la restaura cuando el administrador vuelve a abrirla.
-- Si se elimina definitivamente, la app crea otra con el último nombre conocido.
-- Si una carpeta de proyecto se mueve fuera de la raíz o entra en la papelera, deja de aparecer en el dashboard.
-
-## Prueba inicial recomendada
-
-1. Crea un proyecto de prueba.
-2. Agrega un TXT pequeño como fuente.
-3. Confirma que la tarjeta cambie a **Indexed**; si queda pendiente, pulsa **Sync index**.
-4. Inicia una conversación y formula una pregunta cuya respuesta aparezca en el TXT.
-5. Confirma que la respuesta muestre la fuente recuperada.
-6. Exporta la conversación desde el botón PDF de su tarjeta en Chats.
-7. Confirma que la tarjeta actualiza los conteos de chats, fuentes y documentos.
-8. Comparte “Sources and documents” con otro usuario del dominio.
-9. Confirma con esa cuenta que no aparece el historial.
-10. Copia manualmente la carpeta del proyecto dentro de la raíz.
-11. Pulsa **Refresh projects** y confirma que aparece como un proyecto independiente.
-12. Cambia el emoji y color desde el encabezado del proyecto y confirma que se actualizan en el dashboard.
-13. Abre **Documents**, ajusta el ancho del panel y verifica la selección individual y por nivel.
-14. Exporta un chat a PDF y confirma que aparece como documento derivado con sus relaciones parent/child.
-15. Elimina un chat de prueba y confirma el diálogo de advertencia y su presencia en la papelera de Drive.
-16. Agrega una nota a una fuente y a un documento generado; confirma que aparece en sus tarjetas.
-17. Clona el proyecto desde el menú de la tarjeta y confirma que la copia conserva chats, fuentes y documentos sin compartir permisos.
-18. Mueve manualmente una carpeta de proyecto fuera de la raíz, pulsa **Refresh projects** y confirma que deja de aparecer en el dashboard.
-19. Envía la carpeta raíz a la papelera, recarga como administrador y confirma que se restaura conservando el mismo ID.
-20. Importa un Google Sheet mediante su enlace de Drive y confirma que se copia e indexa sin mostrar una notificación vacía.
-21. Importa un Google Doc, Sheet o Slides en Templates, selecciónalo y genera un Report desde el menú de una tarjeta documental.
-22. Sube un archivo `.md` en Flows, selecciónalo y confirma que aparece como procedimiento utilizado en la siguiente respuesta.
-23. Abre Settings y confirma que el encabezado muestre `Version 1.6.0`.
-24. Selecciona una sola fuente indexada, haz una pregunta específica y confirma que las citas correspondan únicamente a esa fuente.
-25. Elimina otra fuente, vuelve a abrir Documents y confirma que la app informe la limpieza de cualquier registro remoto huérfano.
-24. Para un PDF que falló en una versión anterior, abre su diagnóstico y pulsa **Retry cleanly**; confirma que el perfil cambie a `gemini-embedding-001 · PDF default chunking`.
-
-## Actualizaciones
-
-Después de cambiar archivos de código:
-
-1. Guarda o ejecuta `clasp push`.
+1. Reemplaza los archivos indicados por el paquete `update_only` o ejecuta `clasp push`.
 2. Abre **Implementar > Administrar implementaciones**.
 3. Edita la implementación.
 4. Selecciona **Nueva versión**.
-5. Implementa de nuevo conservando la misma URL.
+5. Conserva la misma URL.
 
 ## Solución de problemas
 
-### La app no identifica el correo
+### El agente copiado no aparece
 
-Verifica que el despliegue esté restringido al dominio y se ejecute como el usuario que accede. Algunas políticas de Workspace pueden impedir que `Session.getActiveUser()` devuelva el correo.
+La carpeta debe estar directamente dentro de `Agents`. Pulsa **Scan agents**. Un borrador debe publicarse antes de cargarlo en un proyecto.
 
-### Un usuario ve el proyecto pero no puede abrir una sección
+### La versión asignada no está disponible
 
-El manifiesto y los permisos reales de Drive deben coincidir. El owner puede volver a compartir el mismo usuario con el alcance correcto para reparar los permisos.
+Restaura la carpeta del agente o su release desde la papelera. La consola bloquea el proyecto en lugar de sustituir el agente silenciosamente. Después puedes cargar explícitamente otra versión publicada.
 
-### Gemini rechaza la llave
+### Agent knowledge muestra `Not indexed`
 
-Comprueba que la Gemini API esté habilitada para la llave y que el modelo elegido aparezca al usar **Load models**. La cuota pertenece a cada llave individual.
+Guarda la llave personal y pulsa **Sync index** en el proyecto. La misma acción procesa el store del agente activo y el store del proyecto, hasta cinco fuentes nuevas por ámbito.
+
+### Una carpeta copiada conserva referencias antiguas
+
+Pulsa **Scan agents**. La consola compara el ID físico de cada release y reconstruye los IDs de Drive por rutas lógicas. Los embeddings no se copian y deben reconstruirse.
 
 ### Un PDF grande no se indexa
 
-Importa el archivo mediante un enlace de Drive o cárgalo desde la computadora, confirma que no exceda 100 MB y usa **Sync index**. La acción procesa cinco fuentes por lote y continúa cada archivo en bloques persistentes. Pulsa directamente el estado de la tarjeta o **Check index status** para verificar Drive, la operación remota y los documentos reales de esa fuente. **Check again** actualiza sin crear otro intento; **Retry cleanly** aparece únicamente cuando no existe un procesamiento activo y elimina los intentos fallidos anteriores antes de volver a cargar.
-
-### Un colaborador ve `Not indexed`
-
-File Search pertenece al proyecto de API asociado con cada llave. El colaborador debe guardar su llave personal y ejecutar **Sync index** para crear su propio almacén semántico del proyecto.
-
-### La copia de una carpeta no aparece
-
-La carpeta debe estar directamente dentro de la raíz configurada. Pulsa **Refresh projects** con una cuenta que tenga acceso a esa raíz.
+El límite es 100 MB por documento. La carga a Drive usa bloques de 2 MB y File Search bloques persistentes de 8 MB. Ejecuta **Sync index** nuevamente cuando haya elementos pendientes.

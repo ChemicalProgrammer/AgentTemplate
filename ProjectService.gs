@@ -46,11 +46,15 @@ function createProject(input) {
   input = input || {};
   var title = normalizeName_(input.title, 'New project');
   var description = sanitizeText_(input.description, 800).trim();
-  var root = getRootFolder_();
+  var root = getProjectsFolder_();
+  var selectedAgent = input.agentId ? getAgentFromRoot_(String(input.agentId)) : getDefaultAgent_();
+  if (!selectedAgent || !selectedAgent.publishedVersion) throw new Error('Choose a published agent before creating the project.');
+  var selectedVersion = String(input.agentVersion || selectedAgent.publishedVersion);
+  if (!getAgentRelease_(selectedAgent.agentId, selectedVersion)) throw new Error('The selected agent version is not available.');
   var folder = root.createFolder(title);
   var now = nowIso_();
   var project = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     projectId: uuid_(),
     title: title,
     description: description,
@@ -62,6 +66,8 @@ function createProject(input) {
     folderId: folder.getId(),
     controlFileId: '',
     status: 'active',
+    agentId: selectedAgent.agentId,
+    agentVersion: selectedVersion,
     folders: {},
     members: [{email: email, role: 'owner', scope: 'full', addedAt: now}],
     stats: {sourceCount: 0, conversationCount: 0, documentCount: 0, lastActivityAt: now}
@@ -77,9 +83,12 @@ function createProject(input) {
 
 function getProjectShell(projectId) {
   var access = assertProjectAccess_(projectId);
+  var agentRelease = getProjectAgentRelease_(access.project);
   return {
     project: publicProject_(access.project, access.member, getFavoriteIds_().indexOf(projectId) !== -1),
-    permissions: access.allowed
+    permissions: access.allowed,
+    agent: agentRelease ? publicAgentRelease_(agentRelease.release) : null,
+    availableAgents: listAgents().filter(function(agent) { return Boolean(agent.publishedVersion); })
   };
 }
 
@@ -101,15 +110,18 @@ function getProjectChatPanel(projectId) {
 }
 
 function getProjectDocumentsPanel(projectId) {
-  return {documentGraph: listProjectDocuments(projectId)};
+  var access = assertProjectAccess_(projectId);
+  return {documentGraph: listAgentKnowledgeNodesForProject_(access.project).concat(listProjectDocuments(projectId))};
 }
 
 function getProjectTemplatesPanel(projectId) {
-  return {templates: listTemplates(projectId)};
+  var access = assertProjectAccess_(projectId, 'documents');
+  return {templates: listAgentTemplatesForProject_(access.project).concat(listTemplates(projectId))};
 }
 
 function getProjectFlowsPanel(projectId) {
-  return {flows: listFlows(projectId)};
+  var access = assertProjectAccess_(projectId, 'sources');
+  return {flows: listAgentFlowsForProject_(access.project).concat(listFlows(projectId))};
 }
 
 function getProjectMembersPanel(projectId) {
@@ -125,7 +137,7 @@ function getProjectDetails(projectId) {
     permissions: access.allowed,
     conversations: access.allowed.history ? listConversations(projectId) : [],
     sources: access.allowed.sources ? listSources(projectId) : [],
-    documents: access.allowed.documents ? documentGraph.filter(function(item) { return item.kind !== 'source'; }) : [],
+    documents: access.allowed.documents ? documentGraph.filter(function(item) { return item.kind !== 'source' && item.kind !== 'agent-source'; }) : [],
     templates: access.allowed.documents ? listTemplates(projectId) : [],
     flows: access.allowed.sources ? listFlows(projectId) : [],
     fileSearch: access.allowed.sources ? getProjectFileSearchSummary(projectId) : {configured: false, ready: 0, total: 0},
@@ -155,6 +167,28 @@ function updateProject(projectId, changes) {
   return publicProject_(project, access.member, getFavoriteIds_().indexOf(projectId) !== -1);
 }
 
+function changeProjectAgent(projectId, agentId, version) {
+  var access = assertProjectEdit_(projectId, 'project');
+  var agent = getAgentFromRoot_(String(agentId || ''));
+  if (!agent || !agent.publishedVersion) throw new Error('Choose a published agent.');
+  version = String(version || agent.publishedVersion);
+  if (!getAgentRelease_(agent.agentId, version)) throw new Error('The selected agent version is not available.');
+  access.project.agentId = agent.agentId;
+  access.project.agentVersion = version;
+  access.project.updatedAt = nowIso_();
+  persistProjectManifest_(access.project);
+  syncProjectControl_(access.project, false);
+  var conversation = createConversation(projectId, 'New chat — ' + agent.name);
+  return {project:publicProject_(access.project, access.member, getFavoriteIds_().indexOf(projectId)!==-1),agent:publicAgentRelease_(getAgentRelease_(agent.agentId,version).release),conversation:conversation};
+}
+
+function syncProjectKnowledgeIndexes(projectId) {
+  var access = assertProjectEdit_(projectId, 'sources');
+  var projectResult = syncProjectSourcesIndex(projectId);
+  var agentResult = syncAgentKnowledgeIndexForProject_(access.project);
+  return {project:projectResult, agent:agentResult, remaining:Number(projectResult.remaining||0)+Number(agentResult.remaining||0)};
+}
+
 function toggleProjectFavorite(projectId) {
   assertProjectAccess_(projectId);
   var ids = getFavoriteIds_();
@@ -168,7 +202,7 @@ function cloneProject(projectId) {
   var access = assertProjectAccess_(projectId);
   if (access.member.scope !== 'full') throw new Error('Full project access is required to clone this project.');
   var sourceProject = access.project;
-  var root = getRootFolder_();
+  var root = getProjectsFolder_();
   var cloneTitle = buildCloneProjectTitle_(root, sourceProject.title);
   var destination = root.createFolder(cloneTitle);
   var idMap = {};
@@ -176,7 +210,7 @@ function cloneProject(projectId) {
     copyProjectFolderTree_(DriveApp.getFolderById(sourceProject.folderId), destination, idMap);
     var now = nowIso_();
     var clone = JSON.parse(JSON.stringify(sourceProject));
-    clone.schemaVersion = 3;
+    clone.schemaVersion = 4;
     clone.projectId = uuid_();
     clone.title = cloneTitle;
     clone.createdAt = now;
@@ -229,27 +263,23 @@ function discoverProjects_(forceRefresh) {
       return cached.projects;
     }
   }
-  var root = getRootFolder_();
-  var folders = root.getFolders();
   var projects = [];
   var seenProjectIds = {};
-  while (folders.hasNext()) {
-    var folder = folders.next();
-    if (folder.isTrashed() || folder.getName() === APP.SYSTEM_FOLDER) continue;
-    try {
-      var manifest = readJsonFile_(getFirstFileByName_(folder, PROJECT_MANIFEST_FILE), null);
-      if (!manifest || !manifest.projectId || seenProjectIds[manifest.projectId]) {
-        manifest = registerFolderAsProject_(folder, seenProjectIds);
-      } else {
-        manifest = lightweightProjectManifest_(folder, manifest);
-        seenProjectIds[manifest.projectId] = folder.getId();
-      }
-      projects.push(manifest);
-      cacheProjectLocator_(manifest.projectId, folder.getId());
-    } catch (error) {
-      console.warn('Project folder skipped: ' + error.message);
+  var parents = [getProjectsFolder_(), getRootFolder_()];
+  parents.forEach(function(parent, parentIndex) {
+    var folders = parent.getFolders();
+    while (folders.hasNext()) {
+      var folder = folders.next();
+      if (folder.isTrashed() || [APP.SYSTEM_FOLDER, APP.AGENTS_FOLDER, APP.PROJECTS_FOLDER].indexOf(folder.getName()) !== -1) continue;
+      if (parentIndex > 0 && !getFirstFileByName_(folder, PROJECT_MANIFEST_FILE)) continue;
+      try {
+        var manifest = readJsonFile_(getFirstFileByName_(folder, PROJECT_MANIFEST_FILE), null);
+        if (!manifest || !manifest.projectId || seenProjectIds[manifest.projectId]) manifest = registerFolderAsProject_(folder, seenProjectIds);
+        else { manifest = lightweightProjectManifest_(folder, manifest); seenProjectIds[manifest.projectId] = folder.getId(); }
+        projects.push(manifest); cacheProjectLocator_(manifest.projectId, folder.getId());
+      } catch (error) { console.warn('Project folder skipped: ' + error.message); }
     }
-  }
+  });
   cleanMissingFavorites_(projects.map(function(project) { return project.projectId; }));
   try { cache.put(APP.PROJECT_CATALOG_CACHE_KEY, JSON.stringify({projects: projects}), APP.PROJECT_CACHE_SECONDS); } catch (cacheError) { console.warn(cacheError.message); }
   return projects;
@@ -258,13 +288,22 @@ function discoverProjects_(forceRefresh) {
 function lightweightProjectManifest_(folder, manifest) {
   var now = nowIso_();
   var email = getCurrentIdentity_().email;
+  var changed = false;
   manifest.folderId = folder.getId();
   manifest.title = manifest.title || folder.getName();
   manifest.icon = normalizeProjectIcon_(manifest.icon);
   manifest.color = normalizeProjectColor_(manifest.color);
   manifest.status = manifest.status || 'active';
+  if (!manifest.agentId || !manifest.agentVersion) {
+    var fallback = getDefaultAgent_();
+    manifest.agentId = fallback.agentId;
+    manifest.agentVersion = fallback.publishedVersion;
+    manifest.schemaVersion = 4;
+    changed = true;
+  }
   manifest.members = manifest.members || [{email: manifest.owner || email, role: 'owner', scope: 'full', addedAt: manifest.createdAt || now}];
   manifest.stats = manifest.stats || {sourceCount: 0, conversationCount: 0, documentCount: 0, lastActivityAt: manifest.updatedAt || manifest.createdAt || now};
+  if (changed) writeProjectManifest_(folder, manifest);
   return manifest;
 }
 
@@ -379,7 +418,7 @@ function registerFolderAsProject_(folder, seenProjectIds) {
 
   if (!manifest || !manifest.projectId) {
     manifest = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       projectId: uuid_(),
       title: folder.getName(),
       description: 'Project imported automatically from Drive.',
@@ -389,6 +428,8 @@ function registerFolderAsProject_(folder, seenProjectIds) {
       updatedAt: now,
       owner: email,
       status: 'active',
+      agentId: getDefaultAgent_().agentId,
+      agentVersion: getDefaultAgent_().publishedVersion,
       members: [{email: email, role: 'owner', scope: 'full', addedAt: now}],
       stats: {sourceCount: 0, conversationCount: 0, documentCount: 0, lastActivityAt: now}
     };
@@ -405,6 +446,11 @@ function registerFolderAsProject_(folder, seenProjectIds) {
   manifest.title = manifest.title || folder.getName();
   manifest.icon = normalizeProjectIcon_(manifest.icon);
   manifest.color = normalizeProjectColor_(manifest.color);
+  if (!manifest.agentId || !manifest.agentVersion) {
+    var defaultAgent = getDefaultAgent_();
+    manifest.agentId = defaultAgent.agentId;
+    manifest.agentVersion = defaultAgent.publishedVersion;
+  }
   manifest.members = manifest.members || [{email: manifest.owner || email, role: 'owner', scope: 'full', addedAt: now}];
   manifest.stats = manifest.stats || {sourceCount: 0, conversationCount: 0, documentCount: 0, lastActivityAt: now};
   manifest = normalizeProjectStructure_(folder, manifest, true);
@@ -512,6 +558,8 @@ function syncProjectInformationSheet_(spreadsheet, project) {
     ['Created At', project.createdAt],
     ['Updated At', project.updatedAt],
     ['Status', project.status || 'active'],
+    ['Agent ID', project.agentId || ''],
+    ['Agent Version', project.agentVersion || ''],
     ['Project Folder ID', project.folderId]
   ];
   sheet.getRange(2, 1, Math.max(sheet.getMaxRows() - 1, 1), 2).clearContent();
@@ -546,15 +594,14 @@ function getProjectFromRoot_(projectId) {
     }
     cache.remove(APP.PROJECT_LOCATOR_CACHE_PREFIX + projectId);
   }
-  var root = getRootFolder_();
-  var folders = root.getFolders();
-  while (folders.hasNext()) {
-    var folder = folders.next();
-    if (folder.isTrashed() || folder.getName() === APP.SYSTEM_FOLDER) continue;
-    var manifest = readJsonFile_(getFirstFileByName_(folder, PROJECT_MANIFEST_FILE), null);
-    if (manifest && manifest.projectId === projectId) {
-      cacheProjectLocator_(projectId, folder.getId());
-      return lightweightProjectManifest_(folder, manifest);
+  var parents = [getProjectsFolder_(), getRootFolder_()];
+  for (var parentIndex = 0; parentIndex < parents.length; parentIndex++) {
+    var folders = parents[parentIndex].getFolders();
+    while (folders.hasNext()) {
+      var folder = folders.next();
+      if (folder.isTrashed() || [APP.SYSTEM_FOLDER, APP.AGENTS_FOLDER, APP.PROJECTS_FOLDER].indexOf(folder.getName()) !== -1) continue;
+      var manifest = readJsonFile_(getFirstFileByName_(folder, PROJECT_MANIFEST_FILE), null);
+      if (manifest && manifest.projectId === projectId) { cacheProjectLocator_(projectId, folder.getId()); return lightweightProjectManifest_(folder, manifest); }
     }
   }
   return null;
@@ -565,9 +612,9 @@ function getActiveProjectFolderById_(folderId) {
   var folder;
   try { folder = DriveApp.getFolderById(folderId); } catch (error) { return null; }
   if (!folder || folder.isTrashed()) return null;
-  var rootId = getRootFolder_().getId();
+  var rootIds = [getProjectsFolder_().getId(), getRootFolder_().getId()];
   var parents = folder.getParents();
-  while (parents.hasNext()) if (parents.next().getId() === rootId) return folder;
+  while (parents.hasNext()) if (rootIds.indexOf(parents.next().getId()) !== -1) return folder;
   return null;
 }
 
@@ -588,6 +635,7 @@ function invalidateProjectCaches_(projectId) {
 
 function publicProject_(project, member, favorite) {
   var stats = project.stats || {};
+  var agent = getAgentFromRoot_(project.agentId || '');
   return {
     projectId: project.projectId,
     title: project.title,
@@ -605,7 +653,11 @@ function publicProject_(project, member, favorite) {
     sourceCount: stats.sourceCount || 0,
     conversationCount: stats.conversationCount || 0,
     documentCount: stats.documentCount || 0,
-    lastActivityAt: stats.lastActivityAt || project.updatedAt
+    lastActivityAt: stats.lastActivityAt || project.updatedAt,
+    agentId: project.agentId || '',
+    agentVersion: project.agentVersion || '',
+    agentName: agent ? agent.name : 'Agent unavailable',
+    agentIcon: agent ? agent.icon : '✦'
   };
 }
 

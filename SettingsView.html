@@ -13,10 +13,10 @@
         </form>
       </section>
       <section id="project-location-settings" class="settings-section admin-only hidden">
-        <div class="settings-section-heading"><div><h3>Project location</h3><p class="muted">Choose the Drive folder that directly contains every project. You may move this folder anywhere in Drive without changing this setting.</p></div><span class="settings-badge">Admin</span></div>
+        <div class="settings-section-heading"><div><h3>Console location</h3><p class="muted">Choose the main Drive folder. It contains separate Agents, Projects, and _System folders.</p></div><span class="settings-badge">Admin</span></div>
         <form id="root-settings-form">
           <label>Drive folder ID or URL<input id="settings-root-folder" placeholder="Paste a Drive folder URL or ID"></label>
-          <label>New folder name <span class="optional">used only when the field above is empty</span><input id="settings-root-name" maxlength="120" placeholder="Agent Projects"></label>
+          <label>New folder name <span class="optional">used only when the field above is empty</span><input id="settings-root-name" maxlength="120" placeholder="Agent Console"></label>
           <div class="modal-actions"><a id="settings-open-root" class="secondary-btn" target="_blank">Open current folder</a><button type="submit" class="primary-btn">Save location</button></div>
         </form>
       </section>
@@ -25,13 +25,39 @@
 
   <section id="project-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="new-project-title-label">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
-    <p class="eyebrow">NEW PROJECT</p><h2 id="new-project-title-label">Create a project agent</h2>
+    <p class="eyebrow">NEW PROJECT</p><h2 id="new-project-title-label">Create a project</h2>
     <form id="project-form">
       <label>Title<input id="new-project-title" required maxlength="120"></label>
       <label>Description<textarea id="new-project-description" rows="4" maxlength="800"></textarea></label>
+      <label>Published agent<select id="new-project-agent" required></select></label>
+      <p id="new-project-agent-note" class="form-note">The project is pinned to the selected published version.</p>
       <p class="form-note">A default emoji will be assigned. You can change it from inside the project.</p>
       <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Create project</button></div>
     </form>
+  </section>
+
+  <section id="agent-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="new-agent-title-label">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">NEW AGENT</p><h2 id="new-agent-title-label">Create an agent package</h2>
+    <form id="agent-form"><label>Name<input id="new-agent-name" required maxlength="120"></label><label>Description<textarea id="new-agent-description" rows="4" maxlength="1000"></textarea></label><p class="form-note">A complete folder structure will be created in Agents. Publish a version before assigning it to projects.</p><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn btn-gemini">Create agent</button></div></form>
+  </section>
+
+  <section id="agent-asset-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="agent-asset-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">AGENT PACKAGE</p><h2 id="agent-asset-title">Add agent resource</h2><p id="agent-asset-help" class="muted">A controlled copy will be stored inside this agent's editable draft.</p>
+    <form id="agent-asset-form"><input id="agent-asset-type" type="hidden"><input id="agent-knowledge-mode" type="hidden"><label>Drive file or folder ID / URL<input id="agent-asset-drive-url" required></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn btn-expand">Import resource</button></div></form>
+  </section>
+
+  <section id="publish-agent-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="publish-agent-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">PUBLISH AGENT</p><h2 id="publish-agent-title">Create an immutable release</h2><p class="muted">The draft's instructions, knowledge, workflows, templates, policies, examples, evaluations, and assets will be copied into this version.</p>
+    <form id="publish-agent-form"><label>Semantic version<input id="publish-agent-version" required pattern="[0-9]+\.[0-9]+\.[0-9]+.*" placeholder="1.0.0"></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn btn-gemini">Publish version</button></div></form>
+  </section>
+
+  <section id="change-agent-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="change-agent-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">PROJECT AGENT</p><h2 id="change-agent-title">Load another agent</h2><p class="muted">A new chat will be created. Earlier chats retain the agent and version that produced them; project sources remain available.</p>
+    <form id="change-agent-form"><label>Published agent<select id="change-project-agent" required></select></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn btn-gemini">Load agent</button></div></form>
   </section>
 
   <section id="emoji-modal" class="modal emoji-modal hidden" role="dialog" aria-modal="true" aria-labelledby="emoji-title">

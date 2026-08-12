@@ -1,0 +1,80 @@
+<section id="home-view" class="view console-home-view">
+  <div class="console-hero">
+    <div class="console-brandmark">✦</div>
+    <p class="eyebrow">AGENT CONSOLE</p>
+    <h1>Build agents. Use them in projects.</h1>
+    <p>Agents are portable, versioned folders containing their own instructions, knowledge, procedures, templates, policies, examples, and evaluations.</p>
+  </div>
+  <div class="console-paths" aria-label="Choose workspace">
+    <button id="open-agents-route" class="console-path-card agent-path">
+      <span class="path-icon">✦</span>
+      <span class="path-copy"><strong>Agents</strong><small>Create, edit, scan, test, and publish self-contained agents.</small></span>
+      <span class="path-count"><b id="home-agent-count">0</b> available</span><span class="path-arrow">→</span>
+    </button>
+    <button id="open-projects-route" class="console-path-card project-path">
+      <span class="path-icon">▦</span>
+      <span class="path-copy"><strong>Projects</strong><small>Load one published agent and work with project-specific context.</small></span>
+      <span class="path-count"><b id="home-project-count">0</b> projects</span><span class="path-arrow">→</span>
+    </button>
+  </div>
+  <div class="console-principle"><span>Isolation rule</span><p>A project can query only its loaded agent's knowledge and its own sources. Other agents remain outside the request.</p></div>
+</section>
+
+<section id="agents-view" class="view agents-view hidden">
+  <div class="catalog-header">
+    <div class="catalog-heading-row">
+      <button id="agents-back-home" class="icon-btn" aria-label="Back to home" title="Back to home">←</button>
+      <div><p class="eyebrow">AGENT LIBRARY</p><h1>Agents</h1><p class="muted">Each folder is a portable agent package. Copy it into Agents, then scan to install it.</p></div>
+    </div>
+    <div class="catalog-actions">
+      <div class="dashboard-search agent-search"><span>⌕</span><input id="agent-search" placeholder="Search agents" aria-label="Search agents"></div>
+      <button id="refresh-agents" class="secondary-btn"><span>↻</span> Scan agents</button>
+      <button id="create-agent" class="primary-btn btn-gemini"><span>＋</span> New agent</button>
+    </div>
+  </div>
+  <div id="agent-grid" class="agent-grid"></div>
+  <div id="empty-agents" class="empty-state hidden"><div class="empty-icon">✦</div><h2>No agents found</h2><p>Create an agent or copy a complete agent folder into Drive and scan again.</p></div>
+</section>
+
+<section id="agent-editor-view" class="view agent-editor-view hidden">
+  <header class="agent-editor-header">
+    <div class="agent-editor-identity">
+      <button id="agent-editor-back" class="icon-btn" aria-label="Back to agents">←</button>
+      <div id="agent-editor-icon" class="agent-avatar">✦</div>
+      <div><p class="eyebrow">AGENT BUILDER</p><h1 id="agent-editor-name">Agent</h1><div class="agent-status-line"><span id="agent-editor-status" class="status-pill">Draft</span><span id="agent-editor-version" class="version-pill">Not published</span></div></div>
+    </div>
+    <div class="agent-editor-actions"><a id="open-agent-folder" class="secondary-btn" target="_blank">Open folder ↗</a><button id="clone-agent" class="secondary-btn">Clone</button><button id="save-agent" class="primary-btn btn-style">Save draft</button><button id="publish-agent" class="primary-btn btn-gemini">Publish</button></div>
+  </header>
+  <div class="agent-editor-layout">
+    <aside class="agent-builder-nav" aria-label="Agent sections">
+      <button class="active" data-agent-section-link="definition">Definition</button>
+      <button data-agent-section-link="knowledge">Knowledge</button>
+      <button data-agent-section-link="workflows">Workflows</button>
+      <button data-agent-section-link="templates">Templates</button>
+      <button data-agent-section-link="governance">Governance</button>
+      <button data-agent-section-link="quality">Quality</button>
+      <button data-agent-section-link="releases">Releases</button>
+    </aside>
+    <main class="agent-builder-content">
+      <section id="agent-section-definition" class="agent-builder-card">
+        <div class="section-heading"><div><p class="eyebrow">DEFINITION</p><h2>Identity and instructions</h2></div><span id="agent-validation-badge" class="section-badge blue">Editable draft</span></div>
+        <div class="form-grid"><label>Name<input id="edit-agent-name" maxlength="120"></label><label>Description<input id="edit-agent-description" maxlength="1000"></label></div>
+        <label>System instructions<textarea id="edit-agent-instructions" rows="14" maxlength="120000" placeholder="Role, goals, boundaries, behavior, and quality criteria"></textarea></label>
+      </section>
+
+      <section id="agent-section-knowledge" class="agent-builder-card">
+        <div class="section-heading"><div><p class="eyebrow">ISOLATED KNOWLEDGE</p><h2>Knowledge sources</h2><p class="muted">These sources belong only to this agent and are snapshotted when you publish.</p></div></div>
+        <div class="agent-resource-columns">
+          <div class="agent-resource-group mandatory"><div class="resource-heading"><div><h3>Mandatory sources</h3><p>Always authorized when this agent runs.</p></div><button class="tonal-icon-btn" data-agent-add="knowledge" data-knowledge-mode="mandatory" title="Add mandatory knowledge">＋</button></div><div id="agent-mandatory-list" class="agent-resource-list"></div></div>
+          <div class="agent-resource-group optional-knowledge"><div class="resource-heading"><div><h3>Optional sources</h3><p>Users may select these per chat.</p></div><button class="tonal-icon-btn" data-agent-add="knowledge" data-knowledge-mode="optional" title="Add optional knowledge">＋</button></div><div id="agent-optional-list" class="agent-resource-list"></div></div>
+        </div>
+      </section>
+
+      <section id="agent-section-workflows" class="agent-builder-card"><div class="section-heading"><div><p class="eyebrow">PROCEDURES</p><h2>Workflows and flow diagrams</h2><p class="muted">Markdown workflows are executable instructions; visual diagrams can be stored in Assets.</p></div><button class="primary-btn btn-expand" data-agent-add="workflow">＋ Add workflow</button></div><div id="agent-workflow-list" class="agent-resource-list grid-list"></div></section>
+      <section id="agent-section-templates" class="agent-builder-card"><div class="section-heading"><div><p class="eyebrow">OUTPUTS</p><h2>Templates and output formats</h2></div></div><div class="agent-resource-columns"><div class="agent-resource-group"><div class="resource-heading"><div><h3>Workspace templates</h3><p>Google Docs, Sheets, or Slides.</p></div><button class="tonal-icon-btn" data-agent-add="template">＋</button></div><div id="agent-template-list" class="agent-resource-list"></div></div><div class="agent-resource-group"><div class="resource-heading"><div><h3>Output requirements</h3><p>Schemas, structures, and formatting rules.</p></div><button class="tonal-icon-btn" data-agent-add="output">＋</button></div><div id="agent-output-list" class="agent-resource-list"></div></div></div></section>
+      <section id="agent-section-governance" class="agent-builder-card"><div class="section-heading"><div><p class="eyebrow">GOVERNANCE</p><h2>Policies and assets</h2></div></div><div class="agent-resource-columns"><div class="agent-resource-group"><div class="resource-heading"><div><h3>Policies</h3><p>Permissions, citations, and restrictions.</p></div><button class="tonal-icon-btn" data-agent-add="policy">＋</button></div><div id="agent-policy-list" class="agent-resource-list"></div></div><div class="agent-resource-group"><div class="resource-heading"><div><h3>Assets</h3><p>Icons, diagrams, and reference visuals.</p></div><button class="tonal-icon-btn" data-agent-add="asset">＋</button></div><div id="agent-asset-list" class="agent-resource-list"></div></div></div></section>
+      <section id="agent-section-quality" class="agent-builder-card"><div class="section-heading"><div><p class="eyebrow">QUALITY</p><h2>Examples and evaluations</h2></div></div><div class="agent-resource-columns"><div class="agent-resource-group"><div class="resource-heading"><div><h3>Examples</h3><p>Reference inputs and correct outputs.</p></div><button class="tonal-icon-btn" data-agent-add="example">＋</button></div><div id="agent-example-list" class="agent-resource-list"></div></div><div class="agent-resource-group"><div class="resource-heading"><div><h3>Evaluations</h3><p>Test cases and acceptance criteria.</p></div><button class="tonal-icon-btn" data-agent-add="evaluation">＋</button></div><div id="agent-evaluation-list" class="agent-resource-list"></div></div></div></section>
+      <section id="agent-section-releases" class="agent-builder-card"><div class="section-heading"><div><p class="eyebrow">IMMUTABLE HISTORY</p><h2>Published releases</h2><p class="muted">Projects remain pinned to the version they selected until explicitly changed.</p></div></div><div id="agent-release-list" class="release-list"></div></section>
+    </main>
+  </div>
+</section>

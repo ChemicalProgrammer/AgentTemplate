@@ -19,7 +19,7 @@
         <p>The initial setup defines the authorized domain and the root Drive folder.</p>
         <form id="setup-form">
           <label>Organization domain<input id="setup-domain" required placeholder="company.com"></label>
-          <label>Existing folder ID or URL <span class="optional">optional</span><input id="setup-root" placeholder="Leave blank to create Agent Projects"></label>
+          <label>Existing folder ID or URL <span class="optional">optional</span><input id="setup-root" placeholder="Leave blank to create Agent Console"></label>
           <button class="primary-btn" type="submit">Set up application</button>
         </form>
       </div>
@@ -27,7 +27,7 @@
 
     <div id="app-shell" class="app-shell dashboard-mode hidden">
       <header class="topbar">
-        <div class="brand"><span class="google-spark">✦</span><span>Gemini Project Agent</span></div>
+        <button id="brand-home" class="brand brand-button"><span class="brandmark-small">✦</span><span>Agent Console</span></button>
         <div class="topbar-spacer"></div>
         <div id="key-status" class="key-status topbar-key-status"></div>
         <span id="domain-label" class="domain-label"></span>
@@ -36,6 +36,7 @@
       </header>
 
       <main class="main-content">
+        <?!= include('ConsoleView'); ?>
         <?!= include('DashboardView'); ?>
         <?!= include('ProjectView'); ?>
       </main>

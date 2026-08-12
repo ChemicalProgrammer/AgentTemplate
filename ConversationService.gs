@@ -9,11 +9,15 @@ function listConversations(projectId) {
 
 function createConversation(projectId, title) {
   var access = assertProjectEdit_(projectId, 'history');
+  var activeAgent = getProjectAgentRelease_(access.project);
   var now = nowIso_();
   var conversation = {
     schemaVersion: 1,
     conversationId: uuid_(),
     projectId: projectId,
+    agentId: access.project.agentId || '',
+    agentVersion: access.project.agentVersion || '',
+    agentName: activeAgent ? activeAgent.release.agentName : '',
     title: normalizeName_(title, 'New chat'),
     createdAt: now,
     updatedAt: now,
@@ -40,24 +44,41 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   if (!text) throw new Error('Enter a message.');
   var conversation = conversationId ? readConversation_(access.project, conversationId) : createConversation(projectId, 'New chat');
   if (conversation.projectId !== projectId) throw new Error('This chat does not belong to the selected project.');
+  if (conversation.agentId && (conversation.agentId !== access.project.agentId || conversation.agentVersion !== access.project.agentVersion)) {
+    throw new Error('This chat belongs to a different agent version. Start a new chat to use the currently loaded agent.');
+  }
+  conversation.agentId = access.project.agentId || '';
+  conversation.agentVersion = access.project.agentVersion || '';
   conversation.sourceSelection = Array.isArray(selectedSourceIds) ? selectedSourceIds.map(String) : [];
   conversation.flowSelection = Array.isArray(selectedFlowIds) ? selectedFlowIds.map(String) : [];
 
-  var sourceContext = {text: '', inlineParts: [], sourcesUsed: [], warnings: [], selectedIds: []};
-  var fileSearch = access.allowed.sources ? getFileSearchQueryConfig_(access.project, selectedSourceIds || []) : null;
+  var projectContext = {text: '', inlineParts: [], sourcesUsed: [], warnings: [], selectedIds: []};
+  var projectFileSearch = access.allowed.sources ? getFileSearchQueryConfig_(access.project, selectedSourceIds || []) : null;
+  var agentFileSearch = access.allowed.sources ? getAgentFileSearchQueryConfig_(access.project, selectedSourceIds || []) : null;
   var localSourceIds = (selectedSourceIds || []).filter(function(id) {
-    if (!fileSearch) return true;
+    if (/^agent-source:/.test(String(id))) return false;
+    if (!projectFileSearch) return true;
     var value = String(id).replace(/^source:/, '');
-    return fileSearch.sourceIds.indexOf(value) === -1;
+    return projectFileSearch.sourceIds.indexOf(value) === -1;
   });
-  if (access.allowed.sources || access.allowed.documents) sourceContext = buildSourceContext_(access.project, text, localSourceIds);
+  if (access.allowed.sources || access.allowed.documents) projectContext = buildSourceContext_(access.project, text, localSourceIds);
+  var agentContext = access.allowed.sources ? buildAgentSourceContext_(access.project, text, selectedSourceIds || [], agentFileSearch ? agentFileSearch.sourceIds : []) : {text:'',inlineParts:[],sourcesUsed:[],warnings:[],selectedIds:[]};
+  var sourceContext = {
+    text:[agentContext.text,projectContext.text].filter(Boolean).join('\n\n=== PROJECT KNOWLEDGE ===\n\n'),
+    inlineParts:(agentContext.inlineParts||[]).concat(projectContext.inlineParts||[]),
+    sourcesUsed:(agentContext.sourcesUsed||[]).concat(projectContext.sourcesUsed||[]),
+    warnings:(agentContext.warnings||[]).concat(projectContext.warnings||[]),
+    selectedIds:(agentContext.selectedIds||[]).concat(projectContext.selectedIds||[])
+  };
   if (sourceContext.warnings && sourceContext.warnings.length) {
     throw new Error('Selected sources could not be analyzed. Index or repair them first: ' + sourceContext.warnings.join(' | '));
   }
-  if (fileSearch && (sourceContext.inlineParts || []).some(function(part) { return Boolean(part.inlineData); })) {
+  if ((projectFileSearch || agentFileSearch) && (sourceContext.inlineParts || []).some(function(part) { return Boolean(part.inlineData); })) {
     throw new Error('An indexed source cannot be combined with an unindexed binary document in the same request. Deselect the binary document or query it separately.');
   }
-  var authorizedSelection = (sourceContext.selectedIds || []).concat(fileSearch ? fileSearch.sourceIds.map(function(id) { return 'source:' + id; }) : []);
+  var authorizedSelection = (sourceContext.selectedIds || [])
+    .concat(projectFileSearch ? projectFileSearch.sourceIds.map(function(id) { return 'source:' + id; }) : [])
+    .concat(agentFileSearch ? agentFileSearch.sourceIds.map(function(id) { return 'agent-source:' + id; }) : []);
   authorizedSelection = authorizedSelection.filter(function(id, index, all) { return id && all.indexOf(id) === index; });
   if ((selectedSourceIds || []).length && !authorizedSelection.length) {
     throw new Error('None of the selected documents is still active and available. Refresh the Documents panel and select a current source.');
@@ -77,13 +98,18 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   upsertConversationIndex_(access.project, conversation, pendingFile.getId());
   if (isChatRequestCancelled_(requestId)) throw new Error('Generation stopped.');
 
-  var result = fileSearch ? generateWithFileSearch_({
+  var fileSearchConfigs = [projectFileSearch, agentFileSearch].filter(Boolean);
+  var fileSearchSourceIds = [];
+  var fileSearchStores = [];
+  fileSearchConfigs.forEach(function(item){fileSearchSourceIds=fileSearchSourceIds.concat(item.sourceIds||[]);if(item.storeName)fileSearchStores.push(item.storeName);});
+  fileSearchSourceIds = fileSearchSourceIds.filter(function(id,index,all){return all.indexOf(id)===index;});
+  var result = fileSearchConfigs.length ? generateWithFileSearch_({
     config: config,
     systemInstruction: prompt.systemInstruction,
     contents: prompt.contents,
-    storeName: fileSearch.storeName,
-    metadataFilter: buildFileSearchMetadataFilter_(fileSearch.sourceIds),
-    allowedSourceIds: fileSearch.sourceIds,
+    storeNames: fileSearchStores,
+    metadataFilter: buildFileSearchMetadataFilter_(fileSearchSourceIds),
+    allowedSourceIds: fileSearchSourceIds,
     maxOutputTokens: 8192
   }) : generateWithGemini_({
     config: config,
@@ -97,12 +123,15 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   var assistantMessage = {
     messageId: uuid_(), role: 'assistant', text: result.text, createdAt: nowIso_(),
     model: result.model,
-    sourcesUsed: sourceContext.sourcesUsed.concat(fileSearch ? annotationsToSourcesUsed_(result.annotations, access.project) : []),
+    sourcesUsed: sourceContext.sourcesUsed.concat(fileSearchConfigs.length ? annotationsToScopedSourcesUsed_(result.annotations, access.project, agentFileSearch ? agentFileSearch.resolved : getProjectAgentRelease_(access.project)) : []),
     flowsUsed: flowContext.flowsUsed,
     sourceSelection: authorizedSelection,
     retrievalAudit: result.retrievalAudit || null,
     usage: result.usage
   };
+  assistantMessage.agentId = access.project.agentId || '';
+  assistantMessage.agentVersion = access.project.agentVersion || '';
+  assistantMessage.agentName = getAgentExecutionContext_(access.project).name;
   conversation.messages.push(assistantMessage);
   if (conversation.messages.length === 2 || conversation.title === 'New chat' || conversation.title === 'Nueva conversación') {
     conversation.title = normalizeName_(text.slice(0, 70), 'Chat');
@@ -190,9 +219,13 @@ function deleteConversation(projectId, conversationId) {
 function buildGeminiConversation_(project, conversation, newMessage, sourceContext, flowContext, authorizedSelection) {
   authorizedSelection = (authorizedSelection || []).map(String);
   var sourceScoped = authorizedSelection.length > 0;
+  var agent = getAgentExecutionContext_(project);
   var system = [
-    'You are the agent for the project "' + project.title + '".',
+    'You are "' + agent.name + '" version ' + (agent.version || 'draft') + ', loaded for the project "' + project.title + '".',
     project.description ? 'Project description: ' + project.description : '',
+    agent.instructions ? 'AGENT INSTRUCTIONS:\n' + agent.instructions : '',
+    agent.policies ? 'AGENT POLICIES:\n' + agent.policies : '',
+    agent.outputFormats ? 'AGENT OUTPUT REQUIREMENTS:\n' + agent.outputFormats : '',
     'Answer accurately, distinguish facts from inferences, and never invent missing content.',
     'Reply in the language used by the user.',
     'When using a provided source, cite its label in brackets, for example [S1].',
@@ -246,7 +279,7 @@ function messageSourceSelection_(message) {
 function normalizeConversationSourceId_(id) {
   id = String(id || '').trim();
   if (!id) return '';
-  return /^(source|document):/.test(id) ? id : 'source:' + id;
+  return /^(source|document|agent-source):/.test(id) ? id : 'source:' + id;
 }
 
 function maybeSummarizeConversation_(conversation, config, project) {
@@ -312,6 +345,9 @@ function upsertConversationIndex_(project, conversation, fileId) {
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
     createdBy: conversation.createdBy,
+    agentId: conversation.agentId || project.agentId || '',
+    agentVersion: conversation.agentVersion || project.agentVersion || '',
+    agentName: conversation.agentName || '',
     status: conversation.status,
     messageCount: conversation.messages.length,
     fileId: fileId

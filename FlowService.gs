@@ -100,7 +100,8 @@ function buildFlowContext_(project, selectedFlowIds) {
       throw new Error('The selected flow “' + flow.name + '” could not be read: ' + readableErrorMessage_(error));
     }
   });
-  return {text: sections.join('\n\n---\n\n'), flowsUsed: used};
+  var inherited = buildAgentFlowContextForProject_(project, requested);
+  return {text: [inherited.text, sections.join('\n\n---\n\n')].filter(Boolean).join('\n\n=== PROJECT PROCEDURES ===\n\n'), flowsUsed: (inherited.flowsUsed || []).concat(used)};
 }
 
 function readFlowIndex_(project) {

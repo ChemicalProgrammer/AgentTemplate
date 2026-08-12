@@ -1,71 +1,135 @@
 # Arquitectura técnica
 
-Versión de referencia: 1.6.0.
+Versión de referencia: 1.7.0.
 
-## Flujo principal
+## Modelo de la consola
 
-```mermaid
-flowchart TD
-  Browser[Web App] --> Apps[Apps Script services]
-  Apps --> Config[Script and user settings]
-  Apps --> Drive[Project folders in Drive]
-  Apps --> Gemini[Gemini REST API]
-  Apps --> Search[Gemini File Search]
-  Drive --> Sources[Sources]
-  Drive --> Templates[Templates]
-  Drive --> Flows[Markdown Flows]
-  Drive --> Chats[Conversation JSON]
-  Drive --> Docs[Generated Docs and PDFs]
-  Sources --> Search
+La aplicación separa el diseño de agentes de su uso operativo:
+
+```text
+Agent Console/
+├── Agents/                 # construir, copiar, escanear y publicar
+├── Projects/               # cargar una versión publicada y trabajar
+└── _System/                # datos internos de la consola
 ```
 
-## Fuentes de verdad
+La regla central es:
 
-- `Project Manifest.json`: metadatos portátiles con la carpeta del proyecto.
-- `Project Control`: registro tabular y auditable.
-- Archivos JSON de conversación: historial completo, sin límites de celda.
-- `Documents Index.json`: metadatos, origen y relaciones parent/child de documentos generados.
-- `Templates Index.json`: formatos Google Docs, Sheets y Slides disponibles para reportes.
-- `Flows Index.json`: procedimientos Markdown disponibles para consultas.
-- Carpetas de Drive: permisos reales y documentos.
+> Un agente define cómo trabajar y contiene su propio conocimiento. Un proyecto carga una sola versión del agente y añade únicamente su contexto particular.
 
-No existe un registro central persistente de proyectos en propiedades del script. El catálogo ligero y la relación `projectId → folderId` usan `CacheService` durante tres minutos; en un fallo de caché se vuelve a Drive y se valida que la carpeta siga siendo hija directa de la raíz. El arranque normal solo lee manifiestos: las reparaciones de estructura, índices y `Project Control` ocurren al crear, modificar o reparar explícitamente. El manifiesto permite que una copia manual conserve su estructura; si dos carpetas activas presentan el mismo `projectId`, se genera uno nuevo para la segunda. El clonado desde la interfaz copia el árbol completo y remapea IDs de Drive, chats y relaciones documentales.
+No existen Knowledge Packs globales. Las fuentes de un agente no se comparten ni se mezclan con otros agentes.
 
-## Memoria y recuperación híbrida
+## Carpeta autocontenida de agente
 
-La memoria no depende del estado remoto de una conversación de Gemini. Cada solicitud se construye de forma controlada con datos del proyecto:
+```text
+Agents/Technical Governance Agent/
+├── Agent Manifest.json
+├── Instructions/
+│   └── System Instructions.md
+├── Knowledge/
+│   ├── Mandatory Sources/
+│   └── Optional Sources/
+├── Workflows/
+├── Templates/
+├── Output Formats/
+├── Policies/
+├── Examples/
+├── Evaluations/
+├── Assets/
+├── Releases/
+│   └── 1.0.0/
+│       ├── Release Manifest.json
+│       └── [instantánea de todas las secciones]
+└── _Runtime/
+```
 
-1. instrucciones del sistema;
-2. descripción del proyecto;
-3. resumen acumulativo;
-4. ventana reciente;
-5. fragmentos semánticos recuperados desde File Search para las fuentes indexadas;
-6. fragmentos locales de documentos generados o fuentes todavía no indexadas;
-7. Flows seleccionados como instrucciones, separados de la evidencia;
-8. consulta actual.
+La carpeta es la unidad portable. Al copiarla dentro de `Agents` y pulsar **Scan agents**, la consola:
 
-Cada llave personal crea su propio almacén File Search por proyecto. Los IDs del almacén y documentos remotos permanecen en `UserProperties`; el PDF, Google Sheet u otro archivo original permanece en Drive como fuente de verdad. Esta estrategia conserva el historial completo en Drive y evita que el proyecto dependa de un identificador de conversación externo.
+1. valida o crea el manifiesto;
+2. reconstruye los IDs internos por rutas lógicas;
+3. detecta IDs de agente duplicados y convierte la segunda copia en un borrador independiente;
+4. conserva versiones válidas cuando la carpeta proviene de otra instalación;
+5. no copia llaves API, sesiones ni embeddings;
+6. reconstruye el índice File Search desde los originales de Drive.
 
-Si la consulta tiene documentos seleccionados, el resumen acumulativo se omite y la ventana reciente se filtra por la selección/citas guardadas en cada respuesta. El filtro remoto de `source_id` es obligatorio y las anotaciones de File Search se validan antes de persistir: un `source_id` no autorizado hace fallar la solicitud. Esto evita que una fuente no seleccionada reaparezca por el almacén o por el historial del chat.
+## Borradores y versiones
 
-Las fuentes locales de hasta 100 MB se cargan primero a Drive mediante una sesión reanudable en bloques de 2 MB. La transferencia posterior a File Search conserva URL, offset, etapa, inicio del intento y progreso en `UserProperties` y avanza un bloque de 8 MB por llamada, evitando que un libro grande dependa de una sola ejecución de Apps Script. File Search fragmenta con 200 tokens y 20 de superposición; antes de iniciar una carga, la app limita defensivamente el tamaño a 512 tokens. El diagnóstico reconcilia la operación de larga duración con la lista de documentos remotos asociados mediante `source_id` o `drive_id`: `failed` exige un fallo confirmado, `unknown` cubre una operación huérfana o no verificable, y `ready` exige un documento `STATE_ACTIVE`. Un reintento forzado elimina primero todos los documentos remotos de esa fuente.
+- Las carpetas superiores son el borrador editable.
+- **Publish** crea una instantánea completa e inmutable en `Releases/{version}`.
+- Cada proyecto guarda `agentId` y `agentVersion`.
+- Publicar una versión nueva no modifica proyectos existentes.
+- Cambiar el agente o su versión crea un chat nuevo.
+- Los chats anteriores conservan `agentId`, `agentName` y `agentVersion`.
 
-La eliminación marca primero la fuente como `removed`, la retira de cualquier filtro elegible y después purga todos los documentos remotos que coincidan por `source_id` o `drive_id`, incluso en almacenes heredados. Al cargar Documents se ejecuta una reconciliación no bloqueante que elimina documentos remotos sin una fuente activa correspondiente.
+## Carpeta de proyecto
 
-## Carga progresiva
+```text
+Projects/Project A/
+├── Project Manifest.json
+├── Project Control
+├── Sources/
+├── Templates/
+├── Flows/
+├── Generated Documents/
+├── Conversation Data/
+└── PDF Exports/
+```
 
-La apertura obtiene primero un shell mínimo de identidad y permisos. Chats —incluida la conversación más reciente— y Documents se solicitan en paralelo y cada región controla su propio spinner. Templates y Flows se leen únicamente al abrir su pestaña; Members únicamente al abrir Share. El navegador descarta respuestas tardías mediante un token de carga si el usuario cambia de proyecto. Los estados `ready` de File Search se leen localmente y solo los estados transitorios o desconocidos consultan la operación remota.
+Los proyectos heredados de la v1.6.0 se mueven una sola vez desde la raíz a `Projects` y se asocian con `General Project Assistant 1.0.0`. Sus chats, fuentes, plantillas, flows y documentos se conservan.
 
-## Grafo documental
+## Aislamiento de recuperación
 
-Cada fuente original se representa como un nodo de nivel 0. Los documentos generados guardan una lista de `parentIds`; su nivel se calcula como uno más que el nivel máximo de sus padres. Los archivos existentes sin metadatos se registran automáticamente como documentos generados de nivel 1. Cada nodo admite una nota descriptiva persistente. La selección de nodos se guarda con cada conversación cuando se envía un mensaje y controla el contexto recuperado para Gemini.
+Cada usuario y llave API mantiene almacenes independientes:
 
-## Aislamiento por usuario
+```text
+Agent {agentId} {version}  -> File Search Store del agente
+Project {projectId}       -> File Search Store del proyecto
+```
 
-- Configuración global de dominio y carpeta raíz: `ScriptProperties`.
-- Llave y modelo de Gemini: `UserProperties`.
-- Favoritos: `UserProperties`.
-- Almacén File Search, estados de indexación y plantilla de reportes: `UserProperties`.
-- Permisos de contenido: registro de miembros más permisos reales de Drive.
+Una consulta puede incluir únicamente:
 
-Cada función pública vuelve a validar dominio, membresía, rol y alcance antes de acceder a Drive o Gemini.
+1. el store de la versión de agente cargada;
+2. el store del proyecto actual;
+3. fuentes locales de esos mismos dos ámbitos que aún no estén indexadas.
+
+Las fuentes obligatorias del agente siempre se agregan en el servidor aunque el navegador no las envíe. Las opcionales se incluyen solo cuando el usuario las selecciona.
+
+Cada documento remoto contiene `source_id`, `drive_id`, `scope_type` y, para conocimiento del agente, `agent_id` y `agent_version`. File Search recibe un filtro no vacío con los IDs autorizados. Las citas se validan antes de guardar la respuesta; una cita externa bloquea la respuesta completa.
+
+Los IDs de fuente de agente se representan en conversaciones como `agent-source:{id}` y las fuentes del proyecto como `source:{id}`. El historial de otra selección o versión no entra en la solicitud.
+
+## Contexto de ejecución
+
+La solicitud combina, en este orden:
+
+1. identidad y versión del agente;
+2. instrucciones publicadas;
+3. políticas del agente;
+4. requisitos de salida;
+5. descripción del proyecto;
+6. historial permitido para la selección actual;
+7. conocimiento recuperado del agente;
+8. fuentes recuperadas del proyecto;
+9. workflows heredados del agente y flows particulares del proyecto;
+10. mensaje del usuario.
+
+Las plantillas y workflows del agente aparecen dentro del proyecto como recursos heredados de solo lectura. Las personalizaciones del proyecto permanecen editables.
+
+## Carga y caché
+
+- El bootstrap entrega catálogos ligeros de Agents y Projects.
+- La portada muestra dos rutas y no abre automáticamente un proyecto.
+- Al abrir un proyecto, el encabezado y el agente aparecen primero.
+- Chats y Documents cargan en paralelo.
+- Templates y Flows cargan bajo demanda.
+- Members carga al abrir Share.
+- Los catálogos y localizadores usan `CacheService` durante tres minutos.
+
+## Seguridad
+
+- Dominio, administrador y carpeta principal: `ScriptProperties`.
+- Llave, modelo, stores, estados de indexación, favoritos y plantilla seleccionada: `UserProperties`.
+- Permisos: manifiesto del proyecto más permisos reales de Drive.
+- Los secretos y embeddings nunca se escriben dentro de una carpeta de agente.
+- La app debe desplegarse como el usuario que accede.
+- Un agente asignado que falta o cuya versión no existe produce un error; nunca se sustituye silenciosamente por otro agente.

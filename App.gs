@@ -1,9 +1,9 @@
-/** Entry point and browser-facing façade for the Gemini Project Agent web app. */
+/** Entry point and browser-facing façade for the Agent Console web app. */
 
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
-    .setTitle('Gemini Project Agent')
+    .setTitle('Agent Console')
     .setFaviconUrl('https://www.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
@@ -16,13 +16,17 @@ function getBootstrap() {
   var identity = getCurrentIdentity_();
   var config = getPublicConfig_();
   var initialized = Boolean(config.rootFolderId && config.organizationDomain);
-  if (initialized) assertOrganizationMember_();
+  if (initialized) {
+    assertOrganizationMember_();
+    ensureConsoleStructure_(getRootFolder_(), false);
+  }
 
   return {
     initialized: initialized,
     identity: identity,
     config: config,
     projects: initialized ? listProjects() : [],
+    agents: initialized ? listAgents() : [],
     userSettings: getPublicUserGeminiSettings_()
   };
 }

@@ -64,7 +64,7 @@ function selectReportTemplate(projectId, templateId) {
   if (templateId) {
     var exists = readTemplateIndex_(access.project).templates.some(function(template) {
       return template.templateId === templateId && template.status !== 'removed';
-    });
+    }) || Boolean(findAgentTemplateForProject_(access.project, templateId));
     if (!exists) throw new Error('Template not found.');
     PropertiesService.getUserProperties().setProperty(APP.USER_TEMPLATE_PREFIX + projectId, templateId);
   } else {
@@ -99,7 +99,7 @@ function createReportFromDocument(projectId, nodeId, templateId, selectedFlowIds
   if (templateId) {
     template = readTemplateIndex_(access.project).templates.filter(function(item) {
       return item.templateId === templateId && item.status !== 'removed';
-    })[0] || null;
+    })[0] || findAgentTemplateForProject_(access.project, templateId);
     if (!template) throw new Error('The selected report template could not be found.');
   }
 

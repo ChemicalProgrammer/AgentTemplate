@@ -170,9 +170,12 @@ function startFileSearchUpload_(project, source, descriptor, storeName, apiKey) 
     customMetadata: [
       {key: 'project_id', stringValue: project.projectId},
       {key: 'source_id', stringValue: source.sourceId},
-      {key: 'drive_id', stringValue: source.driveId}
+      {key: 'drive_id', stringValue: source.driveId},
+      {key: 'scope_type', stringValue: project.scopeType || 'project'}
     ]
   };
+  if (project.agentId) metadata.customMetadata.push({key:'agent_id',stringValue:project.agentId});
+  if (project.agentVersion) metadata.customMetadata.push({key:'agent_version',stringValue:project.agentVersion});
   if (!useServiceDefault) metadata.chunkingConfig = {whiteSpaceConfig: getFileSearchWhiteSpaceConfig_()};
   var start = UrlFetchApp.fetch(FILE_SEARCH_UPLOAD_ROOT + storeName + ':uploadToFileSearchStore', {
     method: 'post',
@@ -641,11 +644,13 @@ function generateWithFileSearch_(options) {
   var config = options.config || getUserGeminiConfig_();
   var metadataFilter = String(options.metadataFilter || '').trim();
   if (!metadataFilter) throw new Error('File Search was blocked because no source-isolation filter was provided.');
+  var storeNames = (options.storeNames || [options.storeName]).map(String).filter(Boolean).filter(function(name,index,all){return all.indexOf(name)===index;});
+  if (!storeNames.length) throw new Error('File Search was blocked because no isolated store was provided.');
   var body = {
     model: normalizeModel_(options.model || config.model),
     system_instruction: String(options.systemInstruction || ''),
     input: flattenInteractionInput_(options.contents || []),
-    tools: [{type: 'file_search', file_search_store_names: [options.storeName], metadata_filter: metadataFilter, top_k: Number(options.topK || 12)}],
+    tools: [{type: 'file_search', file_search_store_names: storeNames, metadata_filter: metadataFilter, top_k: Number(options.topK || 12)}],
     generation_config: {max_output_tokens: options.maxOutputTokens || 8192},
     store: false
   };
@@ -729,6 +734,25 @@ function annotationsToSourcesUsed_(annotations, project) {
     });
   });
   used.forEach(function(item) { delete item._key; });
+  return used;
+}
+
+function annotationsToScopedSourcesUsed_(annotations, project, agentResolved) {
+  var byId = {};
+  readSourceIndex_(project).sources.filter(function(source){return source.status!=='removed';}).forEach(function(source){
+    byId[source.sourceId]={sourceId:'source:'+source.sourceId,name:source.name,mimeType:source.mimeType,kind:'source',origin:'project'};
+  });
+  if (agentResolved && agentResolved.release) (agentResolved.release.knowledgeSources||[]).filter(function(source){return source.status!=='removed';}).forEach(function(source){
+    byId[source.sourceId]={sourceId:'agent-source:'+source.sourceId,name:source.name,mimeType:source.mimeType,kind:'agent-source',origin:'agent'};
+  });
+  var used=[];
+  (annotations||[]).forEach(function(annotation){
+    var id=fileSearchAnnotationSourceId_(annotation);var source=byId[id];if(!id||!source)return;
+    var key=id+':'+String(annotation.page_number||annotation.pageNumber||'')+':'+String(annotation.source||'');
+    if(used.some(function(item){return item._key===key;}))return;
+    used.push({_key:key,sourceId:source.sourceId,label:'R'+(used.length+1),name:source.name||annotation.file_name||annotation.fileName||'Indexed source',mimeType:source.mimeType||'',kind:source.kind,origin:source.origin,pageNumber:annotation.page_number||annotation.pageNumber||null,citationUri:annotation.source||''});
+  });
+  used.forEach(function(item){delete item._key;});
   return used;
 }
 

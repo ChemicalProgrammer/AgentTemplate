@@ -300,7 +300,7 @@ function normalizeDocumentParentIds_(ids) {
 function normalizeDocumentParentId_(id) {
   id = String(id || '').trim();
   if (!id) return '';
-  if (/^(source|document):/.test(id)) return id;
+  if (/^(source|document|agent-source):/.test(id)) return id;
   return 'source:' + id;
 }
 

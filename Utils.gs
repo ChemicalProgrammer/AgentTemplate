@@ -49,6 +49,14 @@ function getRootFolder_() {
   return root;
 }
 
+function getAgentsFolder_() {
+  return ensureFolder_(getRootFolder_(), APP.AGENTS_FOLDER);
+}
+
+function getProjectsFolder_() {
+  return ensureFolder_(getRootFolder_(), APP.PROJECTS_FOLDER);
+}
+
 function getFirstFileByName_(folder, name) {
   var files = folder.getFilesByName(name);
   return files.hasNext() ? files.next() : null;

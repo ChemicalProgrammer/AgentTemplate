@@ -1,8 +1,11 @@
 var APP = Object.freeze({
-  NAME: 'Gemini Project Agent',
-  VERSION: '1.6.0',
-  ROOT_NAME: 'Agent Projects',
+  NAME: 'Agent Console',
+  VERSION: '1.7.0',
+  ROOT_NAME: 'Agent Console',
+  AGENTS_FOLDER: 'Agents',
+  PROJECTS_FOLDER: 'Projects',
   SYSTEM_FOLDER: '_System',
+  PROP_CONSOLE_MIGRATION: 'CONSOLE_STRUCTURE_V170',
   PROP_ROOT_ID: 'ROOT_FOLDER_ID',
   PROP_ROOT_NAME: 'ROOT_FOLDER_NAME',
   PROP_DOMAIN: 'ORGANIZATION_DOMAIN',
@@ -14,8 +17,10 @@ var APP = Object.freeze({
   USER_FILE_SEARCH_STORE_PREFIX: 'FILE_SEARCH_STORE_',
   USER_FILE_SEARCH_SOURCE_PREFIX: 'FILE_SEARCH_SOURCE_',
   USER_SOURCE_UPLOAD_PREFIX: 'SOURCE_UPLOAD_SESSION_',
-  PROJECT_CATALOG_CACHE_KEY: 'GPA_PROJECT_CATALOG_V160',
-  PROJECT_LOCATOR_CACHE_PREFIX: 'GPA_PROJECT_LOCATOR_V160_',
+  PROJECT_CATALOG_CACHE_KEY: 'GPA_PROJECT_CATALOG_V170',
+  PROJECT_LOCATOR_CACHE_PREFIX: 'GPA_PROJECT_LOCATOR_V170_',
+  AGENT_CATALOG_CACHE_KEY: 'GPA_AGENT_CATALOG_V170',
+  AGENT_LOCATOR_CACHE_PREFIX: 'GPA_AGENT_LOCATOR_V170_',
   PROJECT_CACHE_SECONDS: 180,
   DEFAULT_MODEL: 'gemini-3.6-flash',
   MAX_FLOW_UPLOAD_BYTES: 6 * 1024 * 1024,
@@ -54,7 +59,7 @@ function setupApplication(settings) {
   }
 
   var root = resolveConfiguredRootFolder_(settings.rootFolderId, settings.rootFolderName);
-  ensureFolder_(root, APP.SYSTEM_FOLDER);
+  ensureConsoleStructure_(root, true);
 
   scriptProps.setProperties({
     ROOT_FOLDER_ID: root.getId(),
@@ -63,6 +68,7 @@ function setupApplication(settings) {
     ADMIN_EMAIL: identity.email
   }, false);
   invalidateProjectCaches_('');
+  invalidateAgentCaches_('');
 
   return getBootstrap();
 }
@@ -94,13 +100,14 @@ function updateRootFolderSettings(settings) {
   assertAdmin_();
   settings = settings || {};
   var root = resolveConfiguredRootFolder_(settings.rootFolderId, settings.rootFolderName);
-  ensureFolder_(root, APP.SYSTEM_FOLDER);
+  ensureConsoleStructure_(root, true);
   PropertiesService.getScriptProperties().setProperties({
     ROOT_FOLDER_ID: root.getId(),
     ROOT_FOLDER_NAME: root.getName()
   }, false);
   clearLegacyProjectRegistry_();
   invalidateProjectCaches_('');
+  invalidateAgentCaches_('');
   return getBootstrap();
 }
 

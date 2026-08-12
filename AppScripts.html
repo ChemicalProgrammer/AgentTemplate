@@ -20,6 +20,14 @@
   const state = {
     bootstrap: null,
     projects: [],
+    agents: [],
+    agentSearch: '',
+    currentAgentId: null,
+    currentAgentDetails: null,
+    currentAgentAssetType: '',
+    currentAgentKnowledgeMode: '',
+    projectAgent: null,
+    availableAgents: [],
     dashboardFilter: 'all',
     search: '',
     projectDetails: null,
@@ -72,10 +80,11 @@
         return;
       }
       state.projects = data.projects || [];
+      state.agents = data.agents || [];
       document.getElementById('app-shell').classList.remove('hidden');
-      setWorkspaceMode('dashboard');
+      setWorkspaceMode('home');
       applyIdentity();
-      renderProjects();
+      showHome();
     } catch (error) {
       document.getElementById('boot-loader').classList.add('hidden');
       showToast(error.message, true);
@@ -99,6 +108,23 @@
 
   function bindStaticEvents() {
     document.getElementById('setup-form').addEventListener('submit', configureApp);
+    document.getElementById('brand-home').addEventListener('click', showHome);
+    document.getElementById('open-agents-route').addEventListener('click', showAgents);
+    document.getElementById('open-projects-route').addEventListener('click', showDashboard);
+    document.getElementById('agents-back-home').addEventListener('click', showHome);
+    document.getElementById('projects-back-home').addEventListener('click', showHome);
+    document.getElementById('agent-editor-back').addEventListener('click', showAgents);
+    document.getElementById('agent-search').addEventListener('input', event => { state.agentSearch = event.target.value.toLowerCase(); renderAgents(); });
+    document.getElementById('refresh-agents').addEventListener('click', refreshAgents);
+    document.getElementById('create-agent').addEventListener('click', () => { openModal('agent-modal'); document.getElementById('new-agent-name').focus(); });
+    document.getElementById('agent-form').addEventListener('submit', submitAgent);
+    document.getElementById('save-agent').addEventListener('click', saveAgentDraft);
+    document.getElementById('publish-agent').addEventListener('click', openPublishAgentModal);
+    document.getElementById('publish-agent-form').addEventListener('submit', submitPublishAgent);
+    document.getElementById('clone-agent').addEventListener('click', cloneCurrentAgent);
+    document.getElementById('agent-asset-form').addEventListener('submit', submitAgentAsset);
+    document.querySelectorAll('[data-agent-add]').forEach(button => button.addEventListener('click', () => openAgentAssetModal(button.dataset.agentAdd, button.dataset.knowledgeMode || '')));
+    document.querySelectorAll('[data-agent-section-link]').forEach(button => button.addEventListener('click', () => scrollAgentSection(button.dataset.agentSectionLink)));
     document.getElementById('global-search').addEventListener('input', event => { state.search = event.target.value.toLowerCase(); renderProjects(); });
     document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.addEventListener('click', () => {
       state.dashboardFilter = button.dataset.dashboardFilter;
@@ -108,6 +134,8 @@
     document.getElementById('refresh-projects').addEventListener('click', refreshProjects);
     document.getElementById('settings-button').addEventListener('click', openSettings);
     document.getElementById('project-settings-button').addEventListener('click', openSettings);
+    document.getElementById('project-agent-button').addEventListener('click', openChangeAgentModal);
+    document.getElementById('change-agent-form').addEventListener('submit', submitChangeProjectAgent);
     document.getElementById('back-dashboard').addEventListener('click', showDashboard);
     document.getElementById('toggle-project-panel').addEventListener('click', () => document.getElementById('project-side-panel').classList.toggle('mobile-open'));
     document.getElementById('project-header-icon').addEventListener('click', openProjectEmojiPicker);
@@ -166,11 +194,197 @@
         rootFolderId: document.getElementById('setup-root').value
       });
       state.projects = state.bootstrap.projects || [];
+      state.agents = state.bootstrap.agents || [];
       document.getElementById('setup-screen').classList.add('hidden');
       document.getElementById('app-shell').classList.remove('hidden');
-      setWorkspaceMode('dashboard'); applyIdentity(); renderProjects(); showToast('Application configured.');
+      setWorkspaceMode('home'); applyIdentity(); showHome(); showToast('Application configured.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
+  }
+
+  function hideWorkspaceViews_() {
+    ['home-view','agents-view','agent-editor-view','dashboard-view','project-view'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  }
+
+  function showHome() {
+    if (state.activeRequest) stopResponse();
+    state.projectLoadToken++;
+    state.currentProjectId = null; state.projectDetails = null; state.currentAgentId = null; state.currentAgentDetails = null;
+    hideWorkspaceViews_(); document.getElementById('home-view').classList.remove('hidden');
+    setWorkspaceMode('home');
+    document.getElementById('home-agent-count').textContent = state.agents.length;
+    document.getElementById('home-project-count').textContent = state.projects.length;
+  }
+
+  function showAgents() {
+    hideWorkspaceViews_(); document.getElementById('agents-view').classList.remove('hidden');
+    setWorkspaceMode('agents'); renderAgents();
+  }
+
+  function renderAgents() {
+    const agents = state.agents.filter(agent => !state.agentSearch || `${agent.name} ${agent.description} ${agent.owner}`.toLowerCase().includes(state.agentSearch));
+    const grid = document.getElementById('agent-grid');
+    grid.innerHTML = agents.map((agent, index) => `<article class="agent-card" style="--card-index:${index};${projectColorStyle(agent.color)}" data-agent-id="${escapeHtml(agent.agentId)}" tabindex="0">
+      <div class="agent-card-top"><div class="agent-avatar">${escapeHtml(agent.icon || '✦')}</div><span class="status-pill ${escapeHtml(agent.status)}">${escapeHtml(agent.status || 'draft')}</span></div>
+      <h3>${escapeHtml(agent.name)}</h3><p class="description">${escapeHtml(agent.description || 'No description')}</p>
+      <div class="agent-card-stats"><span><b>${numberValue(agent.sourceCount)}</b> knowledge</span><span><b>${numberValue(agent.workflowCount)}</b> workflows</span><span><b>${numberValue(agent.templateCount)}</b> templates</span></div>
+      <div class="agent-version-row"><span>${agent.hasDraftChanges ? 'Draft changes not published' : escapeHtml(shortEmail(agent.owner))}</span><span class="version-pill">${agent.publishedVersion ? 'v' + escapeHtml(agent.publishedVersion) : 'Draft only'}</span></div>
+    </article>`).join('');
+    document.getElementById('empty-agents').classList.toggle('hidden', agents.length > 0);
+    grid.querySelectorAll('.agent-card').forEach(card => {
+      card.addEventListener('click', () => openAgent(card.dataset.agentId));
+      card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openAgent(card.dataset.agentId); } });
+    });
+  }
+
+  async function refreshAgents() {
+    const button = document.getElementById('refresh-agents'); setBusy(button, true);
+    try { state.agents = await server('refreshAgents'); renderAgents(); updateHomeCounts_(); showToast('Agents folder scanned.'); }
+    catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  async function submitAgent(event) {
+    event.preventDefault(); setBusy(event.target, true);
+    try {
+      const agent = await server('createAgent', {name:document.getElementById('new-agent-name').value,description:document.getElementById('new-agent-description').value});
+      state.agents.unshift(agent); closeModals(); event.target.reset(); renderAgents(); updateHomeCounts_(); await openAgent(agent.agentId); showToast('Agent draft created.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  async function openAgent(agentId) {
+    hideWorkspaceViews_(); document.getElementById('agent-editor-view').classList.remove('hidden'); setWorkspaceMode('agents');
+    state.currentAgentId = agentId; state.currentAgentDetails = null;
+    document.getElementById('agent-editor-name').textContent = 'Opening agent…';
+    try { state.currentAgentDetails = await server('getAgentDetails', agentId); renderAgentEditor(); }
+    catch (error) { showToast(error.message, true); showAgents(); }
+  }
+
+  function renderAgentEditor() {
+    const details = state.currentAgentDetails; if (!details) return;
+    const agent = details.agent; const assets = details.assets || {};
+    document.getElementById('agent-editor-icon').textContent = agent.icon || '✦';
+    document.getElementById('agent-editor-name').textContent = agent.name;
+    document.getElementById('agent-editor-status').textContent = agent.status || 'draft';
+    document.getElementById('agent-editor-status').className = `status-pill ${agent.status || 'draft'}`;
+    document.getElementById('agent-editor-version').textContent = agent.publishedVersion ? `Published v${agent.publishedVersion}${agent.hasDraftChanges ? ' · draft changed' : ''}` : 'Not published';
+    document.getElementById('open-agent-folder').href = details.folderUrl || agent.folderUrl || '#';
+    document.getElementById('edit-agent-name').value = agent.name || '';
+    document.getElementById('edit-agent-description').value = agent.description || '';
+    document.getElementById('edit-agent-instructions').value = details.instructions || '';
+    const validation = details.validation || {valid:true,errors:[],warnings:[]};
+    const validationBadge = document.getElementById('agent-validation-badge');
+    validationBadge.textContent = validation.valid ? validation.warnings.length ? `${validation.warnings.length} recommendation${validation.warnings.length===1?'':'s'}` : 'Ready to publish' : `${validation.errors.length} validation error${validation.errors.length===1?'':'s'}`;
+    validationBadge.title = (validation.errors || []).concat(validation.warnings || []).join('\n');
+    document.getElementById('save-agent').classList.toggle('hidden', !agent.canEdit);
+    document.getElementById('publish-agent').classList.toggle('hidden', !agent.canEdit);
+    document.querySelectorAll('[data-agent-add]').forEach(button => button.classList.toggle('hidden', !agent.canEdit));
+    renderAgentResourceList_('agent-mandatory-list', assets.mandatoryKnowledge, 'DOC', agent.canEdit);
+    renderAgentResourceList_('agent-optional-list', assets.optionalKnowledge, 'DOC', agent.canEdit);
+    renderAgentResourceList_('agent-workflow-list', assets.workflows, 'MD', agent.canEdit);
+    renderAgentResourceList_('agent-template-list', assets.templates, 'TPL', agent.canEdit);
+    renderAgentResourceList_('agent-output-list', assets.outputFormats, 'OUT', agent.canEdit);
+    renderAgentResourceList_('agent-policy-list', assets.policies, 'POL', agent.canEdit);
+    renderAgentResourceList_('agent-asset-list', assets.assets, 'AST', agent.canEdit);
+    renderAgentResourceList_('agent-example-list', assets.examples, 'EX', agent.canEdit);
+    renderAgentResourceList_('agent-evaluation-list', assets.evaluations, 'TEST', agent.canEdit);
+    const releases = details.versions || [];
+    document.getElementById('agent-release-list').innerHTML = releases.length ? releases.map(release => `<article class="release-row"><span class="version-pill">v${escapeHtml(release.version)}</span><span><strong>${escapeHtml(agent.name)}</strong><small>Published ${formatDate(release.releasedAt)} by ${escapeHtml(shortEmail(release.releasedBy || agent.owner))}</small></span><span class="release-metric"><b>${numberValue(release.sourceCount)}</b>sources</span><span class="release-metric"><b>${numberValue(release.workflowCount)}</b>flows</span><span class="release-metric"><b>${numberValue(release.templateCount)}</b>templates</span></article>`).join('') : '<div class="resource-empty">No published versions yet.</div>';
+    document.querySelectorAll('[data-remove-agent-asset]').forEach(button => button.addEventListener('click', () => removeAgentAsset(button.dataset.removeAgentAsset, button)));
+  }
+
+  function renderAgentResourceList_(id, items = [], icon, canEdit) {
+    const container = document.getElementById(id);
+    container.innerHTML = items.length ? items.map(item => `<article class="agent-resource-item"><span class="resource-icon">${icon}</span><span class="resource-copy"><strong title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong><small title="${escapeHtml(item.relativePath || '')}">${escapeHtml(item.relativePath || friendlyMime(item.mimeType))} · ${formatFileSize(item.size)}</small></span><span class="resource-actions">${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" title="Open in Drive">↗</a>` : ''}${canEdit ? `<button data-remove-agent-asset="${escapeHtml(item.driveId)}" title="Remove from draft">×</button>` : ''}</span></article>`).join('') : '<div class="resource-empty">No resources in this section.</div>';
+  }
+
+  async function saveAgentDraft() {
+    if (!state.currentAgentId) return;
+    const button = document.getElementById('save-agent'); setBusy(button, true);
+    try {
+      state.currentAgentDetails = await server('updateAgent', state.currentAgentId, {name:document.getElementById('edit-agent-name').value,description:document.getElementById('edit-agent-description').value,instructions:document.getElementById('edit-agent-instructions').value});
+      upsertAgentSummary_(state.currentAgentDetails.agent); renderAgentEditor(); showToast('Agent draft saved.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function openAgentAssetModal(type, knowledgeMode) {
+    if (!state.currentAgentDetails || !state.currentAgentDetails.agent.canEdit) return;
+    state.currentAgentAssetType = type; state.currentAgentKnowledgeMode = knowledgeMode;
+    document.getElementById('agent-asset-type').value = type; document.getElementById('agent-knowledge-mode').value = knowledgeMode;
+    const names = {knowledge:knowledgeMode === 'optional' ? 'Add optional knowledge' : 'Add mandatory knowledge',workflow:'Add workflow',template:'Add output template',output:'Add output requirement',policy:'Add policy',example:'Add example',evaluation:'Add evaluation',asset:'Add visual asset'};
+    document.getElementById('agent-asset-title').textContent = names[type] || 'Add agent resource';
+    openModal('agent-asset-modal'); document.getElementById('agent-asset-drive-url').focus();
+  }
+
+  async function submitAgentAsset(event) {
+    event.preventDefault(); setBusy(event.target, true);
+    try {
+      state.currentAgentDetails = await server('addAgentAssetFromDrive', state.currentAgentId, document.getElementById('agent-asset-type').value, document.getElementById('agent-asset-drive-url').value, document.getElementById('agent-knowledge-mode').value);
+      closeModals(); event.target.reset(); renderAgentEditor(); upsertAgentSummary_(state.currentAgentDetails.agent); showToast('Resource copied into the agent draft.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  async function removeAgentAsset(driveId, button) {
+    const confirmed = await askConfirmation({title:'Remove this draft resource?',message:'The file will be moved to Drive trash. Published agent versions remain unchanged.',action:'Remove resource'}); if (!confirmed) return;
+    setBusy(button, true);
+    try { state.currentAgentDetails = await server('removeAgentAsset', state.currentAgentId, driveId); renderAgentEditor(); showToast('Resource removed from the draft.'); }
+    catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
+  }
+
+  function openPublishAgentModal() {
+    const current = state.currentAgentDetails && state.currentAgentDetails.agent.publishedVersion;
+    const parts = String(current || '0.0.0').split('.').map(value => parseInt(value,10) || 0);
+    document.getElementById('publish-agent-version').value = current ? `${parts[0]}.${parts[1]}.${parts[2] + 1}` : '1.0.0';
+    openModal('publish-agent-modal'); document.getElementById('publish-agent-version').focus();
+  }
+
+  async function submitPublishAgent(event) {
+    event.preventDefault(); setBusy(event.target, true);
+    try {
+      const result = await server('publishAgent', state.currentAgentId, document.getElementById('publish-agent-version').value);
+      closeModals(); upsertAgentSummary_(result); state.currentAgentDetails = await server('getAgentDetails', state.currentAgentId); renderAgentEditor();
+      showToast(result.warnings && result.warnings.length ? result.warnings.join(' ') : `Agent version ${result.publishedVersion} published.`);
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
+  async function cloneCurrentAgent() {
+    if (!state.currentAgentId) return;
+    const confirmed = await askConfirmation({title:'Clone this agent?',message:'A complete editable copy will be created with a new identity. Published releases will not be inherited.',action:'Clone agent',tone:'primary'}); if(!confirmed)return;
+    const button=document.getElementById('clone-agent');setBusy(button,true);
+    try{const clone=await server('cloneAgent',state.currentAgentId);state.agents.unshift(clone);updateHomeCounts_();await openAgent(clone.agentId);showToast('Agent cloned as a new draft.');}catch(error){showToast(error.message,true);}finally{setBusy(button,false);}
+  }
+
+  function scrollAgentSection(name) {
+    document.querySelectorAll('[data-agent-section-link]').forEach(button => button.classList.toggle('active', button.dataset.agentSectionLink === name));
+    const section = document.getElementById('agent-section-' + name); if (section) section.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  function upsertAgentSummary_(agent) {
+    const index = state.agents.findIndex(item => item.agentId === agent.agentId);
+    if (index === -1) state.agents.unshift(agent); else state.agents[index] = Object.assign({}, state.agents[index], agent);
+    updateHomeCounts_();
+  }
+
+  function updateHomeCounts_() {
+    document.getElementById('home-agent-count').textContent = state.agents.length;
+    document.getElementById('home-project-count').textContent = state.projects.length;
+  }
+
+  function publishedAgents_() { return state.agents.filter(agent => Boolean(agent.publishedVersion)); }
+
+  function publishedAgentOptions_(agents = publishedAgents_()) {
+    return agents.flatMap(agent => (agent.versions && agent.versions.length ? agent.versions : [{version:agent.publishedVersion}]).map(release => ({agentId:agent.agentId,version:release.version,name:agent.name,icon:agent.icon,isCurrent:release.version===agent.publishedVersion})));
+  }
+
+  function populateAgentSelect_(select, selectedId, selectedVersion) {
+    const options = publishedAgentOptions_();
+    select.innerHTML = options.map(option => `<option value="${escapeHtml(option.agentId + '@@' + option.version)}" ${option.agentId === selectedId && (!selectedVersion || option.version === selectedVersion) ? 'selected' : ''}>${escapeHtml(option.name)} · v${escapeHtml(option.version)}${option.isCurrent ? ' · current' : ''}</option>`).join('');
+    select.disabled = !options.length;
   }
 
   function renderProjects() {
@@ -197,6 +411,7 @@
       </div>
       <h3>${escapeHtml(project.title)}</h3>
       <p class="description">${escapeHtml(project.description || 'No description')}</p>
+      <div class="project-agent-tag"><span>${escapeHtml(project.agentIcon || '✦')}</span>${escapeHtml(project.agentName || 'Agent unavailable')} · v${escapeHtml(project.agentVersion || '—')}</div>
       <div class="card-meta"><span class="status-pill ${escapeHtml(project.status)}">${escapeHtml(statusLabel(project.status))}</span><span>${formatDate(project.createdAt)}</span></div>
       <div class="card-stats"><span><b>${numberValue(project.sourceCount)}</b> sources</span><span><b>${numberValue(project.conversationCount)}</b> chats</span><span><b>${numberValue(project.documentCount)}</b> documents</span></div>
       <div class="card-owner" title="Owner">${escapeHtml(shortEmail(project.owner))}</div>
@@ -223,7 +438,7 @@
 
   async function refreshProjects(silent = false) {
     const button = document.getElementById('refresh-projects'); setBusy(button, true);
-    try { state.projects = await server('refreshProjects'); state.lastProjectRefresh = Date.now(); renderProjects(); if (!silent) showToast('Projects refreshed.'); }
+    try { state.projects = await server('refreshProjects'); state.lastProjectRefresh = Date.now(); renderProjects(); updateHomeCounts_(); if (!silent) showToast('Projects refreshed.'); }
     catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
@@ -248,7 +463,7 @@
     setBusy(button, true);
     try {
       const clone = await server('cloneProject', projectId);
-      state.projects.unshift(clone); renderProjects(); showToast('Project cloned.');
+      state.projects.unshift(clone); renderProjects(); updateHomeCounts_(); showToast('Project cloned.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
@@ -265,21 +480,28 @@
     setBusy(button, true);
     try {
       await server('deleteProject', projectId);
-      state.projects = state.projects.filter(item => item.projectId !== projectId); renderProjects(); showToast('Project moved to Drive trash.');
+      state.projects = state.projects.filter(item => item.projectId !== projectId); renderProjects(); updateHomeCounts_(); showToast('Project moved to Drive trash.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
 
-  function openNewProjectModal() { openModal('project-modal'); document.getElementById('new-project-title').focus(); }
+  function openNewProjectModal() {
+    const agents = publishedAgents_();
+    if (!agents.length) return showToast('Publish at least one agent before creating a project.', true);
+    populateAgentSelect_(document.getElementById('new-project-agent'), agents[0].agentId, agents[0].publishedVersion);
+    openModal('project-modal'); document.getElementById('new-project-title').focus();
+  }
 
   async function submitProject(event) {
     event.preventDefault(); setBusy(event.target, true);
     try {
+      const agentChoice = document.getElementById('new-project-agent').value.split('@@');
       const project = await server('createProject', {
         title: document.getElementById('new-project-title').value,
-        description: document.getElementById('new-project-description').value
+        description: document.getElementById('new-project-description').value,
+        agentId: agentChoice[0], agentVersion: agentChoice[1]
       });
-      state.projects.unshift(project); closeModals(); event.target.reset(); renderProjects(); await openProject(project.projectId); showToast('Project created.');
+      state.projects.unshift(project); closeModals(); event.target.reset(); renderProjects(); updateHomeCounts_(); await openProject(project.projectId); showToast('Project created.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
@@ -295,10 +517,12 @@
     state.currentProjectId = projectId; state.currentConversationId = null; state.currentConversation = null;
     state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map();
     state.selectedSources = new Set(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
+    state.projectAgent = null; state.availableAgents = publishedAgents_();
     state.panelLoaded = {chats:false, documents:false, templates:false, flows:false, members:false};
     state.panelLoading = {chats:false, documents:false, templates:false, flows:false, members:false};
     state.projectDetails = {
       project: cachedProject,
+      agent: null,
       permissions: optimisticPermissions_(cachedProject),
       conversations: [], sources: [], documents: [], templates: [], flows: [], members: []
     };
@@ -310,6 +534,8 @@
       if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
       state.projectDetails.project = shell.project;
       state.projectDetails.permissions = shell.permissions;
+      state.projectAgent = shell.agent || null;
+      state.availableAgents = shell.availableAgents || publishedAgents_();
       syncProjectSummary(state.projectDetails); renderProjectDetails();
       const initialTab = shell.permissions.history ? 'chats' : 'documents';
       showSideTab(initialTab, false);
@@ -394,7 +620,7 @@
       if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
       state.documentNodes = data.documentGraph || [];
       state.projectDetails.sources = state.documentNodes.filter(node => node.kind === 'source');
-      state.projectDetails.documents = state.documentNodes.filter(node => node.kind !== 'source');
+      state.projectDetails.documents = state.documentNodes.filter(node => node.kind !== 'source' && node.kind !== 'agent-source');
       state.panelLoaded.documents = true;
       applyCurrentConversationSelections_();
       syncProjectSummary(state.projectDetails); renderDocumentGraph();
@@ -461,7 +687,7 @@
     Object.assign(local, details.project);
     if (details.permissions.sources && state.panelLoaded.documents) local.sourceCount = state.documentNodes.filter(item => item.kind === 'source').length;
     if (details.permissions.history && state.panelLoaded.chats) local.conversationCount = (details.conversations || []).filter(item => item.status !== 'archived').length;
-    if (details.permissions.documents && state.panelLoaded.documents) local.documentCount = state.documentNodes.filter(item => item.kind !== 'source').length;
+    if (details.permissions.documents && state.panelLoaded.documents) local.documentCount = state.documentNodes.filter(item => item.kind !== 'source' && item.kind !== 'agent-source').length;
   }
 
   function renderProjectDetails() {
@@ -471,6 +697,11 @@
     document.getElementById('project-description').textContent = project.description || 'Project workspace';
     document.getElementById('project-header-icon').textContent = project.icon || '✨';
     document.getElementById('project-header-icon').disabled = !permissions.edit || !permissions.project;
+    const agent = state.projectAgent || {name:project.agentName || 'Agent unavailable',version:project.agentVersion || '',icon:project.agentIcon || '✦'};
+    document.getElementById('project-agent-icon').textContent = agent.icon || '✦';
+    document.getElementById('project-agent-name').textContent = agent.name || 'Agent unavailable';
+    document.getElementById('project-agent-version').textContent = agent.version ? `Version ${agent.version}` : 'Version unavailable';
+    document.getElementById('project-agent-button').disabled = !permissions.edit || !permissions.project;
     const folder = document.getElementById('open-project-folder');
     folder.classList.toggle('hidden', !project.folderUrl); folder.href = project.folderUrl || '#';
     document.getElementById('share-project-button').classList.toggle('hidden', project.role !== 'owner');
@@ -492,18 +723,47 @@
     if (state.panelLoaded.flows) renderFlows();
   }
 
+  function openChangeAgentModal() {
+    if (!state.projectDetails || !state.projectDetails.permissions.edit || !state.projectDetails.permissions.project) return;
+    const currentId = state.projectDetails.project.agentId || '';
+    const select = document.getElementById('change-project-agent');
+    const agents = state.availableAgents.length ? state.availableAgents : publishedAgents_();
+    const options = publishedAgentOptions_(agents);
+    select.innerHTML = options.map(option => `<option value="${escapeHtml(option.agentId + '@@' + option.version)}" ${option.agentId === currentId && option.version === state.projectDetails.project.agentVersion ? 'selected' : ''}>${escapeHtml(option.name)} · v${escapeHtml(option.version)}${option.isCurrent ? ' · current' : ''}</option>`).join('');
+    openModal('change-agent-modal');
+  }
+
+  async function submitChangeProjectAgent(event) {
+    event.preventDefault(); const select = document.getElementById('change-project-agent');
+    const choice = select.value.split('@@');
+    if (!choice[0] || choice[0] === state.projectDetails.project.agentId && choice[1] === state.projectDetails.project.agentVersion) { closeModals(); return; }
+    setBusy(event.target, true);
+    try {
+      const result = await server('changeProjectAgent', state.currentProjectId, choice[0], choice[1]);
+      state.projectDetails.project = result.project; state.projectAgent = result.agent;
+      const local = state.projects.find(item => item.projectId === state.currentProjectId); if (local) Object.assign(local, result.project);
+      state.currentConversation = result.conversation; state.currentConversationId = result.conversation.conversationId;
+      state.projectDetails.conversations.unshift({conversationId:result.conversation.conversationId,title:result.conversation.title,createdAt:result.conversation.createdAt,updatedAt:result.conversation.updatedAt,messageCount:0,status:'active',agentId:result.conversation.agentId,agentVersion:result.conversation.agentVersion});
+      state.documentNodes = []; state.selectedSources = new Set(); state.selectedFlows = new Set(); state.panelLoaded.documents = false; state.panelLoaded.templates = false; state.panelLoaded.flows = false;
+      closeModals(); renderProjectDetails(); renderConversationList(); renderChatEmpty(false);
+      await loadProjectDocuments_(state.currentProjectId, state.projectLoadToken);
+      showToast(`${result.agent.name} v${result.agent.version} loaded. A new chat was created.`);
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(event.target, false); }
+  }
+
   function showDashboard() {
     if (state.activeRequest) stopResponse();
     state.projectLoadToken++;
     state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
-    document.getElementById('project-view').classList.add('hidden');
+    hideWorkspaceViews_();
     const dashboard = document.getElementById('dashboard-view'); dashboard.classList.remove('hidden'); dashboard.classList.add('view-entering');
     setWorkspaceMode('dashboard'); renderProjects(); refreshProjects(true); setTimeout(() => dashboard.classList.remove('view-entering'), 360);
   }
 
   function setWorkspaceMode(mode) {
     const shell = document.getElementById('app-shell');
-    shell.classList.toggle('dashboard-mode', mode === 'dashboard'); shell.classList.toggle('project-mode', mode === 'project');
+    shell.classList.toggle('dashboard-mode', mode !== 'project'); shell.classList.toggle('project-mode', mode === 'project');
   }
 
   function showSideTab(name, load = true) {
@@ -521,7 +781,7 @@
     const conversations = state.projectDetails ? state.projectDetails.conversations || [] : [];
     list.innerHTML = conversations.map(item => `<article class="conversation-item ${item.conversationId === state.currentConversationId ? 'active' : ''}" data-conversation-row="${escapeHtml(item.conversationId)}">
       <button class="conversation-open" data-conversation-id="${escapeHtml(item.conversationId)}">
-        <strong>${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${numberValue(item.messageCount)} messages</small>
+        <strong>${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${numberValue(item.messageCount)} messages${item.agentVersion ? ` · agent v${escapeHtml(item.agentVersion)}` : ''}</small>
       </button>
       <div class="conversation-actions">
         ${state.projectDetails.permissions.edit ? `<button class="conversation-export" data-export-conversation="${escapeHtml(item.conversationId)}" aria-label="Export ${escapeHtml(item.title)} as PDF" title="Export this chat as PDF">⇩</button>` : ''}
@@ -623,7 +883,7 @@
     const flows = (message.flowsUsed || []).map(flow => `[${escapeHtml(flow.label)}] ${escapeHtml(flow.name)}`).join(' · ');
     if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div></article>`;
     return `<article class="message assistant" data-message-id="${escapeHtml(message.messageId)}">
-      <div class="message-header"><span class="message-avatar">✦</span><span>Gemini</span></div>
+      <div class="message-header"><span class="message-avatar">${escapeHtml((state.projectAgent || {}).icon || '✦')}</span><span>${escapeHtml(message.agentName || (state.projectAgent || {}).name || 'Agent')}${message.agentVersion ? ` · v${escapeHtml(message.agentVersion)}` : ''}</span></div>
       <div id="message-body-${escapeHtml(message.messageId)}" class="message-body ${message.isTyping ? 'typing-cursor' : ''}">${formatMarkdown(message.text)}</div>
       ${sources ? `<div class="message-sources">${sources}</div>` : ''}
       ${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
@@ -666,7 +926,7 @@
       state.flowSelections.set(result.conversationId, flowSelection);
       const record = state.projectDetails.conversations.find(item => item.conversationId === result.conversationId);
       if (record) { record.title = result.title; record.updatedAt = result.assistantMessage.createdAt; record.messageCount = result.messageCount; }
-      else state.projectDetails.conversations.unshift({conversationId: result.conversationId, title: result.title, updatedAt: result.assistantMessage.createdAt, messageCount: result.messageCount});
+      else state.projectDetails.conversations.unshift({conversationId: result.conversationId, title: result.title, updatedAt: result.assistantMessage.createdAt, messageCount: result.messageCount, agentId:result.assistantMessage.agentId, agentVersion:result.assistantMessage.agentVersion});
       renderConversationList(); renderMessages(); request.phase = 'typing';
       const completed = await typeAssistantResponse(assistantMessage, result.assistantMessage.text, request);
       assistantMessage.isTyping = false;
@@ -739,14 +999,16 @@
   function renderDocumentGraph() {
     if (!state.projectDetails) return;
     const container = document.getElementById('document-levels'); const nodes = state.documentNodes || [];
+    nodes.filter(node => node.locked).forEach(node => state.selectedSources.add(node.nodeId));
     const levels = [...new Set(nodes.map(node => Number(node.level || 0)))].sort((a,b) => a-b);
     container.innerHTML = levels.map(level => {
       const items = nodes.filter(node => Number(node.level || 0) === level);
       const selected = items.filter(node => state.selectedSources.has(node.nodeId)).length;
       const allChecked = items.length > 0 && selected === items.length;
       const partial = selected > 0 && selected < items.length;
-      return `<section class="document-level" data-level="${level}">
-        <div class="level-heading"><label class="level-select"><input type="checkbox" data-level-select="${level}" ${allChecked ? 'checked' : ''} ${partial ? 'data-partial="true"' : ''}><span>${level === 0 ? 'Source documents' : `Generated · Level ${level}`}</span></label><small>${items.length}</small></div>
+      const levelLabel = level === -1 ? `Agent knowledge · ${escapeHtml((state.projectAgent || {}).name || 'Loaded agent')}` : level === 0 ? 'Project sources' : `Generated · Level ${level}`;
+      return `<section class="document-level ${level === -1 ? 'agent-knowledge-level' : ''}" data-level="${level}">
+        <div class="level-heading"><label class="level-select"><input type="checkbox" data-level-select="${level}" ${allChecked ? 'checked' : ''} ${partial ? 'data-partial="true"' : ''}><span>${levelLabel}</span></label><small>${items.length}</small></div>
         <div class="level-track">${items.map(renderDocumentCard).join('')}</div>
       </section>`;
     }).join('');
@@ -779,13 +1041,14 @@
 
   function renderDocumentCard(node) {
     const relation = documentRelationCounts(node.nodeId);
-    const canDelete = state.projectDetails.permissions.edit && (node.kind === 'source' ? state.projectDetails.permissions.sources : state.projectDetails.permissions.documents);
+    const agentKnowledge = node.kind === 'agent-source';
+    const canDelete = !agentKnowledge && state.projectDetails.permissions.edit && (node.kind === 'source' ? state.projectDetails.permissions.sources : state.projectDetails.permissions.documents);
     const indexLabel = ({ready:'Indexed',indexing:'Indexing',uploading:'Uploading',queued:'Queued',failed:'Index failed',unknown:'Status unknown',not_indexed:'Not indexed'})[node.indexStatus] || '';
     const statusDetail = node.indexStatus === 'failed' ? node.indexError : node.indexStatus === 'unknown' ? node.indexCheckError : '';
     const progressLabel = node.indexStatus === 'uploading' && Number(node.indexProgress || 0) ? ` · ${Number(node.indexProgress)}%` : '';
-    return `<article class="document-card" data-node-id="${escapeHtml(node.nodeId)}" tabindex="0">
+    return `<article class="document-card ${agentKnowledge ? 'agent-knowledge' : ''}" data-node-id="${escapeHtml(node.nodeId)}" tabindex="0">
       <div class="document-card-top">
-        <label class="document-checkbox" title="Use in chat"><input type="checkbox" data-document-select="${escapeHtml(node.nodeId)}" ${state.selectedSources.has(node.nodeId) ? 'checked' : ''}><span></span></label>
+        <label class="document-checkbox" title="${node.locked ? 'Mandatory agent knowledge' : 'Use in chat'}"><input type="checkbox" data-document-select="${escapeHtml(node.nodeId)}" ${state.selectedSources.has(node.nodeId) ? 'checked' : ''} ${node.locked ? 'disabled' : ''}><span></span></label>
         <span class="file-type-icon ${fileTypeClass(node.mimeType)}">${fileTypeIcon(node.mimeType)}</span>
         <div class="document-menu-wrap">
           <button class="document-menu-button" data-document-menu="${escapeHtml(node.nodeId)}" aria-label="Document actions" title="Document actions">⋮</button>
@@ -796,25 +1059,27 @@
             ${canDelete ? `<button data-edit-document-note="${escapeHtml(node.nodeId)}" role="menuitem">Edit note <span>✎</span></button>` : ''}
             ${canDelete ? `<button data-delete-document="${escapeHtml(node.nodeId)}" class="danger-menu-item" role="menuitem">Move to trash <span>🗑</span></button>` : ''}
             <div class="menu-separator"></div><p>Generate from document</p>
-            <button disabled>Summary <span>Soon</span></button><button data-generate-report="${escapeHtml(node.nodeId)}" ${state.projectDetails.permissions.edit && state.projectDetails.permissions.documents ? '' : 'disabled'}>Report <span>↗</span></button>
+            <button disabled>Summary <span>Soon</span></button><button data-generate-report="${escapeHtml(node.nodeId)}" ${!agentKnowledge && state.projectDetails.permissions.edit && state.projectDetails.permissions.documents ? '' : 'disabled'}>Report <span>↗</span></button>
           </div>
         </div>
       </div>
       <strong title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</strong>
       <div class="document-meta"><span>${escapeHtml(friendlyMime(node.mimeType))}</span><span>${formatFileSize(node.size)}</span><span>${formatDate(node.createdAt)}</span></div>
-      ${node.kind === 'source' ? `<button type="button" class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" data-check-index="${escapeHtml(node.sourceId)}" title="Check index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</button>` : ''}
+      ${node.kind === 'source' ? `<button type="button" class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" data-check-index="${escapeHtml(node.sourceId)}" title="Check index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</button>` : agentKnowledge ? `<span class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" title="Agent knowledge index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</span>` : ''}
+      ${agentKnowledge ? `<span class="knowledge-badge">${node.mandatory ? 'Mandatory agent knowledge' : 'Optional agent knowledge'} · v${escapeHtml(node.agentVersion || '')}</span>` : ''}
       ${statusDetail ? `<p class="index-status-detail ${escapeHtml(node.indexStatus)}">${escapeHtml(statusDetail)}</p>` : ''}
       ${node.note ? `<p class="document-note">${escapeHtml(node.note)}</p>` : ''}
-      <div class="document-relations"><span>${relation.parents ? `↑ ${relation.parents} parent${relation.parents === 1 ? '' : 's'}` : 'Original'}</span>${relation.children ? `<span>↓ ${relation.children} child${relation.children === 1 ? '' : 'ren'}</span>` : ''}</div>
+      <div class="document-relations"><span>${agentKnowledge ? 'Inherited from agent' : relation.parents ? `↑ ${relation.parents} parent${relation.parents === 1 ? '' : 's'}` : 'Original'}</span>${relation.children ? `<span>↓ ${relation.children} child${relation.children === 1 ? '' : 'ren'}</span>` : ''}</div>
     </article>`;
   }
 
   function toggleDocumentSelection(nodeId, checked) {
+    const node = state.documentNodes.find(item => item.nodeId === nodeId); if (node && node.locked) return;
     checked ? state.selectedSources.add(nodeId) : state.selectedSources.delete(nodeId); rememberCurrentSelection(); updateDocumentSelectionUi();
   }
 
   function toggleDocumentLevel(level, checked) {
-    state.documentNodes.filter(node => Number(node.level || 0) === level).forEach(node => checked ? state.selectedSources.add(node.nodeId) : state.selectedSources.delete(node.nodeId));
+    state.documentNodes.filter(node => Number(node.level || 0) === level).forEach(node => node.locked ? state.selectedSources.add(node.nodeId) : checked ? state.selectedSources.add(node.nodeId) : state.selectedSources.delete(node.nodeId));
     rememberCurrentSelection(); updateDocumentSelectionUi();
   }
 
@@ -823,6 +1088,7 @@
   }
 
   function updateDocumentSelectionUi() {
+    state.documentNodes.filter(node => node.locked).forEach(node => state.selectedSources.add(node.nodeId));
     document.querySelectorAll('[data-document-select]').forEach(input => { input.checked = state.selectedSources.has(input.dataset.documentSelect); });
     document.querySelectorAll('[data-level-select]').forEach(input => {
       const items = state.documentNodes.filter(node => Number(node.level || 0) === Number(input.dataset.levelSelect));
@@ -937,16 +1203,19 @@
     try {
       let result = null;
       for (let pass = 0; pass < 16; pass++) {
-        result = await server('syncProjectSourcesIndex', state.currentProjectId);
-        const uploading = (result.sources || []).filter(item => item.indexStatus === 'uploading');
+        result = await server('syncProjectKnowledgeIndexes', state.currentProjectId);
+        const sources = ((result.project || {}).sources || []).concat((result.agent || {}).sources || []);
+        const uploading = sources.filter(item => item.indexStatus === 'uploading');
         if (!uploading.length) break;
         const average = Math.round(uploading.reduce((sum, item) => sum + Number(item.indexProgress || 0), 0) / uploading.length);
         showToast(`Transferring ${uploading.length} source index${uploading.length === 1 ? '' : 'es'}: ${average}%`);
       }
       await refreshDocumentGraph();
-      const failed = (result.sources || []).filter(item => item.indexStatus === 'failed').length;
-      const unknown = (result.sources || []).filter(item => item.indexStatus === 'unknown').length;
-      showToast(failed ? `Index sync completed with ${failed} failed source(s). Open the red status for the exact cause.` : unknown ? `${unknown} source status could not be verified; this does not prove indexing failed.` : result.remaining ? `${result.processed} source(s) processed; ${result.remaining} remain. Run Sync index again.` : result.summary && result.summary.indexing ? `${result.summary.indexing} source(s) are still processing. Check their status shortly.` : 'All active sources are indexed.');
+      const sources = ((result.project || {}).sources || []).concat((result.agent || {}).sources || []);
+      const failed = sources.filter(item => item.indexStatus === 'failed').length;
+      const unknown = sources.filter(item => item.indexStatus === 'unknown').length;
+      const processed = Number((result.project || {}).processed || 0) + Number((result.agent || {}).processed || 0);
+      showToast(failed ? `Index sync completed with ${failed} failed source(s). Project sources show diagnostics; agent knowledge can be repaired from Agents.` : unknown ? `${unknown} source status could not be verified; this does not prove indexing failed.` : result.remaining ? `${processed} source(s) processed; ${result.remaining} remain. Run Sync index again.` : 'Agent knowledge and project sources are indexed.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
@@ -1040,8 +1309,8 @@
     const templates = state.projectDetails.templates || [];
     const container = document.getElementById('template-list');
     container.innerHTML = templates.map(template => `<article class="asset-card ${template.templateId === state.selectedTemplateId ? 'selected' : ''}">
-      <label class="asset-select"><input type="radio" name="report-template" value="${escapeHtml(template.templateId)}" ${template.templateId === state.selectedTemplateId ? 'checked' : ''}><span class="file-type-icon ${fileTypeClass(template.mimeType)}">${fileTypeIcon(template.mimeType)}</span><span><strong>${escapeHtml(template.name)}</strong><small>${escapeHtml(friendlyMime(template.mimeType))} · report output</small></span></label>
-      <div class="asset-actions">${template.url ? `<a href="${escapeHtml(template.url)}" target="_blank" title="Open template">↗</a>` : ''}${state.projectDetails.permissions.edit ? `<button data-delete-template="${escapeHtml(template.templateId)}" title="Move template to trash">×</button>` : ''}</div>
+      <label class="asset-select"><input type="radio" name="report-template" value="${escapeHtml(template.templateId)}" ${template.templateId === state.selectedTemplateId ? 'checked' : ''}><span class="file-type-icon ${fileTypeClass(template.mimeType)}">${fileTypeIcon(template.mimeType)}</span><span><strong>${escapeHtml(template.name)}</strong><small>${escapeHtml(friendlyMime(template.mimeType))} · ${template.origin === 'agent' ? 'inherited from agent' : 'project output'}</small></span></label>
+      <div class="asset-actions">${template.url ? `<a href="${escapeHtml(template.url)}" target="_blank" title="Open template">↗</a>` : ''}${state.projectDetails.permissions.edit && !template.readOnly ? `<button data-delete-template="${escapeHtml(template.templateId)}" title="Move template to trash">×</button>` : ''}</div>
     </article>`).join('');
     document.getElementById('template-count-label').textContent = `${templates.length} ${templates.length === 1 ? 'format' : 'formats'}`;
     document.getElementById('empty-templates').classList.toggle('hidden', templates.length > 0);
@@ -1084,8 +1353,8 @@
     const flows = state.projectDetails.flows || [];
     const container = document.getElementById('flow-list');
     container.innerHTML = flows.map(flow => `<article class="asset-card ${state.selectedFlows.has(flow.flowId) ? 'selected' : ''}">
-      <label class="asset-select"><input type="checkbox" data-flow-select="${escapeHtml(flow.flowId)}" ${state.selectedFlows.has(flow.flowId) ? 'checked' : ''}><span class="file-type-icon type-flow">MD</span><span><strong>${escapeHtml(flow.name)}</strong><small>Procedure · ${formatFileSize(flow.size)}</small></span></label>
-      <div class="asset-actions">${flow.url ? `<a href="${escapeHtml(flow.url)}" target="_blank" title="Open flow">↗</a>` : ''}${state.projectDetails.permissions.edit ? `<button data-delete-flow="${escapeHtml(flow.flowId)}" title="Move flow to trash">×</button>` : ''}</div>
+      <label class="asset-select"><input type="checkbox" data-flow-select="${escapeHtml(flow.flowId)}" ${state.selectedFlows.has(flow.flowId) ? 'checked' : ''}><span class="file-type-icon type-flow">MD</span><span><strong>${escapeHtml(flow.name)}</strong><small>${flow.origin === 'agent' ? 'Agent procedure' : 'Project procedure'} · ${formatFileSize(flow.size)}</small></span></label>
+      <div class="asset-actions">${flow.url ? `<a href="${escapeHtml(flow.url)}" target="_blank" title="Open flow">↗</a>` : ''}${state.projectDetails.permissions.edit && !flow.readOnly ? `<button data-delete-flow="${escapeHtml(flow.flowId)}" title="Move flow to trash">×</button>` : ''}</div>
     </article>`).join('');
     document.getElementById('flow-count-label').textContent = `${flows.length} ${flows.length === 1 ? 'procedure' : 'procedures'}`;
     document.getElementById('empty-flows').classList.toggle('hidden', flows.length > 0);
@@ -1161,10 +1430,10 @@
     rememberCurrentSelection();
     state.projectDetails.documentGraph = state.documentNodes;
     state.projectDetails.sources = state.documentNodes.filter(node => node.kind === 'source');
-    state.projectDetails.documents = state.documentNodes.filter(node => node.kind !== 'source');
+    state.projectDetails.documents = state.documentNodes.filter(node => node.kind !== 'source' && node.kind !== 'agent-source');
     state.panelLoaded.documents = true;
     updateProjectCount('sourceCount', state.documentNodes.filter(node => node.kind === 'source').length);
-    updateProjectCount('documentCount', state.documentNodes.filter(node => node.kind !== 'source').length);
+    updateProjectCount('documentCount', state.documentNodes.filter(node => node.kind !== 'source' && node.kind !== 'agent-source').length);
     renderDocumentGraph();
   }
 
@@ -1222,7 +1491,7 @@
     const adminSection = document.getElementById('project-location-settings');
     adminSection.classList.toggle('hidden', !config.isAdmin);
     document.getElementById('settings-root-folder').value = config.rootFolderUrl || config.rootFolderId || '';
-    document.getElementById('settings-root-name').value = config.rootFolderName || 'Agent Projects';
+    document.getElementById('settings-root-name').value = config.rootFolderName || 'Agent Console';
     document.getElementById('settings-app-version').textContent = `Version ${config.version || 'unknown'}`;
     const rootLink = document.getElementById('settings-open-root');
     rootLink.href = config.rootFolderUrl || '#';
@@ -1248,12 +1517,13 @@
       });
       state.bootstrap = data;
       state.projects = data.projects || [];
+      state.agents = data.agents || [];
       state.currentProjectId = null;
       state.projectDetails = null;
       closeModals();
       applyIdentity();
-      showDashboard();
-      showToast('Project location saved.');
+      showHome();
+      showToast('Console location saved.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
