@@ -1,10 +1,15 @@
 <section id="project-view" class="view project-view hidden" aria-label="Project workspace">
   <header class="project-header">
+    <span class="project-header-orb project-header-orb-one" aria-hidden="true"></span>
+    <span class="project-header-orb project-header-orb-two" aria-hidden="true"></span>
     <div class="project-identity">
-      <button id="back-dashboard" class="icon-btn" aria-label="Back to projects" title="Back to projects">←</button>
-      <button id="toggle-project-panel" class="icon-btn project-panel-toggle" aria-label="Open project panel" title="Open project panel">☰</button>
+      <div class="project-nav-actions">
+        <button id="back-dashboard" class="icon-btn project-nav-button" aria-label="Back to projects" title="Back to projects">←</button>
+        <button id="toggle-project-panel" class="icon-btn project-panel-toggle project-nav-button" aria-label="Open project panel" title="Open project panel">☰</button>
+      </div>
       <button id="project-header-icon" class="project-emoji project-emoji-button" aria-label="Change project emoji" title="Change project emoji">✨</button>
       <div class="project-title-wrap">
+        <div class="project-title-kicker"><span>Project workspace</span><span id="project-status-chip" class="project-status-chip">Ongoing</span></div>
         <h1 id="project-title">Project</h1>
         <p id="project-description"></p>
       </div>
@@ -19,11 +24,15 @@
 
   <div id="project-workspace" class="project-workspace">
     <aside id="project-side-panel" class="project-side-panel" aria-label="Project navigation">
+      <div class="side-panel-heading">
+        <div><span class="side-panel-eyebrow">Project tools</span><strong>Workspace</strong></div>
+        <span class="side-panel-live"><i></i> Ready</span>
+      </div>
       <div class="side-tabs" role="tablist" aria-label="Project sections">
-        <button class="side-tab active" data-side-tab="chats" role="tab" aria-selected="true">Chats</button>
-        <button class="side-tab" data-side-tab="documents" role="tab" aria-selected="false">Documents</button>
-        <button class="side-tab" data-side-tab="templates" role="tab" aria-selected="false">Templates</button>
-        <button class="side-tab" data-side-tab="flows" role="tab" aria-selected="false">Flows</button>
+        <button class="side-tab active" data-side-tab="chats" role="tab" aria-selected="true"><span aria-hidden="true">◫</span><b>Chats</b></button>
+        <button class="side-tab" data-side-tab="documents" role="tab" aria-selected="false"><span aria-hidden="true">▤</span><b>Documents</b></button>
+        <button class="side-tab" data-side-tab="templates" role="tab" aria-selected="false"><span aria-hidden="true">▧</span><b>Templates</b></button>
+        <button class="side-tab" data-side-tab="flows" role="tab" aria-selected="false"><span aria-hidden="true">⇄</span><b>Flows</b></button>
       </div>
 
       <section id="side-panel-chats" class="side-panel-content active" role="tabpanel">
@@ -94,16 +103,32 @@
     <button id="project-panel-grip" class="panel-grip" type="button" role="separator" aria-orientation="vertical" aria-label="Resize project panel" aria-valuemin="260" aria-valuemax="720" tabindex="0"><span></span></button>
 
     <section class="chat-panel" aria-label="Agent conversation">
+      <header class="chat-context-bar">
+        <div class="chat-context-identity">
+          <span id="chat-agent-mark" class="chat-agent-mark" aria-hidden="true">✦</span>
+          <div class="chat-context-copy">
+            <span>Active conversation</span>
+            <strong id="chat-conversation-title">New chat</strong>
+          </div>
+        </div>
+        <div class="chat-context-meta">
+          <span class="chat-context-agent"><i class="gemini-mini-spark">✦</i><b id="chat-context-agent-name">Agent</b><small id="chat-context-agent-version">—</small></span>
+          <span class="chat-context-sources"><i aria-hidden="true">▤</i><b id="chat-context-source-count">0</b> selected</span>
+        </div>
+      </header>
       <div id="chat-scroll-region" class="chat-scroll-region">
         <div id="chat-panel-loader" class="chat-panel-loader" role="status" aria-label="Loading conversation"><span class="spinner"></span></div>
         <div id="chat-empty" class="chat-empty hidden">
-          <div class="gemini-orb" aria-hidden="true">✦</div>
-          <h2>How can I help with this project?</h2>
-          <p>Ask a question, explore your documents, or develop a new idea.</p>
-          <div class="prompt-suggestions">
-            <button data-prompt="Summarize the selected documents and highlight the most important decisions.">Summarize the selected documents</button>
-            <button data-prompt="Identify open questions, risks, and recommended next steps for this project.">Find risks and next steps</button>
-            <button data-prompt="Create a concise project status update based on the selected documents.">Draft a status update</button>
+          <div class="chat-empty-card">
+            <span class="chat-empty-kicker">Your project agent is ready</span>
+            <div id="chat-empty-agent-mark" class="gemini-orb" aria-hidden="true">✦</div>
+            <h2>How can I help with this project?</h2>
+            <p>Ask a question, explore your documents, or develop a new idea.</p>
+            <div class="prompt-suggestions">
+              <button data-prompt="Summarize the selected documents and highlight the most important decisions."><span aria-hidden="true">≡</span><b>Summarize the selected documents</b><small>Turn the active sources into key points.</small></button>
+              <button data-prompt="Identify open questions, risks, and recommended next steps for this project."><span aria-hidden="true">◇</span><b>Find risks and next steps</b><small>Surface gaps, decisions, and actions.</small></button>
+              <button data-prompt="Create a concise project status update based on the selected documents."><span aria-hidden="true">↗</span><b>Draft a status update</b><small>Create a concise progress summary.</small></button>
+            </div>
           </div>
         </div>
         <div id="chat-messages" class="chat-messages"></div>
@@ -111,6 +136,7 @@
       <div class="composer-wrap">
         <div id="active-source-chips" class="source-chips"></div>
         <div class="composer">
+          <span class="composer-spark" aria-hidden="true">✦</span>
           <textarea id="chat-input" rows="1" placeholder="Ask Gemini about this project" aria-label="Message Gemini"></textarea>
           <button id="send-message" class="send-btn" aria-label="Send message" title="Send">➤</button>
           <button id="stop-response" class="stop-btn hidden" aria-label="Stop response" title="Stop response"><span></span></button>

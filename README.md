@@ -1,10 +1,23 @@
 # Agent Console para Google Apps Script
 
-Versión 1.8.1.
+Versión 1.9.0.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
 
-## Qué cambia en 1.8.1
+## Qué cambia en 1.9.0
+
+- Vista interior del proyecto reconstruida con el mismo sistema visual de Agents y Projects.
+- Encabezado tipo hero con identidad cromática, icono, estado, descripción y agente cargado.
+- Panel de herramientas y chat convertidos en superficies elevadas independientes, con mejor uso del espacio.
+- Pestañas segmentadas con iconos y estados activos derivados del color del proyecto.
+- Lista de conversaciones mediante tarjetas compactas, con franja de selección, elevación y acciones contextuales.
+- Barra contextual del chat con conversación, agente, versión y cantidad de recursos seleccionados.
+- Estado vacío renovado con identidad del agente y sugerencias de consulta más informativas.
+- Mensajes, citas, compositor y controles de envío alineados con la identidad visual del proyecto.
+- Título del chat y contador de contexto sincronizados en tiempo real con el estado funcional.
+- Diseño adaptable del nuevo workspace para paneles estrechos y pantallas móviles.
+
+## Base conservada de 1.8.1
 
 - Encabezados de Agents y Projects basados en la misma familia visual, con identidad de ruta, gradiente propio, búsqueda y acciones consistentes.
 - Filtros de Projects trasladados a una banda independiente para mejorar jerarquía, espacio y adaptación móvil.
@@ -13,7 +26,7 @@ Consola web para construir agentes autocontenidos y versionados, y cargarlos den
 - Tarjetas de recursos más coloridas mediante fondo, borde, franja lateral, halo, icono sólido y etiqueta de formato derivados del tipo de archivo.
 - Identidad cromática preservada en conocimiento del agente, fuentes originales y documentos generados, sin perder sus etiquetas de origen e indexación.
 
-## Base conservada de 1.8.0
+### Base conservada de 1.8.0
 
 - Sistema de tarjetas unificado para agentes y proyectos: misma jerarquía, proporciones, acento, métricas, estados y pie contextual.
 - Catálogo de Projects rediseñado con el mismo nivel visual que Agents.
@@ -167,6 +180,8 @@ Los límites se concentran en `ConfigService.gs`.
 - La eliminación normal usa la papelera de Drive.
 
 ## Versión
+
+`1.9.0` — renueva por completo la vista interior de proyectos: encabezado, navegación, panel lateral, chat, mensajes, estado vacío y compositor.
 
 `1.8.1` — renueva el encabezado de Projects, corrige el desbordamiento de tarjetas y refuerza el color semántico de todos los recursos.
 

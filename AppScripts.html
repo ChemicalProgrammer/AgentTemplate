@@ -740,6 +740,11 @@
     applyProjectColor(project.color);
     document.getElementById('project-title').textContent = project.title;
     document.getElementById('project-description').textContent = project.description || 'Project workspace';
+    const statusChip = document.getElementById('project-status-chip');
+    const projectStatus = project.status || 'active';
+    statusChip.textContent = statusLabel(projectStatus);
+    statusChip.classList.remove('active','planning','archived');
+    statusChip.classList.add(projectStatus);
     document.getElementById('project-header-icon').textContent = project.icon || '✨';
     document.getElementById('project-header-icon').disabled = !permissions.edit || !permissions.project;
     const agent = state.projectAgent || {name:project.agentName || 'Agent unavailable',version:project.agentVersion || '',icon:project.agentIcon || '✦',logoUrl:project.agentLogoUrl || ''};
@@ -748,6 +753,7 @@
     document.getElementById('project-agent-version').textContent = agent.version ? `Version ${agent.version}` : 'Version unavailable';
     document.getElementById('project-agent-button').setAttribute('style', projectColorStyle(agent.color || 'violet'));
     document.getElementById('project-agent-button').disabled = !permissions.edit || !permissions.project;
+    syncProjectWorkspaceChrome_(agent);
     const folder = document.getElementById('open-project-folder');
     folder.classList.toggle('hidden', !project.folderUrl); folder.href = project.folderUrl || '#';
     document.getElementById('share-project-button').classList.toggle('hidden', project.role !== 'owner');
@@ -767,6 +773,24 @@
     if (state.panelLoaded.documents) renderDocumentGraph();
     if (state.panelLoaded.templates) renderTemplates();
     if (state.panelLoaded.flows) renderFlows();
+  }
+
+  function syncProjectWorkspaceChrome_(agentOverride) {
+    if (!state.projectDetails) return;
+    const project = state.projectDetails.project || {};
+    const agent = agentOverride || state.projectAgent || {name:project.agentName || 'Agent',version:project.agentVersion || '',icon:project.agentIcon || '✦',logoUrl:project.agentLogoUrl || '',color:'violet'};
+    const record = (state.projectDetails.conversations || []).find(item => item.conversationId === state.currentConversationId);
+    const conversationTitle = state.currentConversation && state.currentConversation.title || record && record.title || 'New chat';
+    document.getElementById('chat-conversation-title').textContent = conversationTitle;
+    document.getElementById('chat-context-agent-name').textContent = agent.name || 'Agent';
+    document.getElementById('chat-context-agent-version').textContent = agent.version ? `v${agent.version}` : '—';
+    const identityStyle = projectColorStyle(agent.color || 'violet');
+    ['chat-agent-mark','chat-empty-agent-mark'].forEach(id => {
+      const mark = document.getElementById(id);
+      if (!mark) return;
+      mark.setAttribute('style', identityStyle);
+      setIdentityMark_(mark, agent);
+    });
   }
 
   function openChangeAgentModal() {
@@ -839,6 +863,7 @@
     list.querySelectorAll('[data-conversation-id]').forEach(button => button.addEventListener('click', () => openConversation(button.dataset.conversationId, button)));
     list.querySelectorAll('[data-export-conversation]').forEach(button => button.addEventListener('click', () => exportConversationPdf(button.dataset.exportConversation, button)));
     list.querySelectorAll('[data-delete-conversation]').forEach(button => button.addEventListener('click', () => deleteChat(button.dataset.deleteConversation, button)));
+    syncProjectWorkspaceChrome_();
   }
 
   async function newConversation(silent) {
@@ -909,6 +934,7 @@
     title.textContent = noAccess ? 'Chat history is not shared with you' : 'How can I help with this project?';
     text.textContent = noAccess ? 'You can still work with the documents available in the left panel.' : 'Ask a question, explore your documents, or develop a new idea.';
     suggestions.classList.toggle('hidden', Boolean(noAccess));
+    syncProjectWorkspaceChrome_();
   }
 
   function renderMessages(options = {}) {
@@ -917,6 +943,7 @@
     const container = document.getElementById('chat-messages');
     container.innerHTML = messages.map(message => renderMessage(message)).join('') + (options.thinking ? renderThinkingMessage(options.stopping) : '');
     container.querySelectorAll('[data-copy-message]').forEach(button => button.addEventListener('click', () => copyMessage(button.dataset.copyMessage, button)));
+    syncProjectWorkspaceChrome_();
     scrollChatToBottom();
   }
 
@@ -938,7 +965,8 @@
   }
 
   function renderThinkingMessage(stopping) {
-    return `<article id="agent-thinking" class="message assistant thinking-message"><div class="message-header"><span class="message-avatar">✦</span><span>Gemini</span></div><div class="thinking-body"><span>${stopping ? 'Stopping response…' : 'Working with your project context'}</span><span class="thinking-dots"><i></i><i></i><i></i><i></i></span></div></article>`;
+    const agent = state.projectAgent || {icon:'✦',name:'Agent'};
+    return `<article id="agent-thinking" class="message assistant thinking-message"><div class="message-header">${identityMarkHtml_(agent, 'message-avatar')}<span>${escapeHtml(agent.name || 'Agent')}</span></div><div class="thinking-body"><span>${stopping ? 'Stopping response…' : 'Working with your project context'}</span><span class="thinking-dots"><i></i><i></i><i></i><i></i></span></div></article>`;
   }
 
   async function copyMessage(messageId, button) {
@@ -1151,6 +1179,8 @@
     const selected = state.documentNodes.filter(node => state.selectedSources.has(node.nodeId));
     const flows = state.projectDetails ? (state.projectDetails.flows || []).filter(flow => state.selectedFlows.has(flow.flowId)) : [];
     const items = selected.map(node => ({tab:'documents', icon:fileTypeIcon(node.mimeType,node.name), name:node.name})).concat(flows.map(flow => ({tab:'flows',icon:'⇄',name:flow.name})));
+    const contextCount = document.getElementById('chat-context-source-count');
+    if (contextCount) contextCount.textContent = numberValue(items.length);
     document.getElementById('active-source-chips').innerHTML = items.slice(0, 5).map(item => `<button class="source-chip" data-chip-tab="${item.tab}" title="Open ${item.tab} panel">${item.icon} ${escapeHtml(item.name)}</button>`).join('') + (items.length > 5 ? `<button class="source-chip">+${items.length - 5}</button>` : '');
     document.querySelectorAll('#active-source-chips [data-chip-tab]').forEach(chip => chip.addEventListener('click', () => showSideTab(chip.dataset.chipTab)));
   }
