@@ -51,6 +51,8 @@
     previewNodeId: null,
     documentPreview: null,
     documentPreviewMode: 'preview',
+    viewerCloseTimer: null,
+    pdfExportNodeId: null,
     branchSourceMessageId: null,
     lastProjectRefresh: 0,
     projectLoadToken: 0,
@@ -64,6 +66,7 @@
     renderAgentColorOptions();
     bindStaticEvents();
     restorePanelWidth();
+    restoreViewerWidth();
     startApp();
   });
 
@@ -164,7 +167,14 @@
       state.currentChatModel = event.target.value;
       if (state.currentConversation) state.currentConversation.model = state.currentChatModel;
     });
-    document.getElementById('close-document-viewer').addEventListener('click', closeDocumentViewer);
+    document.getElementById('close-document-viewer').addEventListener('click', () => closeDocumentViewer(false));
+    document.getElementById('export-document-pdf').addEventListener('click', openDocumentPdfExport);
+    document.getElementById('pdf-export-form').addEventListener('submit', submitDocumentPdfExport);
+    document.querySelectorAll('input[name="pdf-export-destination"]').forEach(input => input.addEventListener('change', syncPdfExportDestination));
+    document.getElementById('edit-current-conversation').addEventListener('click', editCurrentConversation);
+    document.getElementById('delete-current-conversation').addEventListener('click', event => {
+      if (state.currentConversationId) deleteChat(state.currentConversationId, event.currentTarget);
+    });
     document.querySelectorAll('[data-preview-mode]').forEach(button => button.addEventListener('click', () => setDocumentPreviewMode(button.dataset.previewMode)));
     document.getElementById('branch-message-form').addEventListener('submit', submitConversationBranch);
     document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => {
@@ -195,6 +205,8 @@
     document.getElementById('modal-backdrop').addEventListener('click', event => { if (event.target.id === 'modal-backdrop') closeModals(); });
     document.getElementById('project-panel-grip').addEventListener('pointerdown', startPanelResize);
     document.getElementById('project-panel-grip').addEventListener('keydown', resizePanelWithKeyboard);
+    document.getElementById('document-viewer-grip').addEventListener('pointerdown', startViewerResize);
+    document.getElementById('document-viewer-grip').addEventListener('keydown', resizeViewerWithKeyboard);
     document.addEventListener('click', event => {
       if (!event.target.closest('.document-menu-wrap')) closeDocumentMenus();
       if (!event.target.closest('.project-card-menu-wrap')) closeProjectCardMenus();
@@ -202,6 +214,10 @@
     document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeDocumentMenus(); closeProjectCardMenus(); closeModals(); } });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && state.currentProjectId == null && Date.now() - state.lastProjectRefresh > 15000) refreshProjects(true);
+    });
+    window.addEventListener('resize', () => {
+      const workspace = document.getElementById('project-workspace');
+      if (workspace.classList.contains('viewer-open') && window.innerWidth > 1050) setViewerWidth(document.getElementById('document-viewer').getBoundingClientRect().width);
     });
   }
 
@@ -574,7 +590,7 @@
     projectView.classList.remove('hidden'); projectView.classList.add('view-entering');
     setWorkspaceMode('project');
     state.currentProjectId = projectId; state.currentConversationId = null; state.currentConversation = null;
-    closeDocumentViewer();
+    closeDocumentViewer(true);
     state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map();
     state.selectedSources = new Set(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
     state.projectAgent = null; state.availableAgents = publishedAgents_();
@@ -826,6 +842,9 @@
     document.getElementById('chat-conversation-title').textContent = conversationTitle;
     document.getElementById('chat-context-agent-name').textContent = agent.name || 'Agent';
     document.getElementById('chat-context-agent-version').textContent = agent.version ? `v${agent.version}` : '—';
+    const canManageConversation = Boolean(state.projectDetails.permissions.edit && state.currentConversationId);
+    document.getElementById('edit-current-conversation').disabled = !canManageConversation;
+    document.getElementById('delete-current-conversation').disabled = !canManageConversation;
     const identityStyle = projectColorStyle(agent.color || 'violet');
     ['chat-agent-mark','chat-empty-agent-mark'].forEach(id => {
       const mark = document.getElementById(id);
@@ -896,8 +915,8 @@
         <strong>${item.parentConversationId ? '⑂ ' : ''}${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${numberValue(item.messageCount)} messages${item.model ? ` · ${escapeHtml(item.model)}` : item.agentVersion ? ` · agent v${escapeHtml(item.agentVersion)}` : ''}</small>
       </button>
       <div class="conversation-actions">
-        ${state.projectDetails.permissions.edit ? `<button class="conversation-export" data-export-conversation="${escapeHtml(item.conversationId)}" aria-label="Export ${escapeHtml(item.title)} as PDF" title="Export this chat as PDF">⇩</button>` : ''}
-        ${state.projectDetails.permissions.edit ? `<button class="conversation-delete" data-delete-conversation="${escapeHtml(item.conversationId)}" aria-label="Delete ${escapeHtml(item.title)}" title="Delete chat">🗑</button>` : ''}
+        ${state.projectDetails.permissions.edit ? `<button class="conversation-export emoji-action-btn" data-export-conversation="${escapeHtml(item.conversationId)}" aria-label="Export ${escapeHtml(item.title)} as PDF" title="Export this chat as PDF">📤</button>` : ''}
+        ${state.projectDetails.permissions.edit ? `<button class="conversation-delete emoji-action-btn danger" data-delete-conversation="${escapeHtml(item.conversationId)}" aria-label="Delete ${escapeHtml(item.title)}" title="Delete chat">🗑️</button>` : ''}
       </div>
     </article>`).join('');
     document.getElementById('chat-count-label').textContent = `${conversations.length} ${conversations.length === 1 ? 'conversation' : 'conversations'}`;
@@ -998,14 +1017,14 @@
       return source.citationUri ? `<a href="${escapeHtml(source.citationUri)}" target="_blank" rel="noopener">${label}</a>` : label;
     }).join(' · ');
     const flows = (message.flowsUsed || []).map(flow => `[${escapeHtml(flow.label)}] ${escapeHtml(flow.name)}`).join(' · ');
-    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div>${state.projectDetails.permissions.edit ? `<div class="message-actions"><button data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">⑂</button></div>` : ''}</article>`;
+    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div>${state.projectDetails.permissions.edit ? `<div class="message-actions"><button class="emoji-action-btn" data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">✏️</button></div>` : ''}</article>`;
     if (message.kind === 'artifact_event' && message.artifact) return renderArtifactEvent_(message, sources, flows);
     return `<article class="message assistant" data-message-id="${escapeHtml(message.messageId)}">
       <div class="message-header">${identityMarkHtml_(state.projectAgent || {icon:'✦'}, 'message-avatar')}<span>${escapeHtml(message.agentName || (state.projectAgent || {}).name || 'Agent')}${message.agentVersion ? ` · v${escapeHtml(message.agentVersion)}` : ''}</span></div>
       <div id="message-body-${escapeHtml(message.messageId)}" class="message-body ${message.isTyping ? 'typing-cursor' : ''}">${formatMarkdown(message.text)}</div>
       ${sources ? `<div class="message-sources">${sources}</div>` : ''}
       ${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
-      ${!message.isTyping ? `<div class="message-actions"><button data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response"><span class="message-copy-icon" aria-hidden="true">⧉</span></button></div>` : ''}
+      ${!message.isTyping ? `<div class="message-actions"><button class="emoji-action-btn" data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response"><span class="message-copy-icon" aria-hidden="true">📋</span></button></div>` : ''}
     </article>`;
   }
 
@@ -1039,7 +1058,7 @@
   async function copyMessage(messageId, button) {
     const message = state.currentConversation && state.currentConversation.messages.find(item => item.messageId === messageId);
     if (!message) return;
-    try { await navigator.clipboard.writeText(message.text); button.innerHTML = '✓'; setTimeout(() => button.innerHTML = '<span class="message-copy-icon" aria-hidden="true">⧉</span>', 1200); }
+    try { await navigator.clipboard.writeText(message.text); button.innerHTML = '✅'; setTimeout(() => button.innerHTML = '<span class="message-copy-icon" aria-hidden="true">📋</span>', 1200); }
     catch (_) { showToast('Could not copy the response.', true); }
   }
 
@@ -1049,6 +1068,13 @@
     state.branchSourceMessageId = messageId;
     document.getElementById('branch-message-text').value = message.text || '';
     openModal('branch-message-modal'); document.getElementById('branch-message-text').focus();
+  }
+
+  function editCurrentConversation() {
+    const messages = state.currentConversation && state.currentConversation.messages || [];
+    const latestUserMessage = messages.slice().reverse().find(message => message.role === 'user' && !String(message.messageId || '').startsWith('temp-'));
+    if (!latestUserMessage) return showToast('Send at least one message before creating an edited branch.', true);
+    openConversationBranch(latestUserMessage.messageId);
   }
 
   async function submitConversationBranch(event) {
@@ -1141,9 +1167,17 @@
       return;
     }
     const viewer = document.getElementById('document-viewer');
+    const grip = document.getElementById('document-viewer-grip');
     const workspace = document.getElementById('project-workspace');
+    if (state.viewerCloseTimer) { clearTimeout(state.viewerCloseTimer); state.viewerCloseTimer = null; }
     state.previewNodeId = nodeId; state.documentPreview = null; state.documentPreviewMode = 'preview';
-    viewer.classList.remove('hidden'); workspace.classList.add('viewer-open');
+    if (window.innerWidth > 1050) {
+      const preferredWidth = parseInt(getComputedStyle(workspace).getPropertyValue('--viewer-panel-width'), 10) || 480;
+      setViewerWidth(preferredWidth);
+    }
+    viewer.classList.remove('hidden'); grip.classList.remove('hidden');
+    void viewer.offsetWidth;
+    workspace.classList.add('viewer-open'); viewer.classList.add('viewer-visible'); grip.classList.add('viewer-visible');
     document.getElementById('document-viewer-title').textContent = node ? node.name : 'Document';
     document.getElementById('document-viewer-content').innerHTML = '';
     document.getElementById('document-viewer-loader').classList.remove('hidden');
@@ -1159,10 +1193,16 @@
     }
   }
 
-  function closeDocumentViewer() {
+  function closeDocumentViewer(immediate) {
     state.previewNodeId = null; state.documentPreview = null;
-    const viewer = document.getElementById('document-viewer'); if (viewer) viewer.classList.add('hidden');
-    const workspace = document.getElementById('project-workspace'); if (workspace) workspace.classList.remove('viewer-open');
+    const viewer = document.getElementById('document-viewer');
+    const grip = document.getElementById('document-viewer-grip');
+    const workspace = document.getElementById('project-workspace');
+    if (!viewer || !workspace || !grip) return;
+    if (state.viewerCloseTimer) { clearTimeout(state.viewerCloseTimer); state.viewerCloseTimer = null; }
+    viewer.classList.remove('viewer-visible'); grip.classList.remove('viewer-visible'); workspace.classList.remove('viewer-open');
+    const finish = () => { viewer.classList.add('hidden'); grip.classList.add('hidden'); state.viewerCloseTimer = null; };
+    if (immediate) finish(); else state.viewerCloseTimer = setTimeout(finish, 260);
   }
 
   function setDocumentPreviewMode(mode) {
@@ -1197,6 +1237,48 @@
       if (name.startsWith('on') || ((name === 'href' || name === 'src' || name === 'action') && value.startsWith('javascript:'))) node.removeAttribute(attribute.name);
     }));
     return '<!doctype html>' + parsed.documentElement.outerHTML;
+  }
+
+  function openDocumentPdfExport() {
+    if (!state.previewNodeId || !state.documentPreview) return showToast('Open a document before exporting it.', true);
+    state.pdfExportNodeId = state.previewNodeId;
+    const sourceName = state.documentPreview.name || 'Document';
+    document.getElementById('pdf-export-source-name').textContent = sourceName;
+    document.getElementById('pdf-export-file-name').value = sourceName.replace(/\.[^.]+$/, '') + '.pdf';
+    const projectChoice = document.querySelector('input[name="pdf-export-destination"][value="project"]');
+    projectChoice.checked = true; document.getElementById('pdf-export-folder').value = '';
+    syncPdfExportDestination(); openModal('pdf-export-modal'); document.getElementById('pdf-export-file-name').focus();
+  }
+
+  function syncPdfExportDestination() {
+    const selected = document.querySelector('input[name="pdf-export-destination"]:checked');
+    const external = selected && selected.value === 'external';
+    const field = document.getElementById('pdf-external-folder-field');
+    const input = document.getElementById('pdf-export-folder');
+    field.classList.toggle('hidden', !external); input.required = external;
+  }
+
+  async function submitDocumentPdfExport(event) {
+    event.preventDefault(); if (!state.pdfExportNodeId) return;
+    const form = event.target; const destination = document.querySelector('input[name="pdf-export-destination"]:checked').value;
+    const externalWindow = destination === 'external' ? window.open('', '_blank') : null;
+    setBusy(form, true);
+    try {
+      const pdf = await server('exportProjectDocumentToPdf', state.currentProjectId, state.pdfExportNodeId, {
+        destination: destination,
+        fileName: document.getElementById('pdf-export-file-name').value,
+        folderId: document.getElementById('pdf-export-folder').value
+      });
+      closeModals(); state.pdfExportNodeId = null;
+      if (pdf.savedInProject) {
+        await refreshDocumentGraph(); await openDocumentPreview(pdf.nodeId);
+        showToast('PDF saved as a generated project source.');
+      } else {
+        if (externalWindow) externalWindow.location = pdf.url; else window.open(pdf.url, '_blank', 'noopener');
+        showToast('PDF exported to the selected Drive folder.');
+      }
+    } catch (error) { if (externalWindow) externalWindow.close(); showToast(error.message, true); }
+    finally { setBusy(form, false); }
   }
 
   async function typeAssistantResponse(message, fullText, request) {
@@ -1309,13 +1391,13 @@
         <div class="document-menu-wrap">
           <button class="document-menu-button" data-document-menu="${escapeHtml(node.nodeId)}" aria-label="Document actions" title="Document actions">⋮</button>
           <div class="document-menu hidden" role="menu">
-            ${node.url ? `<a href="${escapeHtml(node.url)}" target="_blank" role="menuitem">Open in Drive <span>↗</span></a>` : ''}
-            ${node.kind === 'source' ? `<button data-check-index="${escapeHtml(node.sourceId)}" role="menuitem">Check index status <span>ⓘ</span></button>` : ''}
-            ${node.kind === 'source' && canDelete ? `<button data-index-source="${escapeHtml(node.sourceId)}" role="menuitem">${node.indexStatus === 'ready' ? 'Reindex source' : 'Index source'} <span>⌁</span></button>` : ''}
-            ${canDelete ? `<button data-edit-document-note="${escapeHtml(node.nodeId)}" role="menuitem">Edit note <span>✎</span></button>` : ''}
-            ${canDelete ? `<button data-delete-document="${escapeHtml(node.nodeId)}" class="danger-menu-item" role="menuitem">Move to trash <span>🗑</span></button>` : ''}
+            ${node.url ? `<a href="${escapeHtml(node.url)}" target="_blank" role="menuitem">Open in Drive <span>📂</span></a>` : ''}
+            ${node.kind === 'source' ? `<button data-check-index="${escapeHtml(node.sourceId)}" role="menuitem">Check index status <span>ℹ️</span></button>` : ''}
+            ${node.kind === 'source' && canDelete ? `<button data-index-source="${escapeHtml(node.sourceId)}" role="menuitem">${node.indexStatus === 'ready' ? 'Reindex source' : 'Index source'} <span>🔄</span></button>` : ''}
+            ${canDelete ? `<button data-edit-document-note="${escapeHtml(node.nodeId)}" role="menuitem">Edit note <span>📝</span></button>` : ''}
+            ${canDelete ? `<button data-delete-document="${escapeHtml(node.nodeId)}" class="danger-menu-item" role="menuitem">Move to trash <span>🗑️</span></button>` : ''}
             <div class="menu-separator"></div><p>Generate from document</p>
-            <button disabled>Summary <span>Soon</span></button><button data-generate-report="${escapeHtml(node.nodeId)}" ${!agentKnowledge && state.projectDetails.permissions.edit && state.projectDetails.permissions.documents ? '' : 'disabled'}>Report <span>↗</span></button>
+            <button disabled>Summary <span>Soon</span></button><button data-generate-report="${escapeHtml(node.nodeId)}" ${!agentKnowledge && state.projectDetails.permissions.edit && state.projectDetails.permissions.documents ? '' : 'disabled'}>Report <span>📊</span></button>
           </div>
         </div>
       </div>
@@ -1391,10 +1473,24 @@
   function clearDocumentHighlights() { document.querySelectorAll('.document-card').forEach(card => card.classList.remove('relation-focus','relation-highlight','relation-dim')); }
 
   function toggleDocumentMenu(event, button) {
-    event.stopPropagation(); const menu = button.nextElementSibling; const open = menu.classList.contains('hidden'); closeDocumentMenus(); if (open) menu.classList.remove('hidden');
+    event.stopPropagation();
+    const menu = button.nextElementSibling; const open = menu.classList.contains('hidden'); closeDocumentMenus();
+    if (!open) return;
+    const card = button.closest('.document-card'); const track = button.closest('.level-track'); const level = button.closest('.document-level');
+    card.classList.add('menu-open'); if (track) track.classList.add('menu-open'); if (level) level.classList.add('menu-open');
+    menu.classList.remove('hidden');
+    requestAnimationFrame(() => {
+      const panel = document.getElementById('side-panel-documents').getBoundingClientRect();
+      const cardBox = card.getBoundingClientRect(); const menuBox = menu.getBoundingClientRect();
+      const roomBelow = panel.bottom - cardBox.bottom; const roomAbove = cardBox.top - panel.top;
+      menu.classList.toggle('open-up', menuBox.height > roomBelow && roomAbove > roomBelow);
+    });
   }
 
-  function closeDocumentMenus() { document.querySelectorAll('.document-menu').forEach(menu => menu.classList.add('hidden')); }
+  function closeDocumentMenus() {
+    document.querySelectorAll('.document-menu').forEach(menu => { menu.classList.add('hidden'); menu.classList.remove('open-up'); });
+    document.querySelectorAll('.document-card.menu-open,.level-track.menu-open,.document-level.menu-open').forEach(element => element.classList.remove('menu-open'));
+  }
 
   function openDocumentNoteModal(nodeId) {
     const node = state.documentNodes.find(item => item.nodeId === nodeId); if (!node) return;
@@ -1900,6 +1996,34 @@
 
   function restorePanelWidth() { try { const value = parseInt(localStorage.getItem('gpa.projectPanelWidth'), 10); if (Number.isFinite(value)) setPanelWidth(value); } catch (_) {} }
 
+  function startViewerResize(event) {
+    if (window.innerWidth <= 1050 || !document.getElementById('project-workspace').classList.contains('viewer-open')) return;
+    event.preventDefault(); const workspace = document.getElementById('project-workspace'); const startX = event.clientX;
+    const startWidth = document.getElementById('document-viewer').getBoundingClientRect().width;
+    document.body.classList.add('is-resizing','is-resizing-viewer'); event.currentTarget.setPointerCapture(event.pointerId);
+    const move = moveEvent => setViewerWidth(startWidth - (moveEvent.clientX - startX));
+    const stop = () => {
+      document.body.classList.remove('is-resizing','is-resizing-viewer'); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop);
+      try { localStorage.setItem('gpa.documentViewerWidth', workspace.style.getPropertyValue('--viewer-panel-width')); } catch (_) {}
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop);
+  }
+
+  function resizeViewerWithKeyboard(event) {
+    if (!['ArrowLeft','ArrowRight'].includes(event.key)) return; event.preventDefault();
+    const width = document.getElementById('document-viewer').getBoundingClientRect().width + (event.key === 'ArrowLeft' ? 20 : -20); setViewerWidth(width);
+  }
+
+  function setViewerWidth(width) {
+    const workspace = document.getElementById('project-workspace');
+    const sideWidth = document.getElementById('project-side-panel').getBoundingClientRect().width || 338;
+    const max = Math.max(320, Math.min(900, window.innerWidth - sideWidth - 430));
+    const value = Math.max(320, Math.min(max, Number(width) || 480));
+    workspace.style.setProperty('--viewer-panel-width', `${Math.round(value)}px`);
+  }
+
+  function restoreViewerWidth() { try { const value = parseInt(localStorage.getItem('gpa.documentViewerWidth'), 10); if (Number.isFinite(value)) setViewerWidth(value); } catch (_) {} }
+
   function askConfirmation({title, message, action, tone = 'danger'}) {
     if (state.confirmResolver) state.confirmResolver(false);
     document.getElementById('confirm-title').textContent = title;
@@ -1930,6 +2054,7 @@
     document.querySelectorAll('.modal').forEach(modal => { modal.classList.add('hidden'); modal.classList.remove('modal-visible'); });
     state.editingDocumentId = null;
     state.diagnosingSourceId = null;
+    state.pdfExportNodeId = null;
   }
 
   function syncDashboardFilters() { document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.classList.toggle('active', button.dataset.dashboardFilter === state.dashboardFilter)); }
@@ -2000,7 +2125,7 @@
   function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[char]); }
   function formatMarkdown(value) {
     let text = escapeHtml(value); const codeBlocks = [];
-    text = text.replace(/```([\w.+-]*)\n?([\s\S]*?)```/g, (_, language, code) => { codeBlocks.push(`<pre class="code-block"><span class="code-toolbar"><span>${escapeHtml(language || 'code')}</span><button type="button" data-copy-code>⧉ Copy</button></span><code>${code}</code></pre>`); return `@@CODE${codeBlocks.length - 1}@@`; });
+    text = text.replace(/```([\w.+-]*)\n?([\s\S]*?)```/g, (_, language, code) => { codeBlocks.push(`<pre class="code-block"><span class="code-toolbar"><span>${escapeHtml(language || 'code')}</span><button type="button" data-copy-code>📋 Copy</button></span><code>${code}</code></pre>`); return `@@CODE${codeBlocks.length - 1}@@`; });
     text = text.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/^###\s+(.+)$/gm, '<h3>$1</h3>').replace(/^##\s+(.+)$/gm, '<h2>$1</h2>').replace(/^#\s+(.+)$/gm, '<h1>$1</h1>').replace(/^[-*]\s+(.+)$/gm, '• $1').replace(/\n/g, '<br>');
     codeBlocks.forEach((block, index) => { text = text.replace(`@@CODE${index}@@`, block); }); return text;
   }

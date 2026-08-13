@@ -167,7 +167,12 @@ function createMarkdownArtifact_(project, accessEmail, conversation, artifact, m
   }).sort(function(a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
   var version = previous.length ? Number(previous[0].artifactVersion || previous.length) + 1 : 1;
   var fileName = title.replace(/\.md$/i, '') + (version > 1 ? ' - v' + version : '') + '.md';
-  var parentIds = resolveArtifactParentIds_(project, conversation, artifactType, artifact.parentArtifactType || artifact.parent_artifact_type);
+  var parentIds = resolveArtifactParentIds_(
+    project,
+    conversation,
+    artifact.parentIds || artifact.parent_ids || [],
+    artifact.parentArtifactType || artifact.parent_artifact_type || ''
+  );
   var folder = DriveApp.getFolderById(project.folders.documents);
   var file = folder.createFile(fileName, content, MimeType.PLAIN_TEXT);
   var workflowId = sanitizeText_(artifact.workflowId || artifact.workflow_id || conversation.workflowId || conversation.conversationId, 120).trim();
@@ -192,26 +197,8 @@ function createMarkdownArtifact_(project, accessEmail, conversation, artifact, m
 }
 
 function getDocumentPreview(projectId, nodeId) {
-  nodeId = String(nodeId || '').trim();
-  var access;
-  var file;
-  if (nodeId.indexOf('source:') === 0) {
-    access = assertProjectAccess_(projectId, 'sources');
-    var sourceId = nodeId.slice('source:'.length);
-    var source = readSourceIndex_(access.project).sources.filter(function(item) {
-      return item.sourceId === sourceId && item.status !== 'removed';
-    })[0];
-    if (!source || !source.driveId) throw new Error('Source document not found.');
-    file = DriveApp.getFileById(source.driveId);
-  } else if (nodeId.indexOf('document:') === 0) {
-    access = assertProjectAccess_(projectId, 'documents');
-    var fileId = nodeId.slice('document:'.length);
-    var record = readDocumentIndex_(access.project).documents.filter(function(item) { return item.driveId === fileId; })[0];
-    if (!record) throw new Error('Generated document not found.');
-    file = DriveApp.getFileById(fileId);
-  } else {
-    throw new Error('Document not found.');
-  }
+  var resolved = resolveProjectDocumentFile_(projectId, nodeId);
+  var file = resolved.file;
 
   var mimeType = file.getMimeType();
   var name = file.getName();
@@ -221,9 +208,30 @@ function getDocumentPreview(projectId, nodeId) {
     if (Number(file.getSize() || 0) > 2 * 1024 * 1024) throw new Error('The text preview is limited to 2 MB. Open this file in Drive instead.');
     var text = file.getBlob().getDataAsString('UTF-8');
     var mode = /\.(md|markdown)$/i.test(lowerName) ? 'markdown' : /\.html?$/i.test(lowerName) || mimeType === 'text/html' ? 'html' : 'text';
-    return {nodeId: nodeId, name: name, mimeType: mimeType, mode: mode, text: text, url: file.getUrl()};
+    return {nodeId: resolved.nodeId, name: name, mimeType: mimeType, mode: mode, text: text, url: file.getUrl()};
   }
-  return {nodeId: nodeId, name: name, mimeType: mimeType, mode: 'drive', previewUrl: buildDrivePreviewUrl_(file), url: file.getUrl()};
+  return {nodeId: resolved.nodeId, name: name, mimeType: mimeType, mode: 'drive', previewUrl: buildDrivePreviewUrl_(file), url: file.getUrl()};
+}
+
+function resolveProjectDocumentFile_(projectId, nodeId) {
+  nodeId = String(nodeId || '').trim();
+  if (nodeId.indexOf('source:') === 0) {
+    var sourceAccess = assertProjectAccess_(projectId, 'sources');
+    var sourceId = nodeId.slice('source:'.length);
+    var source = readSourceIndex_(sourceAccess.project).sources.filter(function(item) {
+      return item.sourceId === sourceId && item.status !== 'removed';
+    })[0];
+    if (!source || !source.driveId) throw new Error('Source document not found.');
+    return {access: sourceAccess, project: sourceAccess.project, nodeId: nodeId, kind: 'source', record: source, file: DriveApp.getFileById(source.driveId)};
+  }
+  if (nodeId.indexOf('document:') === 0) {
+    var documentAccess = assertProjectAccess_(projectId, 'documents');
+    var fileId = nodeId.slice('document:'.length);
+    var record = readDocumentIndex_(documentAccess.project).documents.filter(function(item) { return item.driveId === fileId; })[0];
+    if (!record) throw new Error('Generated document not found.');
+    return {access: documentAccess, project: documentAccess.project, nodeId: nodeId, kind: record.kind || 'generated', record: record, file: DriveApp.getFileById(fileId)};
+  }
+  throw new Error('Document not found.');
 }
 
 function removeGeneratedDocument(projectId, nodeId) {
@@ -370,6 +378,8 @@ function assignDocumentLevels_(nodes) {
     trail = trail || {};
     if (trail[node.nodeId]) return 1;
     trail[node.nodeId] = true;
+    // Project Sources are roots (internal level 0). Every generated format uses
+    // the same rule: max(parent level) + 1, or Level 1 when it has no parents.
     var parents = (node.parentIds || []).map(function(id) { return byId[id]; }).filter(Boolean);
     var parentLevel = parents.length ? Math.max.apply(null, parents.map(function(parent) { return resolve(parent, Object.assign({}, trail)); })) : 0;
     node._resolvedLevel = parentLevel + 1;
@@ -427,17 +437,32 @@ function artifactTitleForType_(artifactType) {
   }).join(' ');
 }
 
-function resolveArtifactParentIds_(project, conversation, artifactType, requestedParentType) {
-  if (artifactType === 'project_approval_canvas') {
-    var sourceParents = normalizeDocumentParentIds_(conversation.sourceSelection || inferConversationParentIds_(conversation));
-    return sourceParents;
+function resolveArtifactParentIds_(project, conversation, explicitParentIds, requestedParentType) {
+  var explicit = validProjectParentIds_(project, explicitParentIds);
+  if (explicit.length) return explicit;
+
+  var parentType = requestedParentType ? normalizeArtifactType_(requestedParentType) : '';
+  if (parentType) {
+    var parent = readDocumentIndex_(project).documents.filter(function(record) {
+      return record.sourceConversation === conversation.conversationId && record.artifactType === parentType;
+    }).sort(function(a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); })[0];
+    if (parent) return ['document:' + parent.driveId];
   }
-  var parentType = normalizeArtifactType_(requestedParentType || 'project_approval_canvas');
-  var parent = readDocumentIndex_(project).documents.filter(function(record) {
-    return record.sourceConversation === conversation.conversationId && record.artifactType === parentType;
-  }).sort(function(a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); })[0];
-  if (parent) return ['document:' + parent.driveId];
-  return normalizeDocumentParentIds_(conversation.sourceSelection || inferConversationParentIds_(conversation));
+  return validProjectParentIds_(project, conversation.sourceSelection || inferConversationParentIds_(conversation));
+}
+
+function validProjectParentIds_(project, ids) {
+  var requested = normalizeDocumentParentIds_(ids);
+  if (!requested.length) return [];
+  var allowed = {};
+  try {
+    readSourceIndex_(project).sources.filter(function(source) { return source.status !== 'removed'; }).forEach(function(source) {
+      allowed['source:' + source.sourceId] = true;
+    });
+  } catch (_) {}
+  readDocumentIndex_(project).documents.forEach(function(record) { allowed['document:' + record.driveId] = true; });
+  requested.forEach(function(id) { if (id.indexOf('agent-source:') === 0) allowed[id] = true; });
+  return requested.filter(function(id) { return Boolean(allowed[id]); });
 }
 
 function buildDrivePreviewUrl_(file) {

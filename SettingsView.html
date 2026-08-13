@@ -104,6 +104,21 @@
     </form>
   </section>
 
+  <section id="pdf-export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pdf-export-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">DOCUMENT EXPORT</p><h2 id="pdf-export-title">Export document to PDF</h2>
+    <p id="pdf-export-source-name" class="muted document-note-name"></p>
+    <form id="pdf-export-form">
+      <label>PDF file name<input id="pdf-export-file-name" required maxlength="160"></label>
+      <fieldset class="destination-options"><legend>Save destination</legend>
+        <label class="destination-choice"><input type="radio" name="pdf-export-destination" value="project" checked><span><b>📚 Save as a generated project source</b><small>The PDF becomes a child of the current document and appears at the next generated level.</small></span></label>
+        <label class="destination-choice"><input type="radio" name="pdf-export-destination" value="external"><span><b>📤 Export outside this project</b><small>Save it in another Drive folder without adding it to this project's document graph.</small></span></label>
+      </fieldset>
+      <label id="pdf-external-folder-field" class="hidden">Destination Drive folder URL or ID<input id="pdf-export-folder" placeholder="Paste the destination folder URL or ID"><small>You must have permission to create files in this folder.</small></label>
+      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Export PDF</button></div>
+    </form>
+  </section>
+
   <section id="index-diagnostic-modal" class="modal index-diagnostic-modal hidden" role="dialog" aria-modal="true" aria-labelledby="index-diagnostic-title">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
     <p class="eyebrow">FILE SEARCH DIAGNOSTIC</p><h2 id="index-diagnostic-title">Index status</h2>
@@ -125,7 +140,7 @@
   <section id="source-link-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="source-link-title">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
     <p class="eyebrow">IMPORT DOCUMENT</p><h2 id="source-link-title">Drive file or folder</h2>
-    <p class="muted">A controlled copy will be stored with this project and added to Level 0.</p>
+    <p class="muted">A controlled copy will be stored in Project Sources, the root of the document graph.</p>
     <form id="source-link-form"><label>Drive ID or URL<input id="source-drive-url" required></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Import</button></div></form>
   </section>
 

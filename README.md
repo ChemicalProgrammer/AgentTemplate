@@ -1,10 +1,19 @@
 # Agent Console para Google Apps Script
 
-Versión de revisión 2.0.0-review.1.
+Versión de revisión 2.0.0-review.2.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
 
-## Qué cambia en 2.0.0-review.1
+## Qué cambia en 2.0.0-review.2
+
+- Jerarquía unificada para todos los formatos: Project Sources es la raíz; un archivo generado queda en `max(level de parents) + 1` y, sin parents, comienza en Nivel 1.
+- Visor con animación de entrada/salida y grip persistente para distribuir el ancho entre chat y preview.
+- Exportación del documento visible a PDF con dos destinos: como documento generado del proyecto o en otra carpeta de Drive sin incorporarlo al grafo.
+- Controles visibles en el encabezado para modificar la última petición mediante una rama o eliminar el chat actual.
+- Acciones de copia, edición, exportación y eliminación con emojis coloridos.
+- Menús documentales elevados sobre las tarjetas y apertura automática hacia arriba cuando falta espacio inferior.
+
+## Base funcional conservada de 2.0.0-review.1
 
 - Los entregables del agente pueden regresar mediante un contrato JSON de artefacto y guardarse como archivos Markdown sin insertar su contenido en el chat.
 - `Accept Canvas` guarda una instantánea de `Project Approval Canvas.md` como Nivel 1 y ofrece dos rutas: `Executive Decision Brief` o `Stakeholder Pitch Kit`.
@@ -191,6 +200,8 @@ Los límites se concentran en `ConfigService.gs`.
 - La eliminación normal usa la papelera de Drive.
 
 ## Versión
+
+`2.0.0-review.2` — generaliza niveles por parents, agrega grip y animación al visor, exportación PDF con destino, controles de chat visibles y corrige menús documentales.
 
 `2.0.0-review.1` — agrega artefactos Markdown silenciosos, niveles documentales, visor lateral, rutas de aprobación, ramas y modelo por chat.
 

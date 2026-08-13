@@ -327,7 +327,7 @@ function buildGeminiConversation_(project, conversation, newMessage, sourceConte
     agent.instructions ? 'AGENT INSTRUCTIONS:\n' + agent.instructions : '',
     agent.policies ? 'AGENT POLICIES:\n' + agent.policies : '',
     agent.outputFormats ? 'AGENT OUTPUT REQUIREMENTS:\n' + agent.outputFormats : '',
-    'AGENT CONSOLE ARTIFACT PROTOCOL:\nWhen the user explicitly accepts, saves, finalizes, or asks you to create a structured project artifact, return only one valid JSON object and no Markdown fences or commentary. Use this schema: {"response_type":"artifact","event_label":"Artifact ready","artifact":{"title":"Name","artifact_type":"project_approval_canvas|executive_decision_brief|stakeholder_pitch_kit|markdown_artifact","format":"markdown","status":"draft|accepted|complete","parent_artifact_type":"project_approval_canvas or empty","content":"complete Markdown"},"next_actions":[{"id":"short_id","label":"Button label","message":"Message to send"}]}. Accept Canvas creates only the Project Approval Canvas; then offer Executive Decision Brief and Stakeholder Pitch Kit as the two next actions. A selected path creates a Level 2 artifact whose parent_artifact_type is project_approval_canvas. Do not place artifact content in a normal chat reply.',
+    'AGENT CONSOLE ARTIFACT PROTOCOL:\nWhen the user explicitly accepts, saves, finalizes, or asks you to create a structured project artifact, return only one valid JSON object and no Markdown fences or commentary. Use this schema: {"response_type":"artifact","event_label":"Artifact ready","artifact":{"title":"Name","artifact_type":"project_approval_canvas|executive_decision_brief|stakeholder_pitch_kit|markdown_artifact","format":"markdown","status":"draft|accepted|complete","parent_artifact_type":"known parent artifact type or empty","parent_ids":["optional source:... or document:... ids"],"content":"complete Markdown"},"next_actions":[{"id":"short_id","label":"Button label","message":"Message to send"}]}. Accept Canvas creates only the Project Approval Canvas; then offer Executive Decision Brief and Stakeholder Pitch Kit as the two next actions. Identify the logical parent when known. The console computes every generated document level as maximum parent level plus one; without parents it starts at Level 1. Do not place artifact content in a normal chat reply.',
     'Answer accurately, distinguish facts from inferences, and never invent missing content.',
     'Reply in the language used by the user.',
     'When using a provided source, cite its label in brackets, for example [S1].',
@@ -395,7 +395,7 @@ function inferArtifactResponseFromRequest_(request, responseText) {
   if (/(stakeholder pitch kit|pitch kit|kit para stakeholders|kit de presentaci[oó]n)/i.test(request)) type = 'stakeholder_pitch_kit';
   if (!type || !String(responseText || '').trim()) return null;
   return {
-    eventLabel: 'Level 2 artifact saved',
+    eventLabel: 'Derived artifact saved',
     artifact: {
       title: artifactTitleForType_(type), artifactType: type, parentArtifactType: 'project_approval_canvas',
       status: 'complete', content: responseText
@@ -414,8 +414,8 @@ function normalizeArtifactActions_(actions, artifactType) {
   }).filter(function(action) { return action.label && action.message; });
   if (!normalized.length && artifactType === 'project_approval_canvas') {
     normalized = [
-      {id: 'executive_decision_brief', label: 'Executive Decision Brief', message: 'Create the Level 2 Executive Decision Brief from the accepted Project Approval Canvas.'},
-      {id: 'stakeholder_pitch_kit', label: 'Stakeholder Pitch Kit', message: 'Create the Level 2 Stakeholder Pitch Kit from the accepted Project Approval Canvas.'}
+      {id: 'executive_decision_brief', label: 'Executive Decision Brief', message: 'Create the Executive Decision Brief from the accepted Project Approval Canvas.'},
+      {id: 'stakeholder_pitch_kit', label: 'Stakeholder Pitch Kit', message: 'Create the Stakeholder Pitch Kit from the accepted Project Approval Canvas.'}
     ];
   }
   return normalized.slice(0, 4);

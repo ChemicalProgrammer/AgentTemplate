@@ -115,6 +115,7 @@
           <label class="chat-model-picker" title="Gemini model for this conversation"><span>Model</span><select id="chat-model-select" aria-label="Gemini model for this conversation"></select></label>
           <span class="chat-context-agent"><i class="gemini-mini-spark">✦</i><b id="chat-context-agent-name">Agent</b><small id="chat-context-agent-version">—</small></span>
           <span class="chat-context-sources"><i aria-hidden="true">▤</i><b id="chat-context-source-count">0</b> selected</span>
+          <span class="chat-context-actions"><button id="edit-current-conversation" class="emoji-action-btn" title="Modify the latest request in a new branch" aria-label="Modify conversation">✏️</button><button id="delete-current-conversation" class="emoji-action-btn danger" title="Delete this conversation" aria-label="Delete conversation">🗑️</button></span>
         </div>
       </header>
       <div id="chat-scroll-region" class="chat-scroll-region">
@@ -146,10 +147,12 @@
       </div>
     </section>
 
+    <button id="document-viewer-grip" class="panel-grip viewer-grip hidden" type="button" role="separator" aria-orientation="vertical" aria-label="Resize document preview" aria-valuemin="320" aria-valuemax="900" tabindex="0"><span></span></button>
+
     <aside id="document-viewer" class="document-viewer hidden" aria-label="Document preview">
       <header class="document-viewer-header">
         <div><span>Document preview</span><strong id="document-viewer-title">Document</strong></div>
-        <div class="document-viewer-actions"><a id="document-viewer-drive-link" class="icon-btn" target="_blank" rel="noopener" title="Open in Drive" aria-label="Open in Drive">↗</a><button id="close-document-viewer" class="icon-btn" title="Close preview" aria-label="Close preview">×</button></div>
+        <div class="document-viewer-actions"><button id="export-document-pdf" class="emoji-action-btn" title="Export to PDF" aria-label="Export document to PDF">📄</button><a id="document-viewer-drive-link" class="emoji-action-btn" target="_blank" rel="noopener" title="Open in Drive" aria-label="Open in Drive">📂</a><button id="close-document-viewer" class="emoji-action-btn" title="Close preview" aria-label="Close preview">❌</button></div>
       </header>
       <div id="document-viewer-tabs" class="document-viewer-tabs" role="tablist"><button class="active" data-preview-mode="preview" role="tab">Preview</button><button data-preview-mode="raw" role="tab">Raw</button></div>
       <div id="document-viewer-loader" class="document-viewer-loader hidden"><span class="spinner"></span></div>

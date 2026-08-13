@@ -1,4 +1,4 @@
-# Propuesta de revisión — Agent Console 2.0.0-review.1
+# Propuesta de revisión — Agent Console 2.0.0-review.2
 
 ## Resultado propuesto
 
@@ -16,7 +16,14 @@ La consola pasa de tratar cada salida como texto de chat a distinguir dos result
 | El usuario elige `Executive Decision Brief` | Evento compacto; visor abierto | `Executive Decision Brief.md`, Nivel 2 |
 | El usuario elige `Stakeholder Pitch Kit` | Evento compacto; visor abierto | `Stakeholder Pitch Kit.md`, Nivel 2 |
 
-Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el usuario lo decide. Cada archivo de Nivel 2 conserva como padre el Canvas aceptado.
+Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el usuario lo decide. Su nivel no se asigna por nombre: como tienen al Canvas de Nivel 1 como parent, el cálculo general las coloca en Nivel 2.
+
+## Regla general de niveles
+
+- **Project Sources** es la raíz del grafo. Internamente equivale a nivel 0, pero la interfaz no lo presenta como “Nivel 0”.
+- Todo archivo generado, sin importar si es Markdown, PDF, Google Doc, Sheet, Slide u otro formato, usa `max(level de parents) + 1`.
+- Si no tiene parents, el primer nivel generado es **Nivel 1**.
+- Un PDF guardado desde el visor dentro del proyecto tiene como parent el documento mostrado; si se exporta fuera del proyecto, no entra al grafo.
 
 ## Cambios incluidos en el prototipo
 
@@ -24,11 +31,15 @@ Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el
 - Intercepción determinista de `Accept Canvas`; no gasta otra llamada al modelo.
 - Archivos Markdown nativos en `Generated Documents` con versión, tipo, estado, modelo, conversación y padres.
 - Visor derecho para Markdown, HTML aislado, texto y previews de Drive; se colapsa al cerrarlo.
+- Animación sutil del visor y grip para cambiar el ancho relativo de chat y preview.
+- Exportación PDF dentro del proyecto o hacia otra carpeta de Drive seleccionada por el usuario.
 - Separación entre **usar como fuente** (checkbox) y **ver documento** (clic en tarjeta).
 - Acciones de ruta en el evento del artefacto.
 - Selector de modelo por chat, incluido File Search.
 - Eliminación de conversación conservada y ramificación nueva desde mensajes del usuario.
+- Botones visibles ✏️ y 🗑️ para modificar mediante una rama o eliminar la conversación actual.
 - Icono de copia más legible y copia por bloque de código.
+- Menús contextuales elevados y orientados automáticamente para no quedar debajo de otras tarjetas.
 - Vista de código cercada; no ejecuta código.
 
 ## Decisiones para tu revisión
@@ -51,10 +62,12 @@ Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el
 - El Canvas se crea como `.md`, aparece en Nivel 1 y se abre en Preview.
 - Una ruta crea el archivo correcto de Nivel 2 y su `parentId` apunta al Canvas.
 - Cerrar el visor recupera el ancho completo del chat.
+- El grip cambia el reparto de espacio y conserva el ancho elegido.
 - La casilla de fuente no cambia al abrir o cerrar el visor.
 - El modelo elegido permanece asociado a la conversación.
 - Editar un mensaje crea un chat nuevo sin alterar el original.
 - Scripts incluidos en un HTML no se ejecutan en el visor.
+- El PDF interno aparece en el nivel siguiente al documento visible; el PDF externo no aparece en el proyecto.
 
 ## Recomendación de despliegue
 

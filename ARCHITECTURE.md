@@ -1,6 +1,6 @@
 # Arquitectura técnica
 
-Versión de referencia: 2.0.0-review.1.
+Versión de referencia: 2.0.0-review.2.
 
 ## Modelo de la consola
 
@@ -85,20 +85,22 @@ Los proyectos heredados de la v1.6.0 se mueven una sola vez desde la raíz a `Pr
 El chat distingue entre una respuesta conversacional y un evento de artefacto. Para un artefacto, el modelo devuelve un objeto JSON controlado; el servidor valida el contenido, crea un archivo `.md` en `Generated Documents`, registra metadatos y guarda en el chat únicamente el evento y sus acciones.
 
 ```text
-Level 0 source(s)
-└── Project Approval Canvas.md              Level 1
-    ├── Executive Decision Brief.md         Level 2, Path A
-    └── Stakeholder Pitch Kit.md            Level 2, Path B
+Project Sources                             Root (internal level 0)
+└── Any generated format                    Level 1
+    ├── Derived Markdown                    Level 2
+    ├── Derived Google Doc                  Level 2
+    └── PDF exported inside the project     Level 2
 ```
 
-Cada registro puede conservar `artifactType`, `artifactStatus`, `artifactVersion`, `workflowId`, `model`, `sourceConversation` y `parentIds`. El nivel no se fija manualmente: se calcula desde los padres. `Accept Canvas` se resuelve de forma determinista a partir del Canvas más reciente y no requiere otra llamada al modelo.
+Cada registro puede conservar `artifactType`, `artifactStatus`, `artifactVersion`, `workflowId`, `model`, `sourceConversation` y `parentIds`. El formato y el tipo de artefacto no determinan el nivel. El cálculo general es `max(level de parents) + 1`; un generado sin parents comienza en Nivel 1. `Accept Canvas` se resuelve de forma determinista a partir del Canvas más reciente y no requiere otra llamada al modelo.
 
 ## Visor y conversación
 
 - La casilla de una tarjeta decide si el documento entra al contexto de Gemini.
-- Hacer clic en la tarjeta abre un visor independiente y colapsable.
+- Hacer clic en la tarjeta abre un visor independiente, animado y colapsable; un grip conserva el ancho preferido localmente.
 - Markdown y texto se leen directamente; HTML se elimina de scripts, objetos, embeds, iframes y manejadores de eventos y se muestra en un iframe aislado.
 - Google Workspace, PDF e imágenes usan la vista previa de Drive.
+- El visor exporta a PDF dentro del proyecto —como hijo del documento visible— o en una carpeta externa elegida por URL/ID, sin registrarlo en el proyecto.
 - El modelo seleccionado pertenece al chat y se envía explícitamente a Gemini o File Search.
 - Una rama copia solo los mensajes anteriores al mensaje modificado y registra `parentConversationId` y `branchFromMessageId`.
 

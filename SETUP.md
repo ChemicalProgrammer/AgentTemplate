@@ -23,7 +23,7 @@ clasp open
 
 1. Selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 2.0.0-review.1`.
+3. Descripción: `Version 2.0.0-review.2`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Acceso: usuarios del dominio de la organización.
 6. Autoriza Drive, Docs, Sheets, Slides y conexiones externas.
@@ -48,9 +48,9 @@ La migración es idempotente y conserva IDs de proyecto, chats, fuentes y docume
 
 Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del agente y del proyecto se crean por llave. Un colaborador nuevo debe ejecutar **Sync index** para construir sus propios índices.
 
-## Prueba recomendada de 2.0.0-review.1
+## Prueba recomendada de 2.0.0-review.2
 
-1. Confirma `Version 2.0.0-review.1` en Settings.
+1. Confirma `Version 2.0.0-review.2` en Settings.
 2. Usa una implementación de prueba o una copia del proyecto; no sustituyas todavía la implementación productiva 1.9.0.
 3. Abre un chat que contenga un `Project Approval Canvas` y envía exactamente `Accept Canvas`.
 4. Confirma que el cuerpo del Canvas no aparezca de nuevo en el chat y que `Project Approval Canvas.md` aparezca en Documents como Nivel 1.
@@ -61,6 +61,12 @@ Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del ag
 9. En un mensaje del usuario pulsa `⑂`, modifica el texto y confirma que se cree y continúe una conversación ramificada.
 10. Genera una respuesta con un bloque de código y prueba el botón `Copy` del bloque y el botón de copia de la respuesta.
 11. Importa o genera un archivo HTML, selecciónalo en Documents y confirma que el visor lo renderice sin ejecutar scripts.
+12. Abre y cierra el visor; confirma la animación sutil y que el chat recupere el espacio gradualmente.
+13. Arrastra el grip entre chat y visor, recarga la aplicación y confirma que el ancho se conserve.
+14. Exporta el documento visible a PDF dentro del proyecto: debe aparecer como hijo del documento original y en el siguiente nivel.
+15. Exporta nuevamente a una carpeta externa: el PDF debe abrirse desde esa ubicación y no aparecer en Documents.
+16. Usa ✏️ y 🗑️ en el encabezado del chat para ramificar la última petición y eliminar la conversación actual.
+17. Abre el menú de tarjetas superiores, inferiores y contiguas; debe mostrarse por encima de todas y cambiar de dirección cuando falte espacio.
 
 ## Prueba de regresión conservada de 1.9.0
 12. Verifica que la portada muestre **Agents** y **Projects**.
