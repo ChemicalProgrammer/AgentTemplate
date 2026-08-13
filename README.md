@@ -1,10 +1,21 @@
 # Agent Console para Google Apps Script
 
-Versión 1.9.0.
+Versión de revisión 2.0.0-review.1.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
 
-## Qué cambia en 1.9.0
+## Qué cambia en 2.0.0-review.1
+
+- Los entregables del agente pueden regresar mediante un contrato JSON de artefacto y guardarse como archivos Markdown sin insertar su contenido en el chat.
+- `Accept Canvas` guarda una instantánea de `Project Approval Canvas.md` como Nivel 1 y ofrece dos rutas: `Executive Decision Brief` o `Stakeholder Pitch Kit`.
+- Los artefactos de Nivel 2 se vinculan al Canvas aceptado mediante `parentIds`; el grafo calcula el nivel en forma recursiva.
+- Visor lateral colapsable para Markdown, HTML seguro, texto y vistas de Drive. La selección para contexto permanece independiente de la apertura del visor.
+- Selector de modelo Gemini por conversación; cada envío conserva el modelo elegido en el historial.
+- Ramificación desde mensajes del usuario: se copia el historial anterior, se modifica la petición y se continúa en un chat nuevo.
+- Copia de respuestas con icono más claro y copia independiente de bloques de código.
+- La generación de imágenes y la ejecución de código permanecen fuera de este incremento; se documentan como extensiones posteriores.
+
+## Base visual conservada de 1.9.0
 
 - Vista interior del proyecto reconstruida con el mismo sistema visual de Agents y Projects.
 - Encabezado tipo hero con identidad cromática, icono, estado, descripción y agente cargado.
@@ -180,6 +191,8 @@ Los límites se concentran en `ConfigService.gs`.
 - La eliminación normal usa la papelera de Drive.
 
 ## Versión
+
+`2.0.0-review.1` — agrega artefactos Markdown silenciosos, niveles documentales, visor lateral, rutas de aprobación, ramas y modelo por chat.
 
 `1.9.0` — renueva por completo la vista interior de proyectos: encabezado, navegación, panel lateral, chat, mensajes, estado vacío y compositor.
 

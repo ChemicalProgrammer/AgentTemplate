@@ -35,6 +35,8 @@
     currentProjectId: null,
     currentConversationId: null,
     currentConversation: null,
+    availableModels: [],
+    currentChatModel: '',
     conversationSelections: new Map(),
     flowSelections: new Map(),
     selectedSources: new Set(),
@@ -46,6 +48,10 @@
     highlightedDocumentId: null,
     editingDocumentId: null,
     diagnosingSourceId: null,
+    previewNodeId: null,
+    documentPreview: null,
+    documentPreviewMode: 'preview',
+    branchSourceMessageId: null,
     lastProjectRefresh: 0,
     projectLoadToken: 0,
     panelLoaded: {chats:false, documents:false, templates:false, flows:false, members:false},
@@ -74,6 +80,7 @@
     try {
       const data = await server('getBootstrap');
       state.bootstrap = data;
+      state.currentChatModel = (data.userSettings || {}).model || '';
       document.getElementById('boot-loader').classList.add('hidden');
       if (!data.initialized) {
         document.getElementById('setup-screen').classList.remove('hidden');
@@ -153,6 +160,13 @@
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }
     });
     document.getElementById('chat-input').addEventListener('input', autoSizeComposer);
+    document.getElementById('chat-model-select').addEventListener('change', event => {
+      state.currentChatModel = event.target.value;
+      if (state.currentConversation) state.currentConversation.model = state.currentChatModel;
+    });
+    document.getElementById('close-document-viewer').addEventListener('click', closeDocumentViewer);
+    document.querySelectorAll('[data-preview-mode]').forEach(button => button.addEventListener('click', () => setDocumentPreviewMode(button.dataset.previewMode)));
+    document.getElementById('branch-message-form').addEventListener('submit', submitConversationBranch);
     document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => {
       const input = document.getElementById('chat-input'); input.value = button.dataset.prompt; autoSizeComposer(); input.focus();
     }));
@@ -560,6 +574,7 @@
     projectView.classList.remove('hidden'); projectView.classList.add('view-entering');
     setWorkspaceMode('project');
     state.currentProjectId = projectId; state.currentConversationId = null; state.currentConversation = null;
+    closeDocumentViewer();
     state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map();
     state.selectedSources = new Set(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
     state.projectAgent = null; state.availableAgents = publishedAgents_();
@@ -585,6 +600,7 @@
       const initialTab = shell.permissions.history ? 'chats' : 'documents';
       showSideTab(initialTab, false);
       const tasks = [];
+      tasks.push(loadChatModels_());
       if (shell.permissions.history) tasks.push(loadProjectChats_(projectId, loadToken));
       else { setPanelLoading_('chats', false); setChatPanelLoading_(false); renderChatEmpty(true); }
       if (shell.permissions.sources || shell.permissions.documents) tasks.push(loadProjectDocuments_(projectId, loadToken));
@@ -647,6 +663,8 @@
       state.projectDetails.conversations = data.conversations || [];
       state.currentConversation = data.firstConversation || null;
       state.currentConversationId = state.currentConversation ? state.currentConversation.conversationId : null;
+      state.currentChatModel = state.currentConversation && state.currentConversation.model || state.currentChatModel || (state.bootstrap.userSettings || {}).model || '';
+      syncChatModelPicker_();
       state.panelLoaded.chats = true;
       applyCurrentConversationSelections_();
       renderConversationList();
@@ -678,6 +696,29 @@
     } finally {
       if (loadToken === state.projectLoadToken) { setPanelLoading_('documents', false); updateComposerAvailability_(); }
     }
+  }
+
+  async function loadChatModels_() {
+    const fallback = state.currentChatModel || (state.bootstrap.userSettings || {}).model || '';
+    if (fallback && !state.availableModels.length) state.availableModels = [{name:fallback, displayName:fallback}];
+    syncChatModelPicker_();
+    try {
+      const models = await server('getAvailableGeminiModels');
+      state.availableModels = models || [];
+      if (!state.currentChatModel && state.availableModels.length) state.currentChatModel = state.availableModels[0].name;
+      syncChatModelPicker_();
+    } catch (_) {
+      syncChatModelPicker_();
+    }
+  }
+
+  function syncChatModelPicker_() {
+    const select = document.getElementById('chat-model-select'); if (!select) return;
+    const models = (state.availableModels || []).slice();
+    if (state.currentChatModel && !models.some(model => model.name === state.currentChatModel)) models.unshift({name:state.currentChatModel, displayName:state.currentChatModel});
+    select.innerHTML = models.map(model => `<option value="${escapeHtml(model.name)}">${escapeHtml(model.displayName || model.name)}</option>`).join('');
+    if (state.currentChatModel) select.value = state.currentChatModel;
+    select.disabled = state.busy || !models.length;
   }
 
   async function ensurePanelLoaded_(name) {
@@ -724,6 +765,7 @@
     const available = Boolean(permissions.edit && permissions.history && documentsReady && chatsReady && !state.busy);
     document.getElementById('chat-input').disabled = !available;
     document.getElementById('send-message').disabled = !available;
+    document.getElementById('chat-model-select').disabled = !available || !(state.availableModels || []).length;
   }
 
   function syncProjectSummary(details) {
@@ -851,7 +893,7 @@
     const conversations = state.projectDetails ? state.projectDetails.conversations || [] : [];
     list.innerHTML = conversations.map(item => `<article class="conversation-item ${item.conversationId === state.currentConversationId ? 'active' : ''}" data-conversation-row="${escapeHtml(item.conversationId)}">
       <button class="conversation-open" data-conversation-id="${escapeHtml(item.conversationId)}">
-        <strong>${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${numberValue(item.messageCount)} messages${item.agentVersion ? ` · agent v${escapeHtml(item.agentVersion)}` : ''}</small>
+        <strong>${item.parentConversationId ? '⑂ ' : ''}${escapeHtml(item.title)}</strong><small>${formatDate(item.updatedAt)} · ${numberValue(item.messageCount)} messages${item.model ? ` · ${escapeHtml(item.model)}` : item.agentVersion ? ` · agent v${escapeHtml(item.agentVersion)}` : ''}</small>
       </button>
       <div class="conversation-actions">
         ${state.projectDetails.permissions.edit ? `<button class="conversation-export" data-export-conversation="${escapeHtml(item.conversationId)}" aria-label="Export ${escapeHtml(item.title)} as PDF" title="Export this chat as PDF">⇩</button>` : ''}
@@ -869,9 +911,10 @@
   async function newConversation(silent) {
     const button = document.getElementById('new-conversation'); if (!silent) setBusy(button, true);
     try {
-      const conversation = await server('createConversation', state.currentProjectId, 'New chat');
+      const conversation = await server('createConversation', state.currentProjectId, 'New chat', state.currentChatModel);
       state.projectDetails.conversations.unshift({conversationId: conversation.conversationId, title: conversation.title, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, messageCount: 0});
       state.currentConversationId = conversation.conversationId; state.currentConversation = conversation; selectDefaultDocuments(); state.selectedFlows = new Set();
+      state.currentChatModel = conversation.model || state.currentChatModel; syncChatModelPicker_();
       rememberCurrentSelection();
       rememberCurrentFlowSelection(); updateProjectCount('conversationCount', state.projectDetails.conversations.length);
       renderConversationList(); renderDocumentGraph(); renderFlows(); renderMessages(); document.getElementById('chat-input').focus();
@@ -886,6 +929,7 @@
     try {
       state.currentConversationId = conversationId; renderConversationList();
       state.currentConversation = await server('loadConversation', state.currentProjectId, conversationId);
+      state.currentChatModel = state.currentConversation.model || state.currentChatModel || (state.bootstrap.userSettings || {}).model || ''; syncChatModelPicker_();
       if (state.conversationSelections.has(conversationId)) {
         state.selectedSources = new Set(state.conversationSelections.get(conversationId));
       } else if (Object.prototype.hasOwnProperty.call(state.currentConversation, 'sourceSelection')) {
@@ -942,7 +986,7 @@
     document.getElementById('chat-empty').classList.toggle('hidden', messages.length > 0 || options.thinking);
     const container = document.getElementById('chat-messages');
     container.innerHTML = messages.map(message => renderMessage(message)).join('') + (options.thinking ? renderThinkingMessage(options.stopping) : '');
-    container.querySelectorAll('[data-copy-message]').forEach(button => button.addEventListener('click', () => copyMessage(button.dataset.copyMessage, button)));
+    bindRenderedMessageActions_(container);
     syncProjectWorkspaceChrome_();
     scrollChatToBottom();
   }
@@ -954,14 +998,37 @@
       return source.citationUri ? `<a href="${escapeHtml(source.citationUri)}" target="_blank" rel="noopener">${label}</a>` : label;
     }).join(' · ');
     const flows = (message.flowsUsed || []).map(flow => `[${escapeHtml(flow.label)}] ${escapeHtml(flow.name)}`).join(' · ');
-    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div></article>`;
+    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div>${state.projectDetails.permissions.edit ? `<div class="message-actions"><button data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">⑂</button></div>` : ''}</article>`;
+    if (message.kind === 'artifact_event' && message.artifact) return renderArtifactEvent_(message, sources, flows);
     return `<article class="message assistant" data-message-id="${escapeHtml(message.messageId)}">
       <div class="message-header">${identityMarkHtml_(state.projectAgent || {icon:'✦'}, 'message-avatar')}<span>${escapeHtml(message.agentName || (state.projectAgent || {}).name || 'Agent')}${message.agentVersion ? ` · v${escapeHtml(message.agentVersion)}` : ''}</span></div>
       <div id="message-body-${escapeHtml(message.messageId)}" class="message-body ${message.isTyping ? 'typing-cursor' : ''}">${formatMarkdown(message.text)}</div>
       ${sources ? `<div class="message-sources">${sources}</div>` : ''}
       ${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
-      ${!message.isTyping ? `<div class="message-actions"><button data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response">▣</button></div>` : ''}
+      ${!message.isTyping ? `<div class="message-actions"><button data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response"><span class="message-copy-icon" aria-hidden="true">⧉</span></button></div>` : ''}
     </article>`;
+  }
+
+  function renderArtifactEvent_(message, sources, flows) {
+    const artifact = message.artifact;
+    const actions = (message.actions || []).map(action => `<button data-artifact-action="${escapeHtml(action.id)}" data-action-message="${escapeHtml(action.message)}">${escapeHtml(action.label)}</button>`).join('');
+    return `<article class="message assistant artifact-event" data-message-id="${escapeHtml(message.messageId)}">
+      <div class="message-header">${identityMarkHtml_(state.projectAgent || {icon:'✦'}, 'message-avatar')}<span>${escapeHtml(message.agentName || (state.projectAgent || {}).name || 'Agent')}</span></div>
+      <div class="artifact-event-card"><button class="artifact-event-heading artifact-open-button" data-open-artifact="${escapeHtml(artifact.nodeId)}"><span aria-hidden="true">MD</span><div><small>${escapeHtml(message.eventLabel || 'Artifact saved')}</small><strong>${escapeHtml(artifact.name)}</strong></div></button>${actions ? `<div class="artifact-event-actions">${actions}</div>` : ''}</div>
+      ${sources ? `<div class="message-sources">${sources}</div>` : ''}${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
+    </article>`;
+  }
+
+  function bindRenderedMessageActions_(container) {
+    container.querySelectorAll('[data-copy-message]').forEach(button => button.addEventListener('click', () => copyMessage(button.dataset.copyMessage, button)));
+    container.querySelectorAll('[data-branch-message]').forEach(button => button.addEventListener('click', () => openConversationBranch(button.dataset.branchMessage)));
+    container.querySelectorAll('[data-open-artifact]').forEach(button => button.addEventListener('click', () => openDocumentPreview(button.dataset.openArtifact)));
+    container.querySelectorAll('[data-artifact-action]').forEach(button => button.addEventListener('click', () => runArtifactAction(button.dataset.actionMessage)));
+    container.querySelectorAll('[data-copy-code]').forEach(button => button.addEventListener('click', async () => {
+      const code = button.closest('.code-block').querySelector('code').textContent;
+      try { await navigator.clipboard.writeText(code); const previous = button.textContent; button.textContent = '✓ Copied'; setTimeout(() => button.textContent = previous, 1200); }
+      catch (_) { showToast('Could not copy the code.', true); }
+    }));
   }
 
   function renderThinkingMessage(stopping) {
@@ -972,8 +1039,43 @@
   async function copyMessage(messageId, button) {
     const message = state.currentConversation && state.currentConversation.messages.find(item => item.messageId === messageId);
     if (!message) return;
-    try { await navigator.clipboard.writeText(message.text); button.textContent = '✓'; setTimeout(() => button.textContent = '▣', 1200); }
+    try { await navigator.clipboard.writeText(message.text); button.innerHTML = '✓'; setTimeout(() => button.innerHTML = '<span class="message-copy-icon" aria-hidden="true">⧉</span>', 1200); }
     catch (_) { showToast('Could not copy the response.', true); }
+  }
+
+  function openConversationBranch(messageId) {
+    const message = state.currentConversation && state.currentConversation.messages.find(item => item.messageId === messageId && item.role === 'user');
+    if (!message) return showToast('The message could not be found.', true);
+    state.branchSourceMessageId = messageId;
+    document.getElementById('branch-message-text').value = message.text || '';
+    openModal('branch-message-modal'); document.getElementById('branch-message-text').focus();
+  }
+
+  async function submitConversationBranch(event) {
+    event.preventDefault();
+    const form = event.target; const replacement = document.getElementById('branch-message-text').value.trim();
+    if (!state.branchSourceMessageId || !replacement) return;
+    setBusy(form, true);
+    try {
+      const branch = await server('branchConversation', state.currentProjectId, state.currentConversationId, state.branchSourceMessageId, replacement, state.currentChatModel);
+      state.projectDetails.conversations.unshift({
+        conversationId:branch.conversationId, title:branch.title, createdAt:branch.createdAt, updatedAt:branch.updatedAt,
+        messageCount:(branch.messages || []).length, model:branch.model, parentConversationId:branch.parentConversationId,
+        agentId:branch.agentId, agentVersion:branch.agentVersion
+      });
+      closeModals(); state.branchSourceMessageId = null;
+      state.currentConversation = branch; state.currentConversationId = branch.conversationId; state.currentChatModel = branch.model || state.currentChatModel;
+      state.selectedSources = new Set(normalizeSelectedDocumentIds(branch.sourceSelection || [])); state.selectedFlows = new Set(branch.flowSelection || []);
+      rememberCurrentSelection(); rememberCurrentFlowSelection(); syncChatModelPicker_(); renderConversationList(); renderDocumentGraph(); renderFlows(); renderMessages();
+      const input = document.getElementById('chat-input'); input.value = replacement; autoSizeComposer();
+      await sendMessage();
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(form, false); }
+  }
+
+  async function runArtifactAction(message) {
+    const input = document.getElementById('chat-input'); input.value = message || ''; autoSizeComposer(); input.focus();
+    if (input.value.trim()) await sendMessage();
   }
 
   async function sendMessage() {
@@ -989,19 +1091,28 @@
       state.currentConversation.messages.push(temporary); setAgentBusy(true); renderMessages({thinking: true});
       const selection = Array.from(state.selectedSources);
       const flowSelection = Array.from(state.selectedFlows);
-      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId, text, selection, flowSelection, request.id);
+      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId, text, selection, flowSelection, request.id, state.currentChatModel);
       if (request.cancelled) { await syncCurrentConversation(); showToast('Response stopped.'); return; }
       state.currentConversationId = result.conversationId;
       state.currentConversation.messages = state.currentConversation.messages.filter(item => item.messageId !== temporary.messageId);
       state.currentConversation.messages.push(result.userMessage);
-      const assistantMessage = Object.assign({}, result.assistantMessage, {text: '', isTyping: true});
+      const artifactEvent = result.assistantMessage.kind === 'artifact_event';
+      const assistantMessage = artifactEvent ? Object.assign({}, result.assistantMessage) : Object.assign({}, result.assistantMessage, {text: '', isTyping: true});
       state.currentConversation.messages.push(assistantMessage); state.currentConversation.title = result.title; state.currentConversation.sourceSelection = selection; state.currentConversation.flowSelection = flowSelection;
+      state.currentConversation.model = state.currentChatModel;
       state.conversationSelections.set(result.conversationId, selection);
       state.flowSelections.set(result.conversationId, flowSelection);
       const record = state.projectDetails.conversations.find(item => item.conversationId === result.conversationId);
-      if (record) { record.title = result.title; record.updatedAt = result.assistantMessage.createdAt; record.messageCount = result.messageCount; }
-      else state.projectDetails.conversations.unshift({conversationId: result.conversationId, title: result.title, updatedAt: result.assistantMessage.createdAt, messageCount: result.messageCount, agentId:result.assistantMessage.agentId, agentVersion:result.assistantMessage.agentVersion});
+      if (record) { record.title = result.title; record.updatedAt = result.assistantMessage.createdAt; record.messageCount = result.messageCount; record.model = state.currentChatModel; }
+      else state.projectDetails.conversations.unshift({conversationId: result.conversationId, title: result.title, updatedAt: result.assistantMessage.createdAt, messageCount: result.messageCount, model:state.currentChatModel, agentId:result.assistantMessage.agentId, agentVersion:result.assistantMessage.agentVersion});
       renderConversationList(); renderMessages(); request.phase = 'typing';
+      if (artifactEvent) {
+        request.phase = 'complete';
+        await refreshDocumentGraph();
+        await openDocumentPreview(result.assistantMessage.artifact.nodeId);
+        showToast(`${result.assistantMessage.artifact.name} saved as a project artifact.`);
+        return;
+      }
       const completed = await typeAssistantResponse(assistantMessage, result.assistantMessage.text, request);
       assistantMessage.isTyping = false;
       if (!completed) {
@@ -1022,6 +1133,72 @@
     if (request.phase === 'waiting') server('cancelChatRequest', request.id).catch(() => {});
   }
 
+  async function openDocumentPreview(nodeId) {
+    const node = state.documentNodes.find(item => item.nodeId === nodeId);
+    if (node && node.kind === 'agent-source') {
+      if (node.url) window.open(node.url, '_blank', 'noopener');
+      else showToast('Inherited agent knowledge can be opened from its source link.', true);
+      return;
+    }
+    const viewer = document.getElementById('document-viewer');
+    const workspace = document.getElementById('project-workspace');
+    state.previewNodeId = nodeId; state.documentPreview = null; state.documentPreviewMode = 'preview';
+    viewer.classList.remove('hidden'); workspace.classList.add('viewer-open');
+    document.getElementById('document-viewer-title').textContent = node ? node.name : 'Document';
+    document.getElementById('document-viewer-content').innerHTML = '';
+    document.getElementById('document-viewer-loader').classList.remove('hidden');
+    try {
+      const preview = await server('getDocumentPreview', state.currentProjectId, nodeId);
+      if (state.previewNodeId !== nodeId) return;
+      state.documentPreview = preview; document.getElementById('document-viewer-title').textContent = preview.name;
+      document.getElementById('document-viewer-drive-link').href = preview.url || '#'; renderDocumentPreview_();
+    } catch (error) {
+      if (state.previewNodeId === nodeId) document.getElementById('document-viewer-content').innerHTML = `<div class="panel-empty"><span>⚠</span><strong>Preview unavailable</strong><p>${escapeHtml(error.message)}</p></div>`;
+    } finally {
+      if (state.previewNodeId === nodeId) document.getElementById('document-viewer-loader').classList.add('hidden');
+    }
+  }
+
+  function closeDocumentViewer() {
+    state.previewNodeId = null; state.documentPreview = null;
+    const viewer = document.getElementById('document-viewer'); if (viewer) viewer.classList.add('hidden');
+    const workspace = document.getElementById('project-workspace'); if (workspace) workspace.classList.remove('viewer-open');
+  }
+
+  function setDocumentPreviewMode(mode) {
+    state.documentPreviewMode = mode === 'raw' ? 'raw' : 'preview'; renderDocumentPreview_();
+  }
+
+  function renderDocumentPreview_() {
+    const preview = state.documentPreview; if (!preview) return;
+    const content = document.getElementById('document-viewer-content');
+    const tabs = document.getElementById('document-viewer-tabs');
+    const rawButton = tabs.querySelector('[data-preview-mode="raw"]');
+    const textPreview = preview.mode === 'markdown' || preview.mode === 'html' || preview.mode === 'text';
+    rawButton.disabled = !textPreview; if (!textPreview) state.documentPreviewMode = 'preview';
+    tabs.querySelectorAll('[data-preview-mode]').forEach(button => button.classList.toggle('active', button.dataset.previewMode === state.documentPreviewMode));
+    content.className = 'document-viewer-content'; content.innerHTML = '';
+    if (state.documentPreviewMode === 'raw') {
+      content.classList.add('raw-preview'); content.textContent = preview.text || ''; return;
+    }
+    if (preview.mode === 'markdown') { content.innerHTML = formatMarkdown(preview.text || ''); bindRenderedMessageActions_(content); return; }
+    if (preview.mode === 'html') {
+      content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.setAttribute('sandbox', ''); frame.srcdoc = sanitizeHtmlPreview_(preview.text || ''); content.appendChild(frame); return;
+    }
+    if (preview.mode === 'text') { content.classList.add('raw-preview'); content.textContent = preview.text || ''; return; }
+    content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.src = preview.previewUrl; frame.title = preview.name; frame.setAttribute('allowfullscreen', ''); content.appendChild(frame);
+  }
+
+  function sanitizeHtmlPreview_(html) {
+    const parsed = new DOMParser().parseFromString(String(html || ''), 'text/html');
+    parsed.querySelectorAll('script,object,embed,iframe,link,meta,base').forEach(node => node.remove());
+    parsed.querySelectorAll('*').forEach(node => Array.from(node.attributes).forEach(attribute => {
+      const name = attribute.name.toLowerCase(); const value = attribute.value.trim().toLowerCase();
+      if (name.startsWith('on') || ((name === 'href' || name === 'src' || name === 'action') && value.startsWith('javascript:'))) node.removeAttribute(attribute.name);
+    }));
+    return '<!doctype html>' + parsed.documentElement.outerHTML;
+  }
+
   async function typeAssistantResponse(message, fullText, request) {
     const chunks = Math.min(200, Math.max(35, Math.ceil(fullText.length / 18))); const step = Math.max(1, Math.ceil(fullText.length / chunks));
     for (let end = step; end < fullText.length + step; end += step) {
@@ -1037,6 +1214,7 @@
     if (!state.currentConversationId) return;
     try {
       state.currentConversation = await server('loadConversation', state.currentProjectId, state.currentConversationId);
+      state.currentChatModel = state.currentConversation.model || state.currentChatModel; syncChatModelPicker_();
       const record = state.projectDetails.conversations.find(item => item.conversationId === state.currentConversationId);
       if (record) { record.title = state.currentConversation.title; record.updatedAt = state.currentConversation.updatedAt; record.messageCount = (state.currentConversation.messages || []).length; }
       renderConversationList(); renderMessages();
@@ -1047,6 +1225,7 @@
     document.getElementById('send-message').classList.toggle('hidden', busy);
     document.getElementById('stop-response').classList.toggle('hidden', !busy);
     document.getElementById('chat-input').disabled = busy;
+    document.getElementById('chat-model-select').disabled = busy || !(state.availableModels || []).length;
     if (!busy) updateComposerAvailability_();
   }
 
@@ -1106,8 +1285,8 @@
       card.addEventListener('focusout', () => state.highlightedDocumentId ? highlightDocumentRelations(state.highlightedDocumentId) : clearDocumentHighlights());
       card.addEventListener('click', event => {
         if (event.target.closest('button,a,input,label')) return;
-        state.highlightedDocumentId = state.highlightedDocumentId === card.dataset.nodeId ? null : card.dataset.nodeId;
-        state.highlightedDocumentId ? highlightDocumentRelations(state.highlightedDocumentId) : clearDocumentHighlights();
+        state.highlightedDocumentId = card.dataset.nodeId;
+        highlightDocumentRelations(state.highlightedDocumentId); openDocumentPreview(card.dataset.nodeId);
       });
     });
     renderSourceChips();
@@ -1121,7 +1300,7 @@
     const statusDetail = node.indexStatus === 'failed' ? node.indexError : node.indexStatus === 'unknown' ? node.indexCheckError : '';
     const progressLabel = node.indexStatus === 'uploading' && Number(node.indexProgress || 0) ? ` · ${Number(node.indexProgress)}%` : '';
     const originClass = agentKnowledge ? 'origin-agent' : node.kind === 'source' ? 'origin-source' : 'origin-generated';
-    const originLabel = agentKnowledge ? (node.mandatory ? 'Agent · mandatory' : 'Agent · optional') : node.kind === 'source' ? 'Original' : 'Generated';
+    const originLabel = agentKnowledge ? (node.mandatory ? 'Agent · mandatory' : 'Agent · optional') : node.kind === 'source' ? 'Original' : node.kind === 'artifact' ? `Artifact${node.artifactVersion ? ` · v${node.artifactVersion}` : ''}` : 'Generated';
     return `<article class="document-card file-card ${fileTypeClass(node.mimeType,node.name)} ${originClass} ${agentKnowledge ? 'agent-knowledge' : ''}" data-node-id="${escapeHtml(node.nodeId)}" tabindex="0">
       <div class="document-card-top">
         <label class="document-checkbox" title="${node.locked ? 'Mandatory agent knowledge' : 'Use in chat'}"><input type="checkbox" data-document-select="${escapeHtml(node.nodeId)}" ${state.selectedSources.has(node.nodeId) ? 'checked' : ''} ${node.locked ? 'disabled' : ''}><span></span></label>
@@ -1821,7 +2000,7 @@
   function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[char]); }
   function formatMarkdown(value) {
     let text = escapeHtml(value); const codeBlocks = [];
-    text = text.replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (_, code) => { codeBlocks.push(`<pre><code>${code}</code></pre>`); return `@@CODE${codeBlocks.length - 1}@@`; });
+    text = text.replace(/```([\w.+-]*)\n?([\s\S]*?)```/g, (_, language, code) => { codeBlocks.push(`<pre class="code-block"><span class="code-toolbar"><span>${escapeHtml(language || 'code')}</span><button type="button" data-copy-code>⧉ Copy</button></span><code>${code}</code></pre>`); return `@@CODE${codeBlocks.length - 1}@@`; });
     text = text.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/^###\s+(.+)$/gm, '<h3>$1</h3>').replace(/^##\s+(.+)$/gm, '<h2>$1</h2>').replace(/^#\s+(.+)$/gm, '<h1>$1</h1>').replace(/^[-*]\s+(.+)$/gm, '• $1').replace(/\n/g, '<br>');
     codeBlocks.forEach((block, index) => { text = text.replace(`@@CODE${index}@@`, block); }); return text;
   }

@@ -23,7 +23,7 @@ clasp open
 
 1. Selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 1.9.0`.
+3. Descripción: `Version 2.0.0-review.1`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Acceso: usuarios del dominio de la organización.
 6. Autoriza Drive, Docs, Sheets, Slides y conexiones externas.
@@ -48,10 +48,22 @@ La migración es idempotente y conserva IDs de proyecto, chats, fuentes y docume
 
 Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del agente y del proyecto se crean por llave. Un colaborador nuevo debe ejecutar **Sync index** para construir sus propios índices.
 
-## Prueba recomendada de 1.9.0
+## Prueba recomendada de 2.0.0-review.1
 
-1. Confirma `Version 1.9.0` en Settings.
-2. Verifica que la portada muestre **Agents** y **Projects**.
+1. Confirma `Version 2.0.0-review.1` en Settings.
+2. Usa una implementación de prueba o una copia del proyecto; no sustituyas todavía la implementación productiva 1.9.0.
+3. Abre un chat que contenga un `Project Approval Canvas` y envía exactamente `Accept Canvas`.
+4. Confirma que el cuerpo del Canvas no aparezca de nuevo en el chat y que `Project Approval Canvas.md` aparezca en Documents como Nivel 1.
+5. Confirma que el visor se abra a la derecha y muestre Preview y Raw; ciérralo y verifica que el chat recupere el espacio.
+6. Pulsa `Executive Decision Brief` y confirma que se cree el Markdown de Nivel 2 con el Canvas como padre.
+7. Repite con `Stakeholder Pitch Kit` en otro Canvas o conversación si deseas probar la segunda ruta.
+8. Cambia el modelo en la barra del chat, envía una consulta y vuelve a abrir el chat para confirmar que conserve el modelo.
+9. En un mensaje del usuario pulsa `⑂`, modifica el texto y confirma que se cree y continúe una conversación ramificada.
+10. Genera una respuesta con un bloque de código y prueba el botón `Copy` del bloque y el botón de copia de la respuesta.
+11. Importa o genera un archivo HTML, selecciónalo en Documents y confirma que el visor lo renderice sin ejecutar scripts.
+
+## Prueba de regresión conservada de 1.9.0
+12. Verifica que la portada muestre **Agents** y **Projects**.
 3. Abre Agents y confirma que exista `General Project Assistant` publicado.
 4. Crea un agente de prueba.
 5. Escribe sus instrucciones.

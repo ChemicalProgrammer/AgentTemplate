@@ -94,6 +94,16 @@
     </form>
   </section>
 
+  <section id="branch-message-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="branch-message-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <h2 id="branch-message-title">Create a conversation branch</h2>
+    <p class="muted">Revise this message. Earlier messages will be copied into a new chat and Gemini will continue from the revised request.</p>
+    <form id="branch-message-form">
+      <label>Revised message<textarea id="branch-message-text" rows="7" required></textarea></label>
+      <div class="modal-actions"><button type="button" class="text-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Create branch and continue</button></div>
+    </form>
+  </section>
+
   <section id="index-diagnostic-modal" class="modal index-diagnostic-modal hidden" role="dialog" aria-modal="true" aria-labelledby="index-diagnostic-title">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
     <p class="eyebrow">FILE SEARCH DIAGNOSTIC</p><h2 id="index-diagnostic-title">Index status</h2>

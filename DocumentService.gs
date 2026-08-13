@@ -57,8 +57,12 @@ function listProjectDocuments(projectId) {
         parentIds: normalizeDocumentParentIds_(document.parentIds),
         note: document.note || '',
         selectedByDefault: false,
-        sourceConversation: document.sourceConversation || '',
-        url: document.url
+          sourceConversation: document.sourceConversation || '',
+          artifactType: document.artifactType || '',
+          artifactStatus: document.artifactStatus || '',
+          artifactVersion: Number(document.artifactVersion || 0),
+          workflowId: document.workflowId || '',
+          url: document.url
       });
     });
   }
@@ -95,7 +99,11 @@ function listGeneratedDocumentsForProject_(project, includePdfs, allowRepair) {
       parentIds: normalizeDocumentParentIds_(record.parentIds),
       note: record.note || '',
       createdBy: record.createdBy || '',
-      sourceConversation: record.sourceConversation || ''
+      sourceConversation: record.sourceConversation || '',
+      artifactType: record.artifactType || '',
+      artifactStatus: record.artifactStatus || '',
+      artifactVersion: Number(record.artifactVersion || 0),
+      workflowId: record.workflowId || ''
     };
   }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 }
@@ -145,6 +153,77 @@ function createDocumentFromText(projectId, title, content, parentIds) {
   appendControlRow_(access.project, 'Documents', [file.getId(), file.getName(), file.getMimeType(), nowIso_(), access.email, file.getId(), 'manual', '']);
   incrementGeneratedDocumentCount_(projectId, access.project);
   return publicGeneratedFile_(file, 'generated', normalizedParents, 'manual');
+}
+
+function createMarkdownArtifact_(project, accessEmail, conversation, artifact, model) {
+  artifact = artifact || {};
+  var content = sanitizeText_(artifact.content, 300000).trim();
+  if (!content) throw new Error('The artifact did not contain Markdown content.');
+  var artifactType = normalizeArtifactType_(artifact.artifactType || artifact.artifact_type);
+  var title = normalizeName_(artifact.title, artifactTitleForType_(artifactType));
+  var index = readDocumentIndex_(project);
+  var previous = index.documents.filter(function(record) {
+    return record.sourceConversation === conversation.conversationId && record.artifactType === artifactType;
+  }).sort(function(a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
+  var version = previous.length ? Number(previous[0].artifactVersion || previous.length) + 1 : 1;
+  var fileName = title.replace(/\.md$/i, '') + (version > 1 ? ' - v' + version : '') + '.md';
+  var parentIds = resolveArtifactParentIds_(project, conversation, artifactType, artifact.parentArtifactType || artifact.parent_artifact_type);
+  var folder = DriveApp.getFolderById(project.folders.documents);
+  var file = folder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+  var workflowId = sanitizeText_(artifact.workflowId || artifact.workflow_id || conversation.workflowId || conversation.conversationId, 120).trim();
+  var metadata = {
+    kind: 'artifact',
+    parentIds: parentIds,
+    createdBy: accessEmail,
+    sourceConversation: conversation.conversationId,
+    note: sanitizeText_(artifact.note || '', 1200).trim(),
+    artifactType: artifactType,
+    artifactStatus: sanitizeText_(artifact.status || 'complete', 40).trim(),
+    artifactVersion: version,
+    workflowId: workflowId,
+    model: normalizeModel_(model || conversation.model || APP.DEFAULT_MODEL)
+  };
+  var record = recordGeneratedDocument_(project, file, metadata);
+  appendControlRow_(project, 'Documents', [file.getId(), file.getName(), file.getMimeType(), nowIso_(), accessEmail, file.getId(), conversation.conversationId, metadata.note]);
+  incrementGeneratedDocumentCount_(project.projectId || conversation.projectId, project);
+  var result = publicGeneratedFile_(file, 'artifact', parentIds, conversation.conversationId, record);
+  result.nodeId = 'document:' + file.getId();
+  return result;
+}
+
+function getDocumentPreview(projectId, nodeId) {
+  nodeId = String(nodeId || '').trim();
+  var access;
+  var file;
+  if (nodeId.indexOf('source:') === 0) {
+    access = assertProjectAccess_(projectId, 'sources');
+    var sourceId = nodeId.slice('source:'.length);
+    var source = readSourceIndex_(access.project).sources.filter(function(item) {
+      return item.sourceId === sourceId && item.status !== 'removed';
+    })[0];
+    if (!source || !source.driveId) throw new Error('Source document not found.');
+    file = DriveApp.getFileById(source.driveId);
+  } else if (nodeId.indexOf('document:') === 0) {
+    access = assertProjectAccess_(projectId, 'documents');
+    var fileId = nodeId.slice('document:'.length);
+    var record = readDocumentIndex_(access.project).documents.filter(function(item) { return item.driveId === fileId; })[0];
+    if (!record) throw new Error('Generated document not found.');
+    file = DriveApp.getFileById(fileId);
+  } else {
+    throw new Error('Document not found.');
+  }
+
+  var mimeType = file.getMimeType();
+  var name = file.getName();
+  var lowerName = name.toLowerCase();
+  var textMode = /^text\//.test(mimeType) || /\.(md|markdown|txt|json|csv|tsv|xml|html?|css|js|ts|py|java|sql|yaml|yml)$/i.test(lowerName);
+  if (textMode) {
+    if (Number(file.getSize() || 0) > 2 * 1024 * 1024) throw new Error('The text preview is limited to 2 MB. Open this file in Drive instead.');
+    var text = file.getBlob().getDataAsString('UTF-8');
+    var mode = /\.(md|markdown)$/i.test(lowerName) ? 'markdown' : /\.html?$/i.test(lowerName) || mimeType === 'text/html' ? 'html' : 'text';
+    return {nodeId: nodeId, name: name, mimeType: mimeType, mode: mode, text: text, url: file.getUrl()};
+  }
+  return {nodeId: nodeId, name: name, mimeType: mimeType, mode: 'drive', previewUrl: buildDrivePreviewUrl_(file), url: file.getUrl()};
 }
 
 function removeGeneratedDocument(projectId, nodeId) {
@@ -237,6 +316,11 @@ function recordGeneratedDocument_(project, file, metadata) {
     createdAt: record && record.createdAt ? record.createdAt : file.getDateCreated().toISOString(),
     createdBy: metadata.createdBy || record && record.createdBy || '',
     sourceConversation: metadata.sourceConversation || record && record.sourceConversation || '',
+    artifactType: normalizeArtifactType_(metadata.artifactType || record && record.artifactType || ''),
+    artifactStatus: metadata.artifactStatus || record && record.artifactStatus || '',
+    artifactVersion: Number(metadata.artifactVersion || record && record.artifactVersion || 0),
+    workflowId: metadata.workflowId || record && record.workflowId || '',
+    model: metadata.model || record && record.model || '',
     note: metadata.note != null ? sanitizeText_(metadata.note, 1200).trim() : record && record.note || '',
     updatedAt: file.getLastUpdated().toISOString()
   };
@@ -267,7 +351,8 @@ function reconcileDocumentIndex_(project, files) {
 
 function readDocumentIndex_(project) {
   var folder = DriveApp.getFolderById(project.folders.documents);
-  var data = readJsonFile_(getFirstFileByName_(folder, DOCUMENT_INDEX_FILE), {schemaVersion: 2, documents: []});
+  var data = readJsonFile_(getFirstFileByName_(folder, DOCUMENT_INDEX_FILE), {schemaVersion: 3, documents: []});
+  data.schemaVersion = 3;
   data.documents = data.documents || [];
   return data;
 }
@@ -315,13 +400,53 @@ function inferConversationParentIds_(conversation) {
   return ids;
 }
 
-function publicGeneratedFile_(file, kind, parentIds, sourceConversation) {
+function publicGeneratedFile_(file, kind, parentIds, sourceConversation, metadata) {
+  metadata = metadata || {};
   return {
     id: file.getId(), name: file.getName(), mimeType: file.getMimeType(), url: file.getUrl(),
     size: Number(file.getSize() || 0), createdAt: file.getDateCreated().toISOString(),
     updatedAt: file.getLastUpdated().toISOString(), kind: kind || 'generated',
-    parentIds: normalizeDocumentParentIds_(parentIds), sourceConversation: sourceConversation || '', note: ''
+    parentIds: normalizeDocumentParentIds_(parentIds), sourceConversation: sourceConversation || '', note: metadata.note || '',
+    artifactType: metadata.artifactType || '', artifactStatus: metadata.artifactStatus || '',
+    artifactVersion: Number(metadata.artifactVersion || 0), workflowId: metadata.workflowId || '', model: metadata.model || ''
   };
+}
+
+function normalizeArtifactType_(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'markdown_artifact';
+}
+
+function artifactTitleForType_(artifactType) {
+  var titles = {
+    project_approval_canvas: 'Project Approval Canvas',
+    executive_decision_brief: 'Executive Decision Brief',
+    stakeholder_pitch_kit: 'Stakeholder Pitch Kit'
+  };
+  return titles[artifactType] || String(artifactType || 'Markdown Artifact').split('_').map(function(word) {
+    return word ? word.charAt(0).toUpperCase() + word.slice(1) : '';
+  }).join(' ');
+}
+
+function resolveArtifactParentIds_(project, conversation, artifactType, requestedParentType) {
+  if (artifactType === 'project_approval_canvas') {
+    var sourceParents = normalizeDocumentParentIds_(conversation.sourceSelection || inferConversationParentIds_(conversation));
+    return sourceParents;
+  }
+  var parentType = normalizeArtifactType_(requestedParentType || 'project_approval_canvas');
+  var parent = readDocumentIndex_(project).documents.filter(function(record) {
+    return record.sourceConversation === conversation.conversationId && record.artifactType === parentType;
+  }).sort(function(a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); })[0];
+  if (parent) return ['document:' + parent.driveId];
+  return normalizeDocumentParentIds_(conversation.sourceSelection || inferConversationParentIds_(conversation));
+}
+
+function buildDrivePreviewUrl_(file) {
+  var id = file.getId();
+  var mimeType = file.getMimeType();
+  if (mimeType === MimeType.GOOGLE_DOCS) return 'https://docs.google.com/document/d/' + id + '/preview';
+  if (mimeType === MimeType.GOOGLE_SHEETS) return 'https://docs.google.com/spreadsheets/d/' + id + '/preview';
+  if (mimeType === MimeType.GOOGLE_SLIDES) return 'https://docs.google.com/presentation/d/' + id + '/embed?start=false&loop=false';
+  return 'https://drive.google.com/file/d/' + id + '/preview';
 }
 
 function updateControlEntityNote_(project, sheetName, entityId, note) {

@@ -1,6 +1,6 @@
 # Arquitectura técnica
 
-Versión de referencia: 1.9.0.
+Versión de referencia: 2.0.0-review.1.
 
 ## Modelo de la consola
 
@@ -79,6 +79,28 @@ Projects/Project A/
 ```
 
 Los proyectos heredados de la v1.6.0 se mueven una sola vez desde la raíz a `Projects` y se asocian con `General Project Assistant 1.0.0`. Sus chats, fuentes, plantillas, flows y documentos se conservan.
+
+## Artefactos y linaje documental
+
+El chat distingue entre una respuesta conversacional y un evento de artefacto. Para un artefacto, el modelo devuelve un objeto JSON controlado; el servidor valida el contenido, crea un archivo `.md` en `Generated Documents`, registra metadatos y guarda en el chat únicamente el evento y sus acciones.
+
+```text
+Level 0 source(s)
+└── Project Approval Canvas.md              Level 1
+    ├── Executive Decision Brief.md         Level 2, Path A
+    └── Stakeholder Pitch Kit.md            Level 2, Path B
+```
+
+Cada registro puede conservar `artifactType`, `artifactStatus`, `artifactVersion`, `workflowId`, `model`, `sourceConversation` y `parentIds`. El nivel no se fija manualmente: se calcula desde los padres. `Accept Canvas` se resuelve de forma determinista a partir del Canvas más reciente y no requiere otra llamada al modelo.
+
+## Visor y conversación
+
+- La casilla de una tarjeta decide si el documento entra al contexto de Gemini.
+- Hacer clic en la tarjeta abre un visor independiente y colapsable.
+- Markdown y texto se leen directamente; HTML se elimina de scripts, objetos, embeds, iframes y manejadores de eventos y se muestra en un iframe aislado.
+- Google Workspace, PDF e imágenes usan la vista previa de Drive.
+- El modelo seleccionado pertenece al chat y se envía explícitamente a Gemini o File Search.
+- Una rama copia solo los mensajes anteriores al mensaje modificado y registra `parentConversationId` y `branchFromMessageId`.
 
 ## Aislamiento de recuperación
 
