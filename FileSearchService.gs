@@ -62,7 +62,7 @@ function indexSourceForCurrentUser_(project, source, force) {
   if (!force && current.status === 'indexing' && current.revision === revision) return publicFileSearchState_(source, current);
   if (!force && current.status === 'uploading' && current.revision === revision && current.uploadUrl) {
     try {
-      return advanceFileSearchUpload_(project, source, current, getUserGeminiConfig_().apiKey);
+      return advanceFileSearchUploadBatch_(project, source, current, getUserGeminiConfig_().apiKey);
     } catch (continuationError) {
       var continuationFailed = saveFileSearchSourceState_(project.projectId, source.sourceId, {
         status: 'failed', stage: current.stage || 'uploading_to_file_search', error: readableErrorMessage_(continuationError), checkError: '', updatedAt: nowIso_()
@@ -101,7 +101,7 @@ function indexSourceForCurrentUser_(project, source, force) {
       operationName: '', documentName: '', indexedAt: '', error: '', checkError: '',
       attemptStartedAt: nowIso_(), operationDone: false, updatedAt: nowIso_()
     });
-    return advanceFileSearchUpload_(project, source, state, config.apiKey);
+    return advanceFileSearchUploadBatch_(project, source, state, config.apiKey, descriptor);
   } catch (error) {
     var failed = saveFileSearchSourceState_(project.projectId, source.sourceId, {
       status: 'failed', stage: stage, storeName: storeName, revision: revision,
@@ -112,13 +112,25 @@ function indexSourceForCurrentUser_(project, source, force) {
 }
 
 function ensureFileSearchStore_(project, config) {
+  var lock = LockService.getUserLock();
+  lock.waitLock(30000);
+  try {
+    return ensureFileSearchStoreUnlocked_(project, config);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function ensureFileSearchStoreUnlocked_(project, config) {
   var existing = getFileSearchStoreState_(project.projectId, false);
   var fingerprint = geminiKeyFingerprint_(config.apiKey);
   var desiredModel = normalizeFileSearchEmbeddingModel_(APP.FILE_SEARCH_EMBEDDING_MODEL);
   if (existing && existing.keyFingerprint === fingerprint && existing.storeName) {
+    if (existing.embeddingModel === desiredModel && Date.now() - Number(existing.lastVerifiedAt || 0) < Number(APP.FILE_SEARCH_STORE_RECHECK_MS || 600000)) return existing;
     try {
       var remote = fileSearchFetchJson_(FILE_SEARCH_API_ROOT + existing.storeName, {method: 'get', apiKey: config.apiKey});
       existing.embeddingModel = normalizeFileSearchEmbeddingModel_(remote.embeddingModel || existing.embeddingModel);
+      existing.lastVerifiedAt = Date.now();
       if (existing.embeddingModel === desiredModel) {
         PropertiesService.getUserProperties().setProperty(APP.USER_FILE_SEARCH_STORE_PREFIX + project.projectId, JSON.stringify(existing));
         return existing;
@@ -141,6 +153,7 @@ function ensureFileSearchStore_(project, config) {
     embeddingModel: normalizeFileSearchEmbeddingModel_(response.embeddingModel || desiredModel),
     legacyStoreNames: legacyStoreNames,
     createdAt: nowIso_(),
+    lastVerifiedAt: Date.now(),
     projectId: project.projectId
   };
   PropertiesService.getUserProperties().setProperty(APP.USER_FILE_SEARCH_STORE_PREFIX + project.projectId, JSON.stringify(state));
@@ -206,8 +219,22 @@ function getFileSearchWhiteSpaceConfig_() {
   return {maxTokensPerChunk: maxTokens, maxOverlapTokens: overlap};
 }
 
-function advanceFileSearchUpload_(project, source, state, apiKey) {
-  var descriptor = buildIndexableSourceDescriptor_(source);
+function advanceFileSearchUploadBatch_(project, source, state, apiKey, descriptor) {
+  descriptor = descriptor || buildIndexableSourceDescriptor_(source);
+  var started = Date.now();
+  var result = publicFileSearchState_(source, state);
+  var maxChunks = Math.max(1, Number(APP.FILE_SEARCH_CHUNKS_PER_CALL || 1));
+  for (var chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+    result = advanceFileSearchUpload_(project, source, state, apiKey, descriptor);
+    if (result.indexStatus !== 'uploading') break;
+    state = getFileSearchSourceState_(project.projectId, source.sourceId);
+    if (Date.now() - started >= Number(APP.FILE_SEARCH_CALL_BUDGET_MS || 24000)) break;
+  }
+  return result;
+}
+
+function advanceFileSearchUpload_(project, source, state, apiKey, descriptor) {
+  descriptor = descriptor || buildIndexableSourceDescriptor_(source);
   var offset = Number(state.offset || 0);
   if (!state.uploadUrl || offset < 0 || offset >= descriptor.size) throw new Error('The resumable File Search upload state is invalid. Restart indexing.');
   var length = Math.min(APP.FILE_SEARCH_CHUNK_BYTES, descriptor.size - offset);

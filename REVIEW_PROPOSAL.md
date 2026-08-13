@@ -1,4 +1,4 @@
-# Propuesta de revisión — Agent Console 2.0.0-review.2
+# Propuesta de revisión — Agent Console 2.0.0-review.3
 
 ## Resultado propuesto
 
@@ -27,6 +27,14 @@ Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el
 
 ## Cambios incluidos en el prototipo
 
+- Workspace de tres paneles con mínimos funcionales y grips sin máximos fijos: el límite se calcula con el espacio disponible.
+- Colapso persistente del chat. Sin visor, Documents ocupa todo el workspace; con visor, el panel izquierdo y el preview comparten el espacio.
+- Acción 🗑️ en cada mensaje del usuario: rebobina el chat, elimina el tramo posterior y envía a la papelera las ramas que nacieron de ese tramo.
+- La eliminación completa de un chat también elimina recursivamente sus ramas para evitar conversaciones huérfanas.
+- Importación desacoplada de la indexación: la fuente aparece primero y el índice semántico continúa en segundo plano.
+- Carga local en bloques de 8 MB, hasta dos fuentes indexándose simultáneamente y hasta tres bloques de File Search por llamada.
+- Barra lineal en cada tarjeta: porcentaje real durante las transferencias y actividad indeterminada durante embeddings, etapa para la que Gemini no informa porcentaje.
+- Reanudación automática de fuentes en cola o a medio indexar al volver a abrir el proyecto.
 - Contrato de artefacto entre Gemini y la consola.
 - Intercepción determinista de `Accept Canvas`; no gasta otra llamada al modelo.
 - Archivos Markdown nativos en `Generated Documents` con versión, tipo, estado, modelo, conversación y padres.
@@ -48,6 +56,7 @@ Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el
 2. **Botones de ruta:** actualmente generan la ruta seleccionada de inmediato. Pueden cambiarse para solo preparar la instrucción y pedir confirmación.
 3. **Ramificación:** actualmente abre una ventana para editar y, al confirmar, crea la rama y envía la petición. Puede cambiarse a “crear borrador sin enviar”.
 4. **Versiones:** aceptar o generar nuevamente el mismo tipo crea `v2`, `v3`, etc.; no sobrescribe entregables anteriores.
+5. **Borrado desde un mensaje:** los documentos ya generados se conservan. El usuario puede eliminarlos después desde Documents; no se destruyen como efecto lateral del historial.
 
 ## Fuera de alcance de esta revisión
 
@@ -68,7 +77,11 @@ Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el
 - Editar un mensaje crea un chat nuevo sin alterar el original.
 - Scripts incluidos en un HTML no se ejecutan en el visor.
 - El PDF interno aparece en el nivel siguiente al documento visible; el PDF externo no aparece en el proyecto.
+- Al colapsar el chat, Documents usa todo el ancho disponible; si el visor está abierto, ambos paneles continúan redimensionables.
+- Eliminar un mensaje del usuario quita ese mensaje y lo posterior, elimina solo las ramas derivadas del tramo y deja el cursor listo para continuar.
+- Una fuente importada aparece antes de terminar su índice; su tarjeta informa carga, cola, transferencia, procesamiento, éxito o error.
+- La interfaz nunca presenta un porcentaje inventado durante la generación de embeddings.
 
 ## Recomendación de despliegue
 
-Probar esta copia como una implementación separada. No reemplazar la versión 1.9.0 hasta validar el flujo con un proyecto real, ambos paths y al menos dos modelos Gemini.
+Probar esta copia como una implementación separada. No reemplazar la versión 1.9.0 hasta validar el flujo con un proyecto real, ambos paths, borrado de una rama y fuentes pequeñas/grandes con al menos dos modelos Gemini.

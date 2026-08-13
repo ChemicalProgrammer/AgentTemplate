@@ -14,8 +14,7 @@ function addSourceFromDrive(projectId, driveUrlOrId) {
   var imported = copyDriveItemToSources_(project, driveId);
   var index = readSourceIndex_(project);
   var now = nowIso_();
-  var indexingErrors = [];
-  var added = imported.files.map(function(file, fileIndex) {
+  var added = imported.files.map(function(file) {
     var record = {
       sourceId: uuid_(),
       name: file.getName(),
@@ -31,20 +30,14 @@ function addSourceFromDrive(projectId, driveUrlOrId) {
     };
     index.sources.push(record);
     appendControlRow_(project, 'Sources', [record.sourceId, record.name, record.mimeType, record.driveId, record.status, record.addedAt, record.addedBy, record.note]);
-    if (fileIndex < APP.FILE_SEARCH_BATCH_SIZE) {
-      try {
-        indexSourceForCurrentUser_(project, record, false);
-      } catch (indexError) {
-        indexingErrors.push(record.name + ': ' + readableErrorMessage_(indexError));
-      }
-    } else {
-      saveFileSearchSourceState_(project.projectId, record.sourceId, {status: 'queued', updatedAt: nowIso_()});
-    }
+    saveFileSearchSourceState_(project.projectId, record.sourceId, {
+      status: 'queued', stage: 'waiting_to_index', progress: 0, error: '', checkError: '', updatedAt: nowIso_()
+    });
     return applyFileSearchStateToSource_(project, record);
   });
   writeSourceIndex_(project, index);
   touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
-  return {added: added, limited: imported.files.length >= APP.MAX_SOURCE_FILES, indexingErrors: indexingErrors};
+  return {added: added, queued: added.length, limited: imported.files.length >= APP.MAX_SOURCE_FILES, indexingErrors: []};
 }
 
 function startSourceUpload(projectId, metadata) {

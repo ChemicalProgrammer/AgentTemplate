@@ -1,10 +1,21 @@
 # Agent Console para Google Apps Script
 
-Versión de revisión 2.0.0-review.2.
+Versión de revisión 2.0.0-review.3.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
 
-## Qué cambia en 2.0.0-review.2
+## Qué cambia en 2.0.0-review.3
+
+- Los tres paneles conservan anchos mínimos, pero los grips ya no usan máximos fijos: se adaptan al ancho disponible.
+- El chat puede colapsarse desde su encabezado o desde el panel izquierdo. Documents ocupa todo el workspace cuando no hay preview, y comparte el espacio con el visor cuando sí lo hay.
+- Cada mensaje del usuario ofrece ✏️ para ramificar y 🗑️ para rebobinar desde ese punto. El borrado elimina el tramo posterior y las ramas derivadas, sin borrar documentos generados.
+- Eliminar un chat completo elimina también sus descendientes para no dejar ramas huérfanas.
+- Las fuentes de Drive se registran antes de indexarse; la indexación continúa en segundo plano con hasta dos trabajos concurrentes.
+- Las cargas locales usan bloques de 8 MB y File Search avanza hasta tres bloques de 8 MB por llamada, reduciendo viajes entre navegador, Apps Script y Gemini.
+- Cada tarjeta muestra progreso lineal: porcentaje durante Drive/File Search y animación indeterminada durante embeddings.
+- Las fuentes en cola, transferencia o procesamiento se reanudan o verifican automáticamente al abrir el proyecto.
+
+## Base conservada de 2.0.0-review.2
 
 - Jerarquía unificada para todos los formatos: Project Sources es la raíz; un archivo generado queda en `max(level de parents) + 1` y, sin parents, comienza en Nivel 1.
 - Visor con animación de entrada/salida y grip persistente para distribuir el ancho entre chat y preview.
@@ -180,8 +191,8 @@ Consulta [SETUP.md](SETUP.md). El despliegue debe ejecutarse como **usuario que 
 ## Límites
 
 - 100 MB por fuente de conocimiento o del proyecto.
-- Bloques de 2 MB hacia Drive y 8 MB hacia File Search.
-- Cinco fuentes nuevas por ámbito y por ejecución de **Sync index**.
+- Bloques de 8 MB hacia Drive y File Search; hasta tres bloques de File Search por llamada.
+- Dos fuentes nuevas por ámbito y por ejecución de **Sync index**; la cola del navegador trabaja con hasta dos fuentes simultáneas.
 - 50 archivos por importación de carpeta.
 - 90,000 caracteres de contexto local de fuentes.
 - 120,000 caracteres de workflows.
@@ -200,6 +211,8 @@ Los límites se concentran en `ConfigService.gs`.
 - La eliminación normal usa la papelera de Drive.
 
 ## Versión
+
+`2.0.0-review.3` — agrega layout de tres paneles adaptable, colapso del chat, borrado desde mensajes con poda de ramas e indexación no bloqueante con progreso por tarjeta.
 
 `2.0.0-review.2` — generaliza niveles por parents, agrega grip y animación al visor, exportación PDF con destino, controles de chat visibles y corrige menús documentales.
 

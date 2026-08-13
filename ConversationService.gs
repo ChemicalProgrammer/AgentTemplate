@@ -271,19 +271,77 @@ function deleteConversation(projectId, conversationId) {
   var index = readConversationIndex_(access.project);
   var record = index.conversations.filter(function(item) { return item.conversationId === conversationId; })[0];
   if (!record) throw new Error('Chat not found.');
-  try {
-    var file = record.fileId
-      ? DriveApp.getFileById(record.fileId)
-      : getFirstFileByName_(DriveApp.getFolderById(access.project.folders.conversations), 'Conversation - ' + conversationId + '.json');
-    if (file) file.setTrashed(true);
-  } catch (error) {
-    throw new Error('The chat could not be moved to Drive trash: ' + error.message);
-  }
-  index.conversations = index.conversations.filter(function(item) { return item.conversationId !== conversationId; });
+  var deletedIds = collectConversationDescendantIds_(index, [conversationId]);
+  trashConversationRecords_(access.project, index, deletedIds);
+  index.conversations = index.conversations.filter(function(item) { return deletedIds.indexOf(item.conversationId) === -1; });
   writeJsonFile_(DriveApp.getFolderById(access.project.folders.conversations), CONVERSATION_INDEX_FILE, index);
-  appendControlRow_(access.project, 'Change Log', [nowIso_(), access.email, 'DELETE_CHAT', 'Conversation', conversationId, record.title || 'Chat']);
+  appendControlRow_(access.project, 'Change Log', [nowIso_(), access.email, 'DELETE_CHAT_TREE', 'Conversation', conversationId, (record.title || 'Chat') + ' · ' + deletedIds.length + ' chat(s)']);
   touchProjectStats_(projectId, {conversationCount: index.conversations.filter(function(item) { return item.status !== 'archived'; }).length});
-  return {deleted: true, conversationId: conversationId, conversationCount: index.conversations.length};
+  return {deleted: true, conversationId: conversationId, deletedConversationIds: deletedIds, conversationCount: index.conversations.length};
+}
+
+function deleteConversationFromMessage(projectId, conversationId, messageId) {
+  var access = assertProjectEdit_(projectId, 'history');
+  var conversation = readConversation_(access.project, conversationId);
+  var messageIndex = conversation.messages.map(function(message) { return message.messageId; }).indexOf(String(messageId || ''));
+  if (messageIndex < 0 || conversation.messages[messageIndex].role !== 'user') throw new Error('Select a user message to delete.');
+
+  var removedMessages = conversation.messages.slice(messageIndex);
+  var removedMessageIds = removedMessages.map(function(message) { return message.messageId; });
+  var index = readConversationIndex_(access.project);
+  var directBranches = index.conversations.filter(function(record) {
+    return record.parentConversationId === conversationId && removedMessageIds.indexOf(record.branchFromMessageId) !== -1;
+  }).map(function(record) { return record.conversationId; });
+  var deletedConversationIds = collectConversationDescendantIds_(index, directBranches);
+  trashConversationRecords_(access.project, index, deletedConversationIds);
+  if (deletedConversationIds.length) {
+    index.conversations = index.conversations.filter(function(record) { return deletedConversationIds.indexOf(record.conversationId) === -1; });
+    writeJsonFile_(DriveApp.getFolderById(access.project.folders.conversations), CONVERSATION_INDEX_FILE, index);
+  }
+
+  conversation.messages = conversation.messages.slice(0, messageIndex);
+  conversation.updatedAt = nowIso_();
+  conversation.summary = '';
+  conversation.summaryThrough = 0;
+  conversation.pendingBranchMessage = '';
+  var lastUserMessage = conversation.messages.slice().reverse().filter(function(message) { return message.role === 'user'; })[0];
+  if (lastUserMessage) {
+    conversation.sourceSelection = (lastUserMessage.sourceSelection || conversation.sourceSelection || []).slice();
+    conversation.flowSelection = (lastUserMessage.flowSelection || conversation.flowSelection || []).slice();
+  } else { conversation.sourceSelection = []; conversation.flowSelection = []; }
+  var file = writeConversation_(access.project, conversation);
+  upsertConversationIndex_(access.project, conversation, file.getId());
+  appendControlRow_(access.project, 'Change Log', [nowIso_(), access.email, 'TRUNCATE_CHAT', 'Conversation', conversationId, 'Removed ' + removedMessages.length + ' message(s) and ' + deletedConversationIds.length + ' branch chat(s)']);
+  touchProjectStats_(projectId, {conversationCount: readConversationIndex_(access.project).conversations.filter(function(item) { return item.status !== 'archived'; }).length});
+  return {conversation: conversation, deletedConversationIds: deletedConversationIds, removedMessageCount: removedMessages.length};
+}
+
+function collectConversationDescendantIds_(index, rootIds) {
+  var collected = [];
+  var queue = (rootIds || []).map(String).filter(Boolean);
+  while (queue.length) {
+    var currentId = queue.shift();
+    if (collected.indexOf(currentId) !== -1) continue;
+    collected.push(currentId);
+    (index.conversations || []).forEach(function(record) {
+      if (record.parentConversationId === currentId && collected.indexOf(record.conversationId) === -1) queue.push(record.conversationId);
+    });
+  }
+  return collected;
+}
+
+function trashConversationRecords_(project, index, conversationIds) {
+  var ids = (conversationIds || []).map(String);
+  (index.conversations || []).filter(function(record) { return ids.indexOf(record.conversationId) !== -1; }).forEach(function(record) {
+    try {
+      var file = record.fileId
+        ? DriveApp.getFileById(record.fileId)
+        : getFirstFileByName_(DriveApp.getFolderById(project.folders.conversations), 'Conversation - ' + record.conversationId + '.json');
+      if (file) file.setTrashed(true);
+    } catch (error) {
+      throw new Error('A derived chat could not be moved to Drive trash: ' + error.message);
+    }
+  });
 }
 
 function branchConversation(projectId, conversationId, messageId, replacementText, model) {

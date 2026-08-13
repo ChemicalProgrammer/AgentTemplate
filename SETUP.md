@@ -23,7 +23,7 @@ clasp open
 
 1. Selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 2.0.0-review.2`.
+3. Descripción: `Version 2.0.0-review.3`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Acceso: usuarios del dominio de la organización.
 6. Autoriza Drive, Docs, Sheets, Slides y conexiones externas.
@@ -48,9 +48,9 @@ La migración es idempotente y conserva IDs de proyecto, chats, fuentes y docume
 
 Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del agente y del proyecto se crean por llave. Un colaborador nuevo debe ejecutar **Sync index** para construir sus propios índices.
 
-## Prueba recomendada de 2.0.0-review.2
+## Prueba recomendada de 2.0.0-review.3
 
-1. Confirma `Version 2.0.0-review.2` en Settings.
+1. Confirma `Version 2.0.0-review.3` en Settings.
 2. Usa una implementación de prueba o una copia del proyecto; no sustituyas todavía la implementación productiva 1.9.0.
 3. Abre un chat que contenga un `Project Approval Canvas` y envía exactamente `Accept Canvas`.
 4. Confirma que el cuerpo del Canvas no aparezca de nuevo en el chat y que `Project Approval Canvas.md` aparezca en Documents como Nivel 1.
@@ -58,7 +58,7 @@ Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del ag
 6. Pulsa `Executive Decision Brief` y confirma que se cree el Markdown de Nivel 2 con el Canvas como padre.
 7. Repite con `Stakeholder Pitch Kit` en otro Canvas o conversación si deseas probar la segunda ruta.
 8. Cambia el modelo en la barra del chat, envía una consulta y vuelve a abrir el chat para confirmar que conserve el modelo.
-9. En un mensaje del usuario pulsa `⑂`, modifica el texto y confirma que se cree y continúe una conversación ramificada.
+9. En un mensaje del usuario pulsa ✏️, modifica el texto y confirma que se cree y continúe una conversación ramificada.
 10. Genera una respuesta con un bloque de código y prueba el botón `Copy` del bloque y el botón de copia de la respuesta.
 11. Importa o genera un archivo HTML, selecciónalo en Documents y confirma que el visor lo renderice sin ejecutar scripts.
 12. Abre y cierra el visor; confirma la animación sutil y que el chat recupere el espacio gradualmente.
@@ -67,6 +67,13 @@ Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del ag
 15. Exporta nuevamente a una carpeta externa: el PDF debe abrirse desde esa ubicación y no aparecer en Documents.
 16. Usa ✏️ y 🗑️ en el encabezado del chat para ramificar la última petición y eliminar la conversación actual.
 17. Abre el menú de tarjetas superiores, inferiores y contiguas; debe mostrarse por encima de todas y cambiar de dirección cuando falte espacio.
+18. Mantén Documents, chat y visor abiertos; mueve ambos grips hasta sus mínimos y comprueba que no existan máximos fijos innecesarios.
+19. Pulsa 🗂️ para colapsar el chat. Sin visor, Documents debe llenar el workspace; con visor, ambos paneles deben compartirlo. Recarga y confirma que la preferencia se conserve.
+20. Crea una rama desde un mensaje intermedio. En el chat original pulsa 🗑️ sobre ese mensaje y confirma que se retiren el tramo posterior y la rama derivada, pero no los documentos generados.
+21. Importa una fuente desde Drive: la tarjeta debe aparecer antes de que termine el índice y cambiar por `Queued`, transferencia, procesamiento y `Indexed` o error.
+22. Sube un archivo local mayor de 8 MB y confirma que la barra de Drive avance por porcentaje sin mensajes emergentes repetitivos.
+23. Durante embeddings confirma que la barra sea animada e indeterminada; no debe mostrar un porcentaje ficticio.
+24. Cierra y vuelve a abrir el proyecto con una fuente pendiente; debe reanudar la transferencia o verificación automáticamente.
 
 ## Prueba de regresión conservada de 1.9.0
 12. Verifica que la portada muestre **Agents** y **Projects**.
@@ -123,7 +130,7 @@ Restaura la carpeta del agente o su release desde la papelera. La consola bloque
 
 ### Agent knowledge muestra `Not indexed`
 
-Guarda la llave personal y pulsa **Sync index** en el proyecto. La misma acción procesa el store del agente activo y el store del proyecto, hasta cinco fuentes nuevas por ámbito.
+Guarda la llave personal y pulsa **Sync index** en el proyecto. La misma acción procesa el store del agente activo y el store del proyecto, hasta dos fuentes nuevas por ámbito y ejecución.
 
 ### Una carpeta copiada conserva referencias antiguas
 
@@ -131,4 +138,4 @@ Pulsa **Scan agents**. La consola compara el ID físico de cada release y recons
 
 ### Un PDF grande no se indexa
 
-El límite es 100 MB por documento. La carga a Drive usa bloques de 2 MB y File Search bloques persistentes de 8 MB. Ejecuta **Sync index** nuevamente cuando haya elementos pendientes.
+El límite es 100 MB por documento. La carga a Drive usa bloques de 8 MB y File Search conserva bloques de 8 MB, procesando hasta tres por llamada. La tarjeta muestra el progreso y la consola reanuda automáticamente trabajos pendientes mientras el proyecto permanezca abierto.

@@ -52,6 +52,10 @@
     documentPreview: null,
     documentPreviewMode: 'preview',
     viewerCloseTimer: null,
+    chatCollapsed: false,
+    pendingUploads: new Map(),
+    sourceIndexTimers: new Map(),
+    activeIndexSources: new Set(),
     pdfExportNodeId: null,
     branchSourceMessageId: null,
     lastProjectRefresh: 0,
@@ -67,6 +71,7 @@
     bindStaticEvents();
     restorePanelWidth();
     restoreViewerWidth();
+    restoreChatPanelState();
     startApp();
   });
 
@@ -153,6 +158,8 @@
     document.getElementById('change-agent-form').addEventListener('submit', submitChangeProjectAgent);
     document.getElementById('back-dashboard').addEventListener('click', showDashboard);
     document.getElementById('toggle-project-panel').addEventListener('click', () => document.getElementById('project-side-panel').classList.toggle('mobile-open'));
+    document.getElementById('toggle-chat-from-side').addEventListener('click', toggleChatPanel);
+    document.getElementById('collapse-chat-panel').addEventListener('click', () => toggleChatPanel(true));
     document.getElementById('project-header-icon').addEventListener('click', openProjectEmojiPicker);
     document.getElementById('share-project-button').addEventListener('click', openShareModal);
     document.querySelectorAll('[data-side-tab]').forEach(tab => tab.addEventListener('click', () => showSideTab(tab.dataset.sideTab)));
@@ -217,7 +224,8 @@
     });
     window.addEventListener('resize', () => {
       const workspace = document.getElementById('project-workspace');
-      if (workspace.classList.contains('viewer-open') && window.innerWidth > 1050) setViewerWidth(document.getElementById('document-viewer').getBoundingClientRect().width);
+      if (window.innerWidth <= 760 && workspace.classList.contains('chat-collapsed')) setChatPanelCollapsed_(false, false);
+      if (workspace.classList.contains('viewer-open') && window.innerWidth > 760) setViewerWidth(document.getElementById('document-viewer').getBoundingClientRect().width);
     });
   }
 
@@ -589,6 +597,7 @@
     const projectView = document.getElementById('project-view');
     projectView.classList.remove('hidden'); projectView.classList.add('view-entering');
     setWorkspaceMode('project');
+    clearSourceIndexActivity_();
     state.currentProjectId = projectId; state.currentConversationId = null; state.currentConversation = null;
     closeDocumentViewer(true);
     state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map();
@@ -703,6 +712,11 @@
       state.panelLoaded.documents = true;
       applyCurrentConversationSelections_();
       syncProjectSummary(state.projectDetails); renderDocumentGraph();
+      const projectSources = state.documentNodes.filter(node => node.kind === 'source');
+      if (state.projectDetails.permissions.edit) {
+        queueSourceIndexes_(projectSources.filter(node => node.indexStatus === 'queued' || node.indexStatus === 'uploading').map(node => node.sourceId));
+        projectSources.filter(node => node.indexStatus === 'indexing').forEach(node => scheduleSourceIndexPoll_(node.sourceId, 1800));
+      }
       server('cleanupProjectFileSearchOrphans', projectId).then(result => {
         if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
         if (result && result.deleted) showToast(`${result.deleted} stale File Search record${result.deleted === 1 ? '' : 's'} removed.`);
@@ -885,6 +899,7 @@
 
   function showDashboard() {
     if (state.activeRequest) stopResponse();
+    clearSourceIndexActivity_();
     state.projectLoadToken++;
     state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
     hideWorkspaceViews_();
@@ -975,17 +990,17 @@
     if (!confirmed) return;
     setBusy(button, true);
     try {
-      await server('deleteConversation', state.currentProjectId, conversationId);
-      state.projectDetails.conversations = state.projectDetails.conversations.filter(item => item.conversationId !== conversationId);
-      state.conversationSelections.delete(conversationId);
-      state.flowSelections.delete(conversationId);
+      const result = await server('deleteConversation', state.currentProjectId, conversationId);
+      const deletedIds = new Set(result.deletedConversationIds || [conversationId]);
+      state.projectDetails.conversations = state.projectDetails.conversations.filter(item => !deletedIds.has(item.conversationId));
+      deletedIds.forEach(id => { state.conversationSelections.delete(id); state.flowSelections.delete(id); });
       updateProjectCount('conversationCount', state.projectDetails.conversations.length);
-      if (state.currentConversationId === conversationId) {
+      if (deletedIds.has(state.currentConversationId)) {
         state.currentConversationId = null; state.currentConversation = null;
         const next = state.projectDetails.conversations[0];
         if (next) await openConversation(next.conversationId); else renderChatEmpty(false);
       }
-      renderConversationList(); showToast('Chat moved to Drive trash.');
+      renderConversationList(); showToast(deletedIds.size > 1 ? `${deletedIds.size} related chats moved to Drive trash.` : 'Chat moved to Drive trash.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
@@ -1017,7 +1032,7 @@
       return source.citationUri ? `<a href="${escapeHtml(source.citationUri)}" target="_blank" rel="noopener">${label}</a>` : label;
     }).join(' · ');
     const flows = (message.flowsUsed || []).map(flow => `[${escapeHtml(flow.label)}] ${escapeHtml(flow.name)}`).join(' · ');
-    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div>${state.projectDetails.permissions.edit ? `<div class="message-actions"><button class="emoji-action-btn" data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">✏️</button></div>` : ''}</article>`;
+    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div>${state.projectDetails.permissions.edit ? `<div class="message-actions"><button class="emoji-action-btn" data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">✏️</button><button class="emoji-action-btn danger" data-delete-message="${escapeHtml(message.messageId)}" title="Delete from this point" aria-label="Delete this message and later conversation">🗑️</button></div>` : ''}</article>`;
     if (message.kind === 'artifact_event' && message.artifact) return renderArtifactEvent_(message, sources, flows);
     return `<article class="message assistant" data-message-id="${escapeHtml(message.messageId)}">
       <div class="message-header">${identityMarkHtml_(state.projectAgent || {icon:'✦'}, 'message-avatar')}<span>${escapeHtml(message.agentName || (state.projectAgent || {}).name || 'Agent')}${message.agentVersion ? ` · v${escapeHtml(message.agentVersion)}` : ''}</span></div>
@@ -1041,6 +1056,7 @@
   function bindRenderedMessageActions_(container) {
     container.querySelectorAll('[data-copy-message]').forEach(button => button.addEventListener('click', () => copyMessage(button.dataset.copyMessage, button)));
     container.querySelectorAll('[data-branch-message]').forEach(button => button.addEventListener('click', () => openConversationBranch(button.dataset.branchMessage)));
+    container.querySelectorAll('[data-delete-message]').forEach(button => button.addEventListener('click', () => deleteMessageFromConversation(button.dataset.deleteMessage, button)));
     container.querySelectorAll('[data-open-artifact]').forEach(button => button.addEventListener('click', () => openDocumentPreview(button.dataset.openArtifact)));
     container.querySelectorAll('[data-artifact-action]').forEach(button => button.addEventListener('click', () => runArtifactAction(button.dataset.actionMessage)));
     container.querySelectorAll('[data-copy-code]').forEach(button => button.addEventListener('click', async () => {
@@ -1060,6 +1076,42 @@
     if (!message) return;
     try { await navigator.clipboard.writeText(message.text); button.innerHTML = '✅'; setTimeout(() => button.innerHTML = '<span class="message-copy-icon" aria-hidden="true">📋</span>', 1200); }
     catch (_) { showToast('Could not copy the response.', true); }
+  }
+
+  async function deleteMessageFromConversation(messageId, button) {
+    if (!state.currentConversation || !state.currentConversationId) return;
+    if (state.activeRequest) return showToast('Stop the current response before rewinding the conversation.', true);
+    const message = (state.currentConversation.messages || []).find(item => item.messageId === messageId && item.role === 'user');
+    if (!message) return;
+    const confirmed = await askConfirmation({
+      title: 'Delete the conversation from this point?',
+      message: 'This message, every later message in this chat, and every branch created from that removed section will be moved to Drive trash. Generated documents will remain in the project.',
+      action: 'Delete from this point'
+    });
+    if (!confirmed) return;
+    setBusy(button, true);
+    try {
+      const result = await server('deleteConversationFromMessage', state.currentProjectId, state.currentConversationId, messageId);
+      state.currentConversation = result.conversation;
+      const deletedIds = new Set(result.deletedConversationIds || []);
+      if (deletedIds.size) {
+        state.projectDetails.conversations = state.projectDetails.conversations.filter(item => !deletedIds.has(item.conversationId));
+        deletedIds.forEach(id => { state.conversationSelections.delete(id); state.flowSelections.delete(id); });
+      }
+      const record = state.projectDetails.conversations.find(item => item.conversationId === state.currentConversationId);
+      if (record) { record.updatedAt = state.currentConversation.updatedAt; record.messageCount = (state.currentConversation.messages || []).length; }
+      if (state.panelLoaded.documents) state.selectedSources = new Set(normalizeSelectedDocumentIds(state.currentConversation.sourceSelection || []));
+      state.selectedFlows = new Set(state.currentConversation.flowSelection || []);
+      rememberCurrentSelection(); rememberCurrentFlowSelection();
+      updateProjectCount('conversationCount', state.projectDetails.conversations.length);
+      renderConversationList();
+      if (state.panelLoaded.documents) renderDocumentGraph();
+      if (state.panelLoaded.flows) renderFlows();
+      renderMessages();
+      document.getElementById('chat-input').focus();
+      showToast(deletedIds.size ? `Conversation rewound; ${deletedIds.size} derived chat${deletedIds.size === 1 ? '' : 's'} removed.` : 'Conversation rewound. You can continue from here.');
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
   }
 
   function openConversationBranch(messageId) {
@@ -1171,7 +1223,7 @@
     const workspace = document.getElementById('project-workspace');
     if (state.viewerCloseTimer) { clearTimeout(state.viewerCloseTimer); state.viewerCloseTimer = null; }
     state.previewNodeId = nodeId; state.documentPreview = null; state.documentPreviewMode = 'preview';
-    if (window.innerWidth > 1050) {
+    if (window.innerWidth > 760) {
       const preferredWidth = parseInt(getComputedStyle(workspace).getPropertyValue('--viewer-panel-width'), 10) || 480;
       setViewerWidth(preferredWidth);
     }
@@ -1333,21 +1385,25 @@
 
   function renderDocumentGraph() {
     if (!state.projectDetails) return;
-    const container = document.getElementById('document-levels'); const nodes = state.documentNodes || [];
+    const container = document.getElementById('document-levels');
+    const persistedNodes = state.documentNodes || [];
+    const nodes = persistedNodes.concat(Array.from(state.pendingUploads.values()));
     nodes.filter(node => node.locked).forEach(node => state.selectedSources.add(node.nodeId));
     const levels = [...new Set(nodes.map(node => Number(node.level || 0)))].sort((a,b) => a-b);
     container.innerHTML = levels.map(level => {
       const items = nodes.filter(node => Number(node.level || 0) === level);
-      const selected = items.filter(node => state.selectedSources.has(node.nodeId)).length;
-      const allChecked = items.length > 0 && selected === items.length;
-      const partial = selected > 0 && selected < items.length;
+      const selectableItems = items.filter(node => node.kind !== 'pending-upload');
+      const selected = selectableItems.filter(node => state.selectedSources.has(node.nodeId)).length;
+      const allChecked = selectableItems.length > 0 && selected === selectableItems.length;
+      const partial = selected > 0 && selected < selectableItems.length;
       const levelLabel = level === -1 ? `Agent knowledge · ${escapeHtml((state.projectAgent || {}).name || 'Loaded agent')}` : level === 0 ? 'Project sources' : `Generated · Level ${level}`;
       return `<section class="document-level ${level === -1 ? 'agent-knowledge-level' : ''}" data-level="${level}">
-        <div class="level-heading"><label class="level-select"><input type="checkbox" data-level-select="${level}" ${allChecked ? 'checked' : ''} ${partial ? 'data-partial="true"' : ''}><span>${levelLabel}</span></label><small>${items.length}</small></div>
+        <div class="level-heading"><label class="level-select"><input type="checkbox" data-level-select="${level}" ${allChecked ? 'checked' : ''} ${partial ? 'data-partial="true"' : ''} ${selectableItems.length ? '' : 'disabled'}><span>${levelLabel}</span></label><small>${items.length}</small></div>
         <div class="level-track">${items.map(renderDocumentCard).join('')}</div>
       </section>`;
     }).join('');
-    document.getElementById('document-count-label').textContent = `${nodes.length} ${nodes.length === 1 ? 'item' : 'items'}`;
+    const pendingCount = state.pendingUploads.size;
+    document.getElementById('document-count-label').textContent = `${persistedNodes.length} ${persistedNodes.length === 1 ? 'item' : 'items'}${pendingCount ? ` · ${pendingCount} uploading` : ''}`;
     document.getElementById('empty-documents').classList.toggle('hidden', nodes.length > 0);
     container.querySelectorAll('[data-level-select]').forEach(input => {
       if (input.dataset.partial === 'true') input.indeterminate = true;
@@ -1367,6 +1423,8 @@
       card.addEventListener('focusout', () => state.highlightedDocumentId ? highlightDocumentRelations(state.highlightedDocumentId) : clearDocumentHighlights());
       card.addEventListener('click', event => {
         if (event.target.closest('button,a,input,label')) return;
+        const clickedNode = nodes.find(node => node.nodeId === card.dataset.nodeId);
+        if (clickedNode && clickedNode.kind === 'pending-upload') return;
         state.highlightedDocumentId = card.dataset.nodeId;
         highlightDocumentRelations(state.highlightedDocumentId); openDocumentPreview(card.dataset.nodeId);
       });
@@ -1376,19 +1434,20 @@
 
   function renderDocumentCard(node) {
     const relation = documentRelationCounts(node.nodeId);
+    const pendingUpload = node.kind === 'pending-upload';
     const agentKnowledge = node.kind === 'agent-source';
     const canDelete = !agentKnowledge && state.projectDetails.permissions.edit && (node.kind === 'source' ? state.projectDetails.permissions.sources : state.projectDetails.permissions.documents);
-    const indexLabel = ({ready:'Indexed',indexing:'Indexing',uploading:'Uploading',queued:'Queued',failed:'Index failed',unknown:'Status unknown',not_indexed:'Not indexed'})[node.indexStatus] || '';
+    const indexLabel = ({ready:'Indexed',indexing:'Processing',uploading:'Uploading',drive_uploading:'Uploading',drive_importing:'Importing',queued:'Queued',failed:'Index failed',unknown:'Status unknown',not_indexed:'Not indexed'})[node.indexStatus] || '';
     const statusDetail = node.indexStatus === 'failed' ? node.indexError : node.indexStatus === 'unknown' ? node.indexCheckError : '';
-    const progressLabel = node.indexStatus === 'uploading' && Number(node.indexProgress || 0) ? ` · ${Number(node.indexProgress)}%` : '';
-    const originClass = agentKnowledge ? 'origin-agent' : node.kind === 'source' ? 'origin-source' : 'origin-generated';
-    const originLabel = agentKnowledge ? (node.mandatory ? 'Agent · mandatory' : 'Agent · optional') : node.kind === 'source' ? 'Original' : node.kind === 'artifact' ? `Artifact${node.artifactVersion ? ` · v${node.artifactVersion}` : ''}` : 'Generated';
+    const progressLabel = ['uploading','drive_uploading'].includes(node.indexStatus) && Number(node.indexProgress || 0) ? ` · ${Number(node.indexProgress)}%` : '';
+    const originClass = agentKnowledge ? 'origin-agent' : pendingUpload || node.kind === 'source' ? 'origin-source' : 'origin-generated';
+    const originLabel = pendingUpload ? 'Uploading source' : agentKnowledge ? (node.mandatory ? 'Agent · mandatory' : 'Agent · optional') : node.kind === 'source' ? 'Original' : node.kind === 'artifact' ? `Artifact${node.artifactVersion ? ` · v${node.artifactVersion}` : ''}` : 'Generated';
     return `<article class="document-card file-card ${fileTypeClass(node.mimeType,node.name)} ${originClass} ${agentKnowledge ? 'agent-knowledge' : ''}" data-node-id="${escapeHtml(node.nodeId)}" tabindex="0">
       <div class="document-card-top">
-        <label class="document-checkbox" title="${node.locked ? 'Mandatory agent knowledge' : 'Use in chat'}"><input type="checkbox" data-document-select="${escapeHtml(node.nodeId)}" ${state.selectedSources.has(node.nodeId) ? 'checked' : ''} ${node.locked ? 'disabled' : ''}><span></span></label>
+        <label class="document-checkbox" title="${pendingUpload ? 'Upload in progress' : node.locked ? 'Mandatory agent knowledge' : 'Use in chat'}"><input type="checkbox" ${pendingUpload ? '' : `data-document-select="${escapeHtml(node.nodeId)}"`} ${state.selectedSources.has(node.nodeId) ? 'checked' : ''} ${node.locked || pendingUpload ? 'disabled' : ''}><span></span></label>
         <span class="file-type-icon ${fileTypeClass(node.mimeType,node.name)}">${fileTypeIcon(node.mimeType,node.name)}</span>
         <div class="document-card-copy"><strong title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</strong><div class="document-meta"><span class="file-format-pill">${escapeHtml(friendlyMime(node.mimeType,node.name))}</span><span>${formatFileSize(node.size)}</span><span>${formatDate(node.createdAt)}</span></div></div>
-        <div class="document-menu-wrap">
+        ${pendingUpload ? '' : `<div class="document-menu-wrap">
           <button class="document-menu-button" data-document-menu="${escapeHtml(node.nodeId)}" aria-label="Document actions" title="Document actions">⋮</button>
           <div class="document-menu hidden" role="menu">
             ${node.url ? `<a href="${escapeHtml(node.url)}" target="_blank" role="menuitem">Open in Drive <span>📂</span></a>` : ''}
@@ -1399,16 +1458,27 @@
             <div class="menu-separator"></div><p>Generate from document</p>
             <button disabled>Summary <span>Soon</span></button><button data-generate-report="${escapeHtml(node.nodeId)}" ${!agentKnowledge && state.projectDetails.permissions.edit && state.projectDetails.permissions.documents ? '' : 'disabled'}>Report <span>📊</span></button>
           </div>
-        </div>
+        </div>`}
       </div>
       <div class="document-card-footer">
         <span class="origin-badge ${originClass}">${escapeHtml(originLabel)}${agentKnowledge ? ` · v${escapeHtml(node.agentVersion || '')}` : ''}</span>
-        ${node.kind === 'source' ? `<button type="button" class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" data-check-index="${escapeHtml(node.sourceId)}" title="Check index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</button>` : agentKnowledge ? `<span class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" title="Agent knowledge index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</span>` : ''}
-        <span class="relation-summary">${agentKnowledge ? 'Inherited' : relation.parents ? `↑ ${relation.parents}` : 'Root'}${relation.children ? ` · ↓ ${relation.children}` : ''}</span>
+        ${pendingUpload ? `<span class="index-status ${escapeHtml(node.indexStatus || 'drive_uploading')}"><i></i>${escapeHtml(indexLabel + progressLabel)}</span>` : node.kind === 'source' ? `<button type="button" class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" data-check-index="${escapeHtml(node.sourceId)}" title="Check index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</button>` : agentKnowledge ? `<span class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" title="Agent knowledge index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</span>` : ''}
+        <span class="relation-summary">${pendingUpload ? 'Preparing' : agentKnowledge ? 'Inherited' : relation.parents ? `↑ ${relation.parents}` : 'Root'}${relation.children ? ` · ↓ ${relation.children}` : ''}</span>
       </div>
+      ${documentProgressMarkup_(node)}
       ${statusDetail ? `<p class="index-status-detail ${escapeHtml(node.indexStatus)}">${escapeHtml(statusDetail)}</p>` : ''}
       ${node.note ? `<p class="document-note">${escapeHtml(node.note)}</p>` : ''}
     </article>`;
+  }
+
+  function documentProgressMarkup_(node) {
+    const status = String(node.indexStatus || '');
+    if (!['drive_uploading','drive_importing','queued','uploading','indexing'].includes(status)) return '';
+    const progress = Math.max(0, Math.min(100, Number(node.indexProgress || 0)));
+    const labels = {drive_uploading:'Uploading to Drive',drive_importing:'Copying from Drive',queued:'Waiting for semantic index',uploading:'Sending to Gemini File Search',indexing:'Building semantic index'};
+    const exact = status === 'drive_uploading' || status === 'uploading';
+    const valueLabel = exact ? `${Math.round(progress)}%` : status === 'queued' ? 'Queued' : status === 'drive_importing' ? 'Copying' : 'Processing';
+    return `<div class="document-progress ${escapeHtml(status)}" role="status" aria-label="${escapeHtml(labels[status] + ' ' + valueLabel)}"><div class="document-progress-caption"><span>${escapeHtml(labels[status])}</span><b>${escapeHtml(valueLabel)}</b></div><div class="document-progress-track ${exact ? '' : 'indeterminate'}"><span style="--document-progress:${Math.round(progress)}%"></span></div></div>`;
   }
 
   function toggleDocumentSelection(nodeId, checked) {
@@ -1513,12 +1583,18 @@
 
   async function submitSourceLink(event) {
     event.preventDefault(); setBusy(event.target, true);
+    const pendingId = `pending:drive-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    state.pendingUploads.set(pendingId, {nodeId:pendingId,name:'Importing from Drive',mimeType:'application/octet-stream',size:0,createdAt:new Date().toISOString(),kind:'pending-upload',level:0,parentIds:[],indexStatus:'drive_importing',indexProgress:0});
+    showSideTab('documents'); renderDocumentGraph();
     try {
       const result = await server('addSourceFromDrive', state.currentProjectId, document.getElementById('source-drive-url').value);
-      state.projectDetails.sources.push(...result.added); closeModals(); event.target.reset(); await refreshDocumentGraph();
-      const pending = (result.added || []).filter(item => item.indexStatus !== 'ready').length;
-      showSideTab('documents'); showToast(result.indexingErrors && result.indexingErrors.length ? `${result.added.length} document(s) imported; ${result.indexingErrors.length} need index repair.` : pending ? `${result.added.length} document(s) imported; ${pending} queued or indexing.` : `${result.added.length} document(s) imported and indexed.`);
-    } catch (error) { showToast(error.message, true); }
+      const added = result.added || [];
+      state.pendingUploads.delete(pendingId);
+      addSourceNodesLocally_(added);
+      closeModals(); event.target.reset(); showSideTab('documents');
+      showToast(`${added.length} document${added.length === 1 ? '' : 's'} added. Semantic indexing is continuing in the background.`);
+      queueSourceIndexes_(added.map(item => item.sourceId));
+    } catch (error) { state.pendingUploads.delete(pendingId); renderDocumentGraph(); showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
 
@@ -1526,27 +1602,33 @@
     const input = event.target; const file = input.files[0]; if (!file) return;
     if (file.size > 100 * 1024 * 1024) { input.value = ''; return showToast('Sources can be uploaded up to 100 MB. Split this file into separate volumes.', true); }
     const label = document.querySelector('.file-button'); setBusy(label, true);
+    const pendingId = `pending:${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    state.pendingUploads.set(pendingId, {
+      nodeId:pendingId,name:file.name,mimeType:file.type || 'application/octet-stream',size:file.size,
+      createdAt:new Date().toISOString(),kind:'pending-upload',level:0,parentIds:[],indexStatus:'drive_uploading',indexProgress:0
+    });
+    showSideTab('documents'); renderDocumentGraph();
     let upload = null;
     try {
       upload = await server('startSourceUpload', state.currentProjectId, {name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size});
       let offset = Number(upload.nextOffset || 0); let completed = null;
       while (offset < file.size) {
-        const end = Math.min(file.size, offset + Number(upload.chunkBytes || 2 * 1024 * 1024));
+        const end = Math.min(file.size, offset + Number(upload.chunkBytes || 8 * 1024 * 1024));
         const base64 = await fileAsBase64(file.slice(offset, end));
         completed = await server('uploadSourceChunk', state.currentProjectId, upload.uploadId, offset, base64);
         offset = Number(completed.nextOffset || end);
-        showToast(`Uploading ${file.name}: ${Math.round(offset * 100 / file.size)}%`);
+        const pending = state.pendingUploads.get(pendingId);
+        if (pending) { pending.indexProgress = Math.round(offset * 100 / file.size); renderDocumentGraph(); }
       }
       const source = completed && completed.source;
       if (!source) throw new Error('Drive did not confirm the completed upload.');
-      state.projectDetails.sources.push(source);
-      await refreshDocumentGraph(); showSideTab('documents');
-      const indexed = await continueSingleSourceIndex(source.sourceId, false);
-      await refreshDocumentGraph();
-      showToast(indexed.indexStatus === 'ready' ? 'Document uploaded and index verified.' : indexed.indexStatus === 'failed' ? 'Document uploaded, but indexing failed. Open its status for details.' : 'Document uploaded; Gemini is processing its index.');
+      state.pendingUploads.delete(pendingId);
+      addSourceNodesLocally_([source]);
+      queueSourceIndexes_([source.sourceId]);
+      showToast('Document uploaded. Semantic indexing is continuing in the background.');
     } catch (error) {
       if (upload && upload.uploadId) { try { await server('cancelSourceUpload', state.currentProjectId, upload.uploadId); } catch (_) {} }
-      try { await refreshDocumentGraph(); } catch (_) {}
+      state.pendingUploads.delete(pendingId); renderDocumentGraph();
       showToast(error.message, true);
     }
     finally { input.value = ''; setBusy(label, false); }
@@ -1559,10 +1641,9 @@
       for (let pass = 0; pass < 16; pass++) {
         result = await server('syncProjectKnowledgeIndexes', state.currentProjectId);
         const sources = ((result.project || {}).sources || []).concat((result.agent || {}).sources || []);
+        applySourceIndexResults_((result.project || {}).sources || []);
         const uploading = sources.filter(item => item.indexStatus === 'uploading');
         if (!uploading.length) break;
-        const average = Math.round(uploading.reduce((sum, item) => sum + Number(item.indexProgress || 0), 0) / uploading.length);
-        showToast(`Transferring ${uploading.length} source index${uploading.length === 1 ? '' : 'es'}: ${average}%`);
       }
       await refreshDocumentGraph();
       const sources = ((result.project || {}).sources || []).concat((result.agent || {}).sources || []);
@@ -1589,11 +1670,101 @@
 
   async function continueSingleSourceIndex(sourceId, restart) {
     let result = await server('indexProjectSource', state.currentProjectId, sourceId, restart);
+    applySourceIndexState_(sourceId, result);
     for (let pass = 0; result.indexStatus === 'uploading' && pass < 16; pass++) {
-      showToast(`Uploading to File Search: ${Number(result.indexProgress || 0)}%`);
       result = await server('indexProjectSource', state.currentProjectId, sourceId, false);
+      applySourceIndexState_(sourceId, result);
     }
+    if (result.indexStatus === 'indexing') scheduleSourceIndexPoll_(sourceId);
     return result;
+  }
+
+  function addSourceNodesLocally_(sources) {
+    (sources || []).forEach(source => {
+      const node = sourceToDocumentNode_(source);
+      const existingIndex = state.documentNodes.findIndex(item => item.nodeId === node.nodeId);
+      if (existingIndex >= 0) state.documentNodes[existingIndex] = Object.assign(state.documentNodes[existingIndex], node);
+      else state.documentNodes.push(node);
+      state.selectedSources.add(node.nodeId);
+      if (!(state.projectDetails.sources || []).some(item => item.sourceId === source.sourceId)) state.projectDetails.sources.push(node);
+    });
+    state.panelLoaded.documents = true;
+    rememberCurrentSelection();
+    updateProjectCount('sourceCount', state.documentNodes.filter(node => node.kind === 'source').length);
+    renderDocumentGraph();
+  }
+
+  function sourceToDocumentNode_(source) {
+    return {
+      nodeId:`source:${source.sourceId}`,sourceId:source.sourceId,driveId:source.driveId,name:source.name,
+      mimeType:source.mimeType,size:Number(source.size || 0),createdAt:source.addedAt || source.updatedAt,
+      updatedAt:source.updatedAt || source.addedAt,kind:'source',status:source.status || 'active',level:0,parentIds:[],
+      note:source.note || '',indexStatus:source.indexStatus || 'queued',indexError:source.indexError || '',
+      indexCheckError:source.indexCheckError || '',indexStage:source.indexStage || 'waiting_to_index',
+      indexProgress:Number(source.indexProgress || 0),indexUpdatedAt:source.indexUpdatedAt || '',indexedAt:source.indexedAt || '',
+      selectedByDefault:true,url:source.driveId ? `https://drive.google.com/open?id=${source.driveId}` : ''
+    };
+  }
+
+  function applySourceIndexResults_(results) { (results || []).forEach(result => applySourceIndexState_(result.sourceId, result, false)); renderDocumentGraph(); }
+
+  function applySourceIndexState_(sourceId, result, rerender = true) {
+    const node = state.documentNodes.find(item => item.sourceId === sourceId);
+    if (!node || !result) return;
+    node.indexStatus = result.indexStatus || node.indexStatus;
+    node.indexStage = result.indexStage || '';
+    node.indexProgress = Number(result.indexProgress || 0);
+    node.indexError = result.indexError || '';
+    node.indexCheckError = result.indexCheckError || '';
+    node.indexUpdatedAt = result.indexUpdatedAt || node.indexUpdatedAt || '';
+    node.indexedAt = result.indexedAt || node.indexedAt || '';
+    if (!['queued','uploading','indexing'].includes(node.indexStatus)) {
+      const timer = state.sourceIndexTimers.get(sourceId); if (timer) clearTimeout(timer);
+      state.sourceIndexTimers.delete(sourceId);
+    }
+    if (rerender) renderDocumentGraph();
+  }
+
+  function queueSourceIndexes_(sourceIds) {
+    const queue = [...new Set((sourceIds || []).filter(Boolean))].filter(sourceId => !state.activeIndexSources.has(sourceId) && !state.sourceIndexTimers.has(sourceId));
+    const projectId = state.currentProjectId;
+    const workerCount = Math.min(2, queue.length);
+    const worker = async () => {
+      const sourceId = queue.shift(); if (!sourceId || state.currentProjectId !== projectId) return;
+      state.activeIndexSources.add(sourceId);
+      try { await continueSingleSourceIndex(sourceId, false); }
+      catch (error) {
+        const node = state.documentNodes.find(item => item.sourceId === sourceId);
+        if (node) { node.indexStatus = 'failed'; node.indexError = error.message; renderDocumentGraph(); }
+      } finally {
+        state.activeIndexSources.delete(sourceId);
+        if (queue.length) worker();
+      }
+    };
+    for (let index = 0; index < workerCount; index++) worker();
+  }
+
+  function scheduleSourceIndexPoll_(sourceId, delay = 3500) {
+    const previous = state.sourceIndexTimers.get(sourceId); if (previous) clearTimeout(previous);
+    const projectId = state.currentProjectId;
+    const timer = setTimeout(async () => {
+      state.sourceIndexTimers.delete(sourceId);
+      if (state.currentProjectId !== projectId) return;
+      try {
+        const result = await server('indexProjectSource', projectId, sourceId, false);
+        applySourceIndexState_(sourceId, result);
+        if (result.indexStatus === 'indexing' || result.indexStatus === 'uploading') scheduleSourceIndexPoll_(sourceId, 4000);
+      } catch (error) {
+        const node = state.documentNodes.find(item => item.sourceId === sourceId);
+        if (node) { node.indexStatus = 'unknown'; node.indexCheckError = error.message; renderDocumentGraph(); }
+      }
+    }, delay);
+    state.sourceIndexTimers.set(sourceId, timer);
+  }
+
+  function clearSourceIndexActivity_() {
+    state.sourceIndexTimers.forEach(timer => clearTimeout(timer));
+    state.sourceIndexTimers.clear(); state.activeIndexSources.clear(); state.pendingUploads.clear();
   }
 
   async function showIndexDiagnostic(sourceId, button) {
@@ -1767,6 +1938,10 @@
     if (!confirmed) return;
     setBusy(button, true);
     try {
+      if (node.kind === 'source') {
+        const timer = state.sourceIndexTimers.get(node.sourceId); if (timer) clearTimeout(timer);
+        state.sourceIndexTimers.delete(node.sourceId); state.activeIndexSources.delete(node.sourceId);
+      }
       const result = node.kind === 'source'
         ? await server('removeSource', state.currentProjectId, node.sourceId)
         : await server('removeGeneratedDocument', state.currentProjectId, node.nodeId);
@@ -1990,14 +2165,20 @@
   }
 
   function setPanelWidth(width) {
-    const max = Math.min(720, window.innerWidth * .58); const value = Math.max(270, Math.min(max, width));
-    document.getElementById('project-workspace').style.setProperty('--project-panel-width', `${Math.round(value)}px`);
+    const workspace = document.getElementById('project-workspace');
+    const viewerWidth = workspace.classList.contains('viewer-open') ? document.getElementById('document-viewer').getBoundingClientRect().width : 0;
+    const reserved = 300 + viewerWidth + (viewerWidth ? 20 : 10) + 28;
+    const max = Math.max(260, workspace.getBoundingClientRect().width - reserved);
+    const value = Math.max(260, Math.min(max, Number(width) || 338));
+    workspace.style.setProperty('--project-panel-width', `${Math.round(value)}px`);
+    document.getElementById('project-panel-grip').setAttribute('aria-valuemax', String(Math.round(max)));
+    document.getElementById('project-panel-grip').setAttribute('aria-valuenow', String(Math.round(value)));
   }
 
   function restorePanelWidth() { try { const value = parseInt(localStorage.getItem('gpa.projectPanelWidth'), 10); if (Number.isFinite(value)) setPanelWidth(value); } catch (_) {} }
 
   function startViewerResize(event) {
-    if (window.innerWidth <= 1050 || !document.getElementById('project-workspace').classList.contains('viewer-open')) return;
+    if (window.innerWidth <= 760 || !document.getElementById('project-workspace').classList.contains('viewer-open')) return;
     event.preventDefault(); const workspace = document.getElementById('project-workspace'); const startX = event.clientX;
     const startWidth = document.getElementById('document-viewer').getBoundingClientRect().width;
     document.body.classList.add('is-resizing','is-resizing-viewer'); event.currentTarget.setPointerCapture(event.pointerId);
@@ -2016,13 +2197,54 @@
 
   function setViewerWidth(width) {
     const workspace = document.getElementById('project-workspace');
-    const sideWidth = document.getElementById('project-side-panel').getBoundingClientRect().width || 338;
-    const max = Math.max(320, Math.min(900, window.innerWidth - sideWidth - 430));
-    const value = Math.max(320, Math.min(max, Number(width) || 480));
+    const chatCollapsed = workspace.classList.contains('chat-collapsed');
+    const sideWidth = chatCollapsed ? 260 : document.getElementById('project-side-panel').getBoundingClientRect().width || 338;
+    const reserved = sideWidth + (chatCollapsed ? 0 : 300) + 20 + 28;
+    const max = Math.max(280, workspace.getBoundingClientRect().width - reserved);
+    const value = Math.max(280, Math.min(max, Number(width) || 480));
     workspace.style.setProperty('--viewer-panel-width', `${Math.round(value)}px`);
+    document.getElementById('document-viewer-grip').setAttribute('aria-valuemin', '280');
+    document.getElementById('document-viewer-grip').setAttribute('aria-valuemax', String(Math.round(max)));
+    document.getElementById('document-viewer-grip').setAttribute('aria-valuenow', String(Math.round(value)));
   }
 
   function restoreViewerWidth() { try { const value = parseInt(localStorage.getItem('gpa.documentViewerWidth'), 10); if (Number.isFinite(value)) setViewerWidth(value); } catch (_) {} }
+
+  function toggleChatPanel(forceCollapse) {
+    if (window.innerWidth <= 760) {
+      document.getElementById('project-side-panel').classList.toggle('mobile-open');
+      return;
+    }
+    const collapse = typeof forceCollapse === 'boolean' ? forceCollapse : !state.chatCollapsed;
+    setChatPanelCollapsed_(collapse, true);
+  }
+
+  function setChatPanelCollapsed_(collapsed, persist) {
+    const workspace = document.getElementById('project-workspace');
+    if (!workspace) return;
+    state.chatCollapsed = Boolean(collapsed);
+    workspace.classList.toggle('chat-collapsed', state.chatCollapsed);
+    document.getElementById('chat-panel').setAttribute('aria-hidden', String(state.chatCollapsed));
+    const sideButton = document.getElementById('toggle-chat-from-side');
+    if (sideButton) {
+      sideButton.textContent = state.chatCollapsed ? '💬' : '🗂️';
+      sideButton.title = state.chatCollapsed ? 'Restore chat panel' : 'Collapse chat and expand this panel';
+      sideButton.setAttribute('aria-label', sideButton.title);
+      sideButton.setAttribute('aria-pressed', String(state.chatCollapsed));
+    }
+    const collapseButton = document.getElementById('collapse-chat-panel');
+    if (collapseButton) collapseButton.disabled = state.chatCollapsed;
+    if (workspace.classList.contains('viewer-open') && window.innerWidth > 760) {
+      requestAnimationFrame(() => setViewerWidth(parseInt(getComputedStyle(workspace).getPropertyValue('--viewer-panel-width'), 10) || 480));
+    }
+    if (persist) try { localStorage.setItem('gpa.chatPanelCollapsed', state.chatCollapsed ? '1' : '0'); } catch (_) {}
+  }
+
+  function restoreChatPanelState() {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem('gpa.chatPanelCollapsed') === '1'; } catch (_) {}
+    setChatPanelCollapsed_(collapsed && window.innerWidth > 760, false);
+  }
 
   function askConfirmation({title, message, action, tone = 'danger'}) {
     if (state.confirmResolver) state.confirmResolver(false);

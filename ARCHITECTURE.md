@@ -1,6 +1,6 @@
 # Arquitectura técnica
 
-Versión de referencia: 2.0.0-review.2.
+Versión de referencia: 2.0.0-review.3.
 
 ## Modelo de la consola
 
@@ -101,8 +101,12 @@ Cada registro puede conservar `artifactType`, `artifactStatus`, `artifactVersion
 - Markdown y texto se leen directamente; HTML se elimina de scripts, objetos, embeds, iframes y manejadores de eventos y se muestra en un iframe aislado.
 - Google Workspace, PDF e imágenes usan la vista previa de Drive.
 - El visor exporta a PDF dentro del proyecto —como hijo del documento visible— o en una carpeta externa elegida por URL/ID, sin registrarlo en el proyecto.
+- El workspace admite simultáneamente panel de proyecto, chat y visor. Los grips calculan sus límites a partir del ancho real y los mínimos de los paneles vecinos, no de máximos fijos.
+- El chat puede colapsarse de forma persistente. Documents recibe el espacio libre completo o lo comparte con el visor si existe un documento abierto.
 - El modelo seleccionado pertenece al chat y se envía explícitamente a Gemini o File Search.
 - Una rama copia solo los mensajes anteriores al mensaje modificado y registra `parentConversationId` y `branchFromMessageId`.
+- Eliminar desde un mensaje del usuario trunca la conversación antes de ese mensaje. Las ramas cuyo `branchFromMessageId` pertenece al tramo retirado, y todos sus descendientes, se mueven recursivamente a la papelera.
+- Los artefactos creados antes del borrado permanecen en Documents. Esta separación evita que editar historial destruya entregables sin una acción documental explícita.
 
 ## Aislamiento de recuperación
 
@@ -151,6 +155,11 @@ Las plantillas y workflows del agente aparecen dentro del proyecto como recursos
 - Templates y Flows cargan bajo demanda.
 - Members carga al abrir Share.
 - Los catálogos y localizadores usan `CacheService` durante tres minutos.
+- Importar desde Drive registra primero la fuente y la entrega a una cola del navegador; no espera a que termine el índice para cerrar el formulario.
+- La carga local usa bloques reanudables de 8 MB. La transferencia Drive → File Search conserva su offset y procesa hasta tres bloques por llamada con un presupuesto temporal.
+- Dos workers como máximo indexan fuentes en paralelo. Un `UserLock` serializa únicamente la creación del store para evitar stores duplicados.
+- El progreso de transferencia es exacto. La etapa de embeddings es indeterminada porque la operación remota solo informa pendiente/completa, no un porcentaje.
+- Al cargar Documents, fuentes `queued` o `uploading` se reanudan y fuentes `indexing` se verifican mediante polling no bloqueante.
 
 ## Sistema visual
 

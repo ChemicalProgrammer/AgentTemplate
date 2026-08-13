@@ -26,7 +26,7 @@
     <aside id="project-side-panel" class="project-side-panel" aria-label="Project navigation">
       <div class="side-panel-heading">
         <div><span class="side-panel-eyebrow">Project tools</span><strong>Workspace</strong></div>
-        <span class="side-panel-live"><i></i> Ready</span>
+        <div class="side-panel-window-actions"><span class="side-panel-live"><i></i> Ready</span><button id="toggle-chat-from-side" class="emoji-action-btn panel-visibility-btn" type="button" title="Collapse chat and expand this panel" aria-label="Collapse chat and expand project panel" aria-pressed="false">🗂️</button></div>
       </div>
       <div class="side-tabs" role="tablist" aria-label="Project sections">
         <button class="side-tab active" data-side-tab="chats" role="tab" aria-selected="true"><span aria-hidden="true">◫</span><b>Chats</b></button>
@@ -100,9 +100,9 @@
       </section>
     </aside>
 
-    <button id="project-panel-grip" class="panel-grip" type="button" role="separator" aria-orientation="vertical" aria-label="Resize project panel" aria-valuemin="260" aria-valuemax="720" tabindex="0"><span></span></button>
+    <button id="project-panel-grip" class="panel-grip" type="button" role="separator" aria-orientation="vertical" aria-label="Resize project panel" aria-valuemin="260" aria-valuemax="1200" tabindex="0"><span></span></button>
 
-    <section class="chat-panel" aria-label="Agent conversation">
+    <section id="chat-panel" class="chat-panel" aria-label="Agent conversation">
       <header class="chat-context-bar">
         <div class="chat-context-identity">
           <span id="chat-agent-mark" class="chat-agent-mark" aria-hidden="true">✦</span>
@@ -115,7 +115,7 @@
           <label class="chat-model-picker" title="Gemini model for this conversation"><span>Model</span><select id="chat-model-select" aria-label="Gemini model for this conversation"></select></label>
           <span class="chat-context-agent"><i class="gemini-mini-spark">✦</i><b id="chat-context-agent-name">Agent</b><small id="chat-context-agent-version">—</small></span>
           <span class="chat-context-sources"><i aria-hidden="true">▤</i><b id="chat-context-source-count">0</b> selected</span>
-          <span class="chat-context-actions"><button id="edit-current-conversation" class="emoji-action-btn" title="Modify the latest request in a new branch" aria-label="Modify conversation">✏️</button><button id="delete-current-conversation" class="emoji-action-btn danger" title="Delete this conversation" aria-label="Delete conversation">🗑️</button></span>
+          <span class="chat-context-actions"><button id="collapse-chat-panel" class="emoji-action-btn" title="Collapse chat and expand the project panel" aria-label="Collapse chat and expand project panel">🗂️</button><button id="edit-current-conversation" class="emoji-action-btn" title="Modify the latest request in a new branch" aria-label="Modify conversation">✏️</button><button id="delete-current-conversation" class="emoji-action-btn danger" title="Delete this conversation" aria-label="Delete conversation">🗑️</button></span>
         </div>
       </header>
       <div id="chat-scroll-region" class="chat-scroll-region">
@@ -147,7 +147,7 @@
       </div>
     </section>
 
-    <button id="document-viewer-grip" class="panel-grip viewer-grip hidden" type="button" role="separator" aria-orientation="vertical" aria-label="Resize document preview" aria-valuemin="320" aria-valuemax="900" tabindex="0"><span></span></button>
+    <button id="document-viewer-grip" class="panel-grip viewer-grip hidden" type="button" role="separator" aria-orientation="vertical" aria-label="Resize document preview" aria-valuemin="280" aria-valuemax="1200" tabindex="0"><span></span></button>
 
     <aside id="document-viewer" class="document-viewer hidden" aria-label="Document preview">
       <header class="document-viewer-header">
