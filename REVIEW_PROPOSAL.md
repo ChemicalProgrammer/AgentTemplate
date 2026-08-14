@@ -1,4 +1,4 @@
-# Propuesta de revisión — Agent Console 2.0.0-review.3
+# Propuesta de revisión — Agent Console 2.0.0-review.4
 
 ## Resultado propuesto
 
@@ -27,6 +27,13 @@ Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el
 
 ## Cambios incluidos en el prototipo
 
+- Las fuentes del agente permanecen en el release publicado y se referencian desde el proyecto; no se copian a `Project Sources`.
+- File Search del agente se reutiliza por usuario/llave y versión entre proyectos. Al abrir un proyecto se indexan automáticamente las fuentes heredadas faltantes, con prioridad para las obligatorias.
+- Una fuente binaria pendiente ya no invalida una consulta que también usa fuentes indexadas: se omite solo en esa respuesta, se registra una advertencia y el chat continúa.
+- Encabezados de los tres paneles alineados a 68 px, acciones redundantes retiradas del encabezado del chat y flechas direccionales para colapsar/restaurar.
+- Chips de fuentes con color por formato y contador trasladado a la zona inferior del chat.
+- Transición sutil al regresar a Home.
+
 - Workspace de tres paneles con mínimos funcionales y grips sin máximos fijos: el límite se calcula con el espacio disponible.
 - Colapso persistente del chat. Sin visor, Documents ocupa todo el workspace; con visor, el panel izquierdo y el preview comparten el espacio.
 - Acción 🗑️ en cada mensaje del usuario: rebobina el chat, elimina el tramo posterior y envía a la papelera las ramas que nacieron de ese tramo.
@@ -45,7 +52,7 @@ Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el
 - Acciones de ruta en el evento del artefacto.
 - Selector de modelo por chat, incluido File Search.
 - Eliminación de conversación conservada y ramificación nueva desde mensajes del usuario.
-- Botones visibles ✏️ y 🗑️ para modificar mediante una rama o eliminar la conversación actual.
+- Botones ✏️ y 🗑️ junto a los mensajes para ramificar o rebobinar desde un punto preciso; sin acciones redundantes en el encabezado.
 - Icono de copia más legible y copia por bloque de código.
 - Menús contextuales elevados y orientados automáticamente para no quedar debajo de otras tarjetas.
 - Vista de código cercada; no ejecuta código.
@@ -81,6 +88,9 @@ Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el
 - Eliminar un mensaje del usuario quita ese mensaje y lo posterior, elimina solo las ramas derivadas del tramo y deja el cursor listo para continuar.
 - Una fuente importada aparece antes de terminar su índice; su tarjeta informa carga, cola, transferencia, procesamiento, éxito o error.
 - La interfaz nunca presenta un porcentaje inventado durante la generación de embeddings.
+- Abrir un proyecto con conocimiento heredado sin índice inicia el trabajo automáticamente y no bloquea el primer mensaje.
+- Una advertencia de fuente pendiente nunca se presenta como evidencia leída por el modelo.
+- Los encabezados de Documents, chat y visor tienen la misma altura y los chips inferiores respetan el color del formato.
 
 ## Recomendación de despliegue
 

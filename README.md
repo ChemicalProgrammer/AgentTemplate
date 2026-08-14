@@ -1,10 +1,22 @@
 # Agent Console para Google Apps Script
 
-Versión de revisión 2.0.0-review.3.
+Versión de revisión 2.0.0-review.4.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
 
-## Qué cambia en 2.0.0-review.3
+## Qué cambia en 2.0.0-review.4
+
+- El proyecto referencia la copia inmutable de las fuentes del release del agente; no las duplica dentro de `Project Sources`.
+- El índice del conocimiento del agente se conserva por usuario, llave y versión, y se reutiliza entre todos los proyectos que cargan esa misma versión.
+- Al abrir un proyecto se inicia o continúa automáticamente la indexación de conocimiento heredado, primero las fuentes obligatorias y después las opcionales.
+- Una fuente binaria que todavía se indexa ya no bloquea una consulta combinada. Gemini responde con la evidencia disponible y el mensaje registra una advertencia de disponibilidad.
+- Los encabezados de Documents, chat y visor comparten una altura única de 68 px.
+- El encabezado del chat queda limitado al selector de modelo, identidad del agente y control de colapso; edición y borrado permanecen junto a cada mensaje o chat correspondiente.
+- Los controles de colapso usan flechas direccionales y el contador de contexto se trasladó junto a las tarjetas sobre el compositor.
+- Las tarjetas de contexto usan el color semántico del formato: PDF rojo, documentos azul, hojas verde, presentaciones naranja y demás tipos según su familia.
+- Regresar a la portada usa la misma animación sutil aplicada al resto de las transiciones de vista.
+
+## Base conservada de 2.0.0-review.3
 
 - Los tres paneles conservan anchos mínimos, pero los grips ya no usan máximos fijos: se adaptan al ancho disponible.
 - El chat puede colapsarse desde su encabezado o desde el panel izquierdo. Documents ocupa todo el workspace cuando no hay preview, y comparte el espacio con el visor cuando sí lo hay.
@@ -20,7 +32,7 @@ Consola web para construir agentes autocontenidos y versionados, y cargarlos den
 - Jerarquía unificada para todos los formatos: Project Sources es la raíz; un archivo generado queda en `max(level de parents) + 1` y, sin parents, comienza en Nivel 1.
 - Visor con animación de entrada/salida y grip persistente para distribuir el ancho entre chat y preview.
 - Exportación del documento visible a PDF con dos destinos: como documento generado del proyecto o en otra carpeta de Drive sin incorporarlo al grafo.
-- Controles visibles en el encabezado para modificar la última petición mediante una rama o eliminar el chat actual.
+- Controles por mensaje para ramificar una petición o rebobinar la conversación desde ese punto.
 - Acciones de copia, edición, exportación y eliminación con emojis coloridos.
 - Menús documentales elevados sobre las tarjetas y apertura automática hacia arriba cuando falta espacio inferior.
 
@@ -42,7 +54,7 @@ Consola web para construir agentes autocontenidos y versionados, y cargarlos den
 - Panel de herramientas y chat convertidos en superficies elevadas independientes, con mejor uso del espacio.
 - Pestañas segmentadas con iconos y estados activos derivados del color del proyecto.
 - Lista de conversaciones mediante tarjetas compactas, con franja de selección, elevación y acciones contextuales.
-- Barra contextual del chat con conversación, agente, versión y cantidad de recursos seleccionados.
+- Barra contextual del chat con conversación, agente y versión; el resumen de selección vive junto al compositor.
 - Estado vacío renovado con identidad del agente y sugerencias de consulta más informativas.
 - Mensajes, citas, compositor y controles de envío alineados con la identidad visual del proyecto.
 - Título del chat y contador de contexto sincronizados en tiempo real con el estado funcional.
@@ -211,6 +223,8 @@ Los límites se concentran en `ConfigService.gs`.
 - La eliminación normal usa la papelera de Drive.
 
 ## Versión
+
+`2.0.0-review.4` — reutiliza e indexa automáticamente conocimiento heredado, elimina el bloqueo de consultas mixtas y alinea encabezados, controles, chips y transiciones.
 
 `2.0.0-review.3` — agrega layout de tres paneles adaptable, colapso del chat, borrado desde mensajes con poda de ramas e indexación no bloqueante con progreso por tarjeta.
 

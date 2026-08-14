@@ -714,6 +714,7 @@ function listAgentKnowledgeNodesForProject_(project) {
       kind:'agent-source', origin:'agent', status:'active', level:-1, parentIds:[], note:source.relativePath || '',
       mandatory:Boolean(source.mandatory), locked:Boolean(source.mandatory), selectedByDefault:Boolean(source.mandatory),
       indexStatus:indexed.indexStatus || 'not_indexed', indexError:indexed.indexError || '', indexCheckError:indexed.indexCheckError || '', indexProgress:Number(indexed.indexProgress || 0),
+      indexStage:indexed.indexStage || '', indexUpdatedAt:indexed.indexUpdatedAt || '', indexedAt:indexed.indexedAt || '',
       agentId:resolved.agent.agentId, agentVersion:resolved.release.version,
       url:source.driveId ? 'https://drive.google.com/open?id=' + source.driveId : ''
     };
@@ -740,14 +741,16 @@ function getAgentFileSearchQueryConfig_(project, selectedSourceIds) {
   return ready.length ? {storeName:store.storeName, sourceIds:ready.map(function(source) { return source.sourceId; }), resolved:selection.resolved} : null;
 }
 
-function buildAgentSourceContext_(project, query, selectedSourceIds, excludedSourceIds) {
+function buildAgentSourceContext_(project, query, selectedSourceIds, excludedSourceIds, options) {
   var selection = getAgentKnowledgeSelection_(project, selectedSourceIds);
   excludedSourceIds = (excludedSourceIds || []).map(String);
   var sources = selection.sources.filter(function(source) { return excludedSourceIds.indexOf(source.sourceId) === -1; });
-  return buildStandaloneSourceContext_(sources, query, 'A');
+  return buildStandaloneSourceContext_(sources, query, 'A', options);
 }
 
-function buildStandaloneSourceContext_(sources, query, labelPrefix) {
+function buildStandaloneSourceContext_(sources, query, labelPrefix, options) {
+  options = options || {};
+  var allowInlineBinary = options.allowInlineBinary !== false;
   var queryTerms = tokenize_(query); var candidates = []; var inlineParts = []; var inlineBytes = 0; var used = []; var warnings = [];
   (sources || []).forEach(function(source, position) {
     try {
@@ -755,6 +758,8 @@ function buildStandaloneSourceContext_(sources, query, labelPrefix) {
       var label = labelPrefix + (position + 1);
       if (extracted.text) {
         chunkText_(extracted.text, 6000, 500).forEach(function(chunk, chunkIndex) { candidates.push({source:source,label:label,chunk:chunk,chunkIndex:chunkIndex,score:scoreChunk_((source.relativePath || '') + '\n' + chunk, queryTerms)}); });
+      } else if (extracted.inlineData && !allowInlineBinary) {
+        warnings.push(source.name + ': semantic indexing is still in progress, so this inherited binary source was not used in this response.');
       } else if (extracted.inlineData && inlineBytes + extracted.byteLength <= APP.MAX_INLINE_BYTES) {
         inlineParts.push({text:'[' + label + '] Agent knowledge: ' + source.name}); inlineParts.push({inlineData:extracted.inlineData}); inlineBytes += extracted.byteLength;
         used.push({sourceId:'agent-source:' + source.sourceId,label:label,name:source.name,mimeType:source.mimeType,kind:'agent-source'});
@@ -778,6 +783,17 @@ function syncAgentKnowledgeIndexForProject_(project) {
   var resolved = getProjectAgentRelease_(project);
   if (!resolved) return {sources:[],processed:0,remaining:0};
   return syncAgentKnowledgeIndex_(resolved.agent, resolved.release, true);
+}
+
+function indexProjectAgentSource(projectId, sourceId, restart) {
+  var access = assertProjectEdit_(projectId, 'sources');
+  var resolved = getProjectAgentRelease_(access.project);
+  if (!resolved) throw new Error('The project agent is unavailable.');
+  var source = (resolved.release.knowledgeSources || []).filter(function(item) {
+    return item.sourceId === sourceId && item.status === 'active';
+  })[0];
+  if (!source) throw new Error('Inherited agent source not found.');
+  return indexSourceForCurrentUser_(agentRuntimeProject_(resolved.agent, resolved.release), source, restart !== false);
 }
 
 function syncAgentKnowledgeIndex_(agent, release, forceFailed) {

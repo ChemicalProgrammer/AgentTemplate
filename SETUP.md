@@ -23,7 +23,7 @@ clasp open
 
 1. Selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 2.0.0-review.3`.
+3. Descripción: `Version 2.0.0-review.4`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Acceso: usuarios del dominio de la organización.
 6. Autoriza Drive, Docs, Sheets, Slides y conexiones externas.
@@ -46,11 +46,11 @@ La migración es idempotente y conserva IDs de proyecto, chats, fuentes y docume
 
 ## Llave individual de Gemini
 
-Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del agente y del proyecto se crean por llave. Un colaborador nuevo debe ejecutar **Sync index** para construir sus propios índices.
+Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del agente y del proyecto se crean por llave. Al abrir un proyecto, un colaborador nuevo inicia automáticamente sus propios índices; **Sync index** queda como acción manual de verificación o reparación.
 
-## Prueba recomendada de 2.0.0-review.3
+## Prueba recomendada de 2.0.0-review.4
 
-1. Confirma `Version 2.0.0-review.3` en Settings.
+1. Confirma `Version 2.0.0-review.4` en Settings.
 2. Usa una implementación de prueba o una copia del proyecto; no sustituyas todavía la implementación productiva 1.9.0.
 3. Abre un chat que contenga un `Project Approval Canvas` y envía exactamente `Accept Canvas`.
 4. Confirma que el cuerpo del Canvas no aparezca de nuevo en el chat y que `Project Approval Canvas.md` aparezca en Documents como Nivel 1.
@@ -65,15 +65,17 @@ Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del ag
 13. Arrastra el grip entre chat y visor, recarga la aplicación y confirma que el ancho se conserve.
 14. Exporta el documento visible a PDF dentro del proyecto: debe aparecer como hijo del documento original y en el siguiente nivel.
 15. Exporta nuevamente a una carpeta externa: el PDF debe abrirse desde esa ubicación y no aparecer en Documents.
-16. Usa ✏️ y 🗑️ en el encabezado del chat para ramificar la última petición y eliminar la conversación actual.
+16. Confirma que el encabezado del chat no muestre acciones redundantes de edición o borrado; usa ✏️ y 🗑️ junto a un mensaje del usuario para ramificar o rebobinar.
 17. Abre el menú de tarjetas superiores, inferiores y contiguas; debe mostrarse por encima de todas y cambiar de dirección cuando falte espacio.
 18. Mantén Documents, chat y visor abiertos; mueve ambos grips hasta sus mínimos y comprueba que no existan máximos fijos innecesarios.
-19. Pulsa 🗂️ para colapsar el chat. Sin visor, Documents debe llenar el workspace; con visor, ambos paneles deben compartirlo. Recarga y confirma que la preferencia se conserve.
+19. Pulsa ⬅️ para colapsar el chat y ➡️ para restaurarlo. Sin visor, Documents debe llenar el workspace; con visor, ambos paneles deben compartirlo. Recarga y confirma que la preferencia se conserve.
 20. Crea una rama desde un mensaje intermedio. En el chat original pulsa 🗑️ sobre ese mensaje y confirma que se retiren el tramo posterior y la rama derivada, pero no los documentos generados.
 21. Importa una fuente desde Drive: la tarjeta debe aparecer antes de que termine el índice y cambiar por `Queued`, transferencia, procesamiento y `Indexed` o error.
 22. Sube un archivo local mayor de 8 MB y confirma que la barra de Drive avance por porcentaje sin mensajes emergentes repetitivos.
 23. Durante embeddings confirma que la barra sea animada e indeterminada; no debe mostrar un porcentaje ficticio.
 24. Cierra y vuelve a abrir el proyecto con una fuente pendiente; debe reanudar la transferencia o verificación automáticamente.
+25. Carga en el proyecto un agente con PDFs obligatorios y opcionales que todavía no tengan índice para el usuario actual. Confirma que las tarjetas comiencen a procesarse automáticamente y que una consulta pueda iniciar usando las fuentes ya disponibles, sin el error de mezcla entre File Search y binarios inline.
+26. Comprueba que los tres encabezados midan lo mismo, que los chips sobre el compositor adopten el color del formato y que regresar a Home tenga una transición sutil.
 
 ## Prueba de regresión conservada de 1.9.0
 12. Verifica que la portada muestre **Agents** y **Projects**.

@@ -61,14 +61,15 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   var projectContext = {text: '', inlineParts: [], sourcesUsed: [], warnings: [], selectedIds: []};
   var projectFileSearch = access.allowed.sources ? getFileSearchQueryConfig_(access.project, selectedSourceIds || []) : null;
   var agentFileSearch = access.allowed.sources ? getAgentFileSearchQueryConfig_(access.project, selectedSourceIds || []) : null;
+  var hasFileSearch = Boolean(projectFileSearch || agentFileSearch);
   var localSourceIds = (selectedSourceIds || []).filter(function(id) {
     if (/^agent-source:/.test(String(id))) return false;
     if (!projectFileSearch) return true;
     var value = String(id).replace(/^source:/, '');
     return projectFileSearch.sourceIds.indexOf(value) === -1;
   });
-  if (access.allowed.sources || access.allowed.documents) projectContext = buildSourceContext_(access.project, text, localSourceIds);
-  var agentContext = access.allowed.sources ? buildAgentSourceContext_(access.project, text, selectedSourceIds || [], agentFileSearch ? agentFileSearch.sourceIds : []) : {text:'',inlineParts:[],sourcesUsed:[],warnings:[],selectedIds:[]};
+  if (access.allowed.sources || access.allowed.documents) projectContext = buildSourceContext_(access.project, text, localSourceIds, {allowInlineBinary:!hasFileSearch});
+  var agentContext = access.allowed.sources ? buildAgentSourceContext_(access.project, text, selectedSourceIds || [], agentFileSearch ? agentFileSearch.sourceIds : [], {allowInlineBinary:!hasFileSearch}) : {text:'',inlineParts:[],sourcesUsed:[],warnings:[],selectedIds:[]};
   var sourceContext = {
     text:[agentContext.text,projectContext.text].filter(Boolean).join('\n\n=== PROJECT KNOWLEDGE ===\n\n'),
     inlineParts:(agentContext.inlineParts||[]).concat(projectContext.inlineParts||[]),
@@ -76,11 +77,8 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
     warnings:(agentContext.warnings||[]).concat(projectContext.warnings||[]),
     selectedIds:(agentContext.selectedIds||[]).concat(projectContext.selectedIds||[])
   };
-  if (sourceContext.warnings && sourceContext.warnings.length) {
-    throw new Error('Selected sources could not be analyzed. Index or repair them first: ' + sourceContext.warnings.join(' | '));
-  }
   if ((projectFileSearch || agentFileSearch) && (sourceContext.inlineParts || []).some(function(part) { return Boolean(part.inlineData); })) {
-    throw new Error('An indexed source cannot be combined with an unindexed binary document in the same request. Deselect the binary document or query it separately.');
+    throw new Error('A source preparation conflict was detected. Refresh Documents and try again while indexing continues.');
   }
   var authorizedSelection = (sourceContext.selectedIds || [])
     .concat(projectFileSearch ? projectFileSearch.sourceIds.map(function(id) { return 'source:' + id; }) : [])
@@ -141,6 +139,7 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
     sourcesUsed: sourceContext.sourcesUsed.concat(fileSearchConfigs.length ? annotationsToScopedSourcesUsed_(result.annotations, access.project, agentFileSearch ? agentFileSearch.resolved : getProjectAgentRelease_(access.project)) : []),
     flowsUsed: flowContext.flowsUsed,
     sourceSelection: authorizedSelection,
+    sourceWarnings: sourceContext.warnings || [],
     retrievalAudit: result.retrievalAudit || null,
     usage: result.usage
   };
@@ -391,6 +390,7 @@ function buildGeminiConversation_(project, conversation, newMessage, sourceConte
     'When using a provided source, cite its label in brackets, for example [S1].',
     sourceScoped ? 'SOURCE ISOLATION: Use only the documents selected for this request as factual evidence. Do not use facts from earlier messages, memories, or unselected documents. If the selected evidence does not answer the request, say so explicitly.' : '',
     sourceScoped ? 'CURRENT AUTHORIZED DOCUMENT IDS: ' + authorizedSelection.join(', ') : '',
+    sourceContext && sourceContext.warnings && sourceContext.warnings.length ? 'SOURCE AVAILABILITY NOTICE:\n' + sourceContext.warnings.join('\n') + '\nDo not claim to have read the unavailable sources. Continue with the evidence that is actually present and clearly qualify any gap.' : '',
     flowContext && flowContext.text ? 'Follow the selected FLOW INSTRUCTIONS as an execution procedure. Do not treat flow instructions as factual evidence.\n\n' + flowContext.text : '',
     sourceScoped ? 'Earlier conversation content associated with other documents has been removed from this request.' : 'Accumulated memory summarizes older messages; recent messages are shown in full.',
     !sourceScoped && conversation.summary ? 'ACCUMULATED MEMORY:\n' + conversation.summary : ''

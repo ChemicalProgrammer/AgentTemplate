@@ -178,10 +178,6 @@
     document.getElementById('export-document-pdf').addEventListener('click', openDocumentPdfExport);
     document.getElementById('pdf-export-form').addEventListener('submit', submitDocumentPdfExport);
     document.querySelectorAll('input[name="pdf-export-destination"]').forEach(input => input.addEventListener('change', syncPdfExportDestination));
-    document.getElementById('edit-current-conversation').addEventListener('click', editCurrentConversation);
-    document.getElementById('delete-current-conversation').addEventListener('click', event => {
-      if (state.currentConversationId) deleteChat(state.currentConversationId, event.currentTarget);
-    });
     document.querySelectorAll('[data-preview-mode]').forEach(button => button.addEventListener('click', () => setDocumentPreviewMode(button.dataset.previewMode)));
     document.getElementById('branch-message-form').addEventListener('submit', submitConversationBranch);
     document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => {
@@ -253,10 +249,12 @@
     if (state.activeRequest) stopResponse();
     state.projectLoadToken++;
     state.currentProjectId = null; state.projectDetails = null; state.currentAgentId = null; state.currentAgentDetails = null;
-    hideWorkspaceViews_(); document.getElementById('home-view').classList.remove('hidden');
+    hideWorkspaceViews_();
+    const home = document.getElementById('home-view'); home.classList.remove('hidden'); home.classList.add('view-entering');
     setWorkspaceMode('home');
     document.getElementById('home-agent-count').textContent = state.agents.length;
     document.getElementById('home-project-count').textContent = state.projects.length;
+    setTimeout(() => home.classList.remove('view-entering'), 360);
   }
 
   function showAgents() {
@@ -712,10 +710,11 @@
       state.panelLoaded.documents = true;
       applyCurrentConversationSelections_();
       syncProjectSummary(state.projectDetails); renderDocumentGraph();
-      const projectSources = state.documentNodes.filter(node => node.kind === 'source');
+      const indexableSources = state.documentNodes.filter(node => node.kind === 'source' || node.kind === 'agent-source');
       if (state.projectDetails.permissions.edit) {
-        queueSourceIndexes_(projectSources.filter(node => node.indexStatus === 'queued' || node.indexStatus === 'uploading').map(node => node.sourceId));
-        projectSources.filter(node => node.indexStatus === 'indexing').forEach(node => scheduleSourceIndexPoll_(node.sourceId, 1800));
+        const queued = indexableSources.filter(node => ['queued','uploading','not_indexed'].includes(node.indexStatus)).sort((a,b) => Number(Boolean(b.mandatory)) - Number(Boolean(a.mandatory)));
+        queueSourceIndexes_(queued.map(node => node.nodeId));
+        indexableSources.filter(node => node.indexStatus === 'indexing').forEach(node => scheduleSourceIndexPoll_(node.nodeId, 1800));
       }
       server('cleanupProjectFileSearchOrphans', projectId).then(result => {
         if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
@@ -856,9 +855,6 @@
     document.getElementById('chat-conversation-title').textContent = conversationTitle;
     document.getElementById('chat-context-agent-name').textContent = agent.name || 'Agent';
     document.getElementById('chat-context-agent-version').textContent = agent.version ? `v${agent.version}` : '—';
-    const canManageConversation = Boolean(state.projectDetails.permissions.edit && state.currentConversationId);
-    document.getElementById('edit-current-conversation').disabled = !canManageConversation;
-    document.getElementById('delete-current-conversation').disabled = !canManageConversation;
     const identityStyle = projectColorStyle(agent.color || 'violet');
     ['chat-agent-mark','chat-empty-agent-mark'].forEach(id => {
       const mark = document.getElementById(id);
@@ -1188,7 +1184,7 @@
         request.phase = 'complete';
         await refreshDocumentGraph();
         await openDocumentPreview(result.assistantMessage.artifact.nodeId);
-        showToast(`${result.assistantMessage.artifact.name} saved as a project artifact.`);
+        showToast(`${result.assistantMessage.artifact.name} saved as a project artifact.${(result.assistantMessage.sourceWarnings || []).length ? ` ${result.assistantMessage.sourceWarnings.length} selected source${result.assistantMessage.sourceWarnings.length === 1 ? ' was' : 's were'} unavailable for this response.` : ''}`);
         return;
       }
       const completed = await typeAssistantResponse(assistantMessage, result.assistantMessage.text, request);
@@ -1197,6 +1193,9 @@
         const stoppedText = request.displayedText.trim() || '[Response stopped]'; assistantMessage.text = stoppedText;
         try { await server('truncateAssistantMessage', state.currentProjectId, state.currentConversationId, assistantMessage.messageId, stoppedText); } catch (_) {}
         showToast('Response stopped.');
+      }
+      if (completed && (result.assistantMessage.sourceWarnings || []).length) {
+        showToast(`Response completed; ${result.assistantMessage.sourceWarnings.length} selected source${result.assistantMessage.sourceWarnings.length === 1 ? ' was' : 's were'} unavailable while indexing continues.`);
       }
       renderConversationList(); renderMessages();
     } catch (error) {
@@ -1509,10 +1508,9 @@
   function renderSourceChips() {
     const selected = state.documentNodes.filter(node => state.selectedSources.has(node.nodeId));
     const flows = state.projectDetails ? (state.projectDetails.flows || []).filter(flow => state.selectedFlows.has(flow.flowId)) : [];
-    const items = selected.map(node => ({tab:'documents', icon:fileTypeIcon(node.mimeType,node.name), name:node.name})).concat(flows.map(flow => ({tab:'flows',icon:'⇄',name:flow.name})));
-    const contextCount = document.getElementById('chat-context-source-count');
-    if (contextCount) contextCount.textContent = numberValue(items.length);
-    document.getElementById('active-source-chips').innerHTML = items.slice(0, 5).map(item => `<button class="source-chip" data-chip-tab="${item.tab}" title="Open ${item.tab} panel">${item.icon} ${escapeHtml(item.name)}</button>`).join('') + (items.length > 5 ? `<button class="source-chip">+${items.length - 5}</button>` : '');
+    const items = selected.map(node => ({tab:'documents', icon:fileTypeIcon(node.mimeType,node.name), name:node.name, typeClass:fileTypeClass(node.mimeType,node.name)})).concat(flows.map(flow => ({tab:'flows',icon:'⇄',name:flow.name,typeClass:'type-flow'})));
+    const countLabel = selected.length ? `<span class="source-chip-count">${numberValue(selected.length)} ${selected.length === 1 ? 'source' : 'sources'}${flows.length ? ` · ${numberValue(flows.length)} ${flows.length === 1 ? 'flow' : 'flows'}` : ''}</span>` : flows.length ? `<span class="source-chip-count">${numberValue(flows.length)} ${flows.length === 1 ? 'flow' : 'flows'}</span>` : '';
+    document.getElementById('active-source-chips').innerHTML = items.slice(0, 5).map(item => `<button class="source-chip ${item.typeClass}" data-chip-tab="${item.tab}" title="Open ${item.tab} panel">${item.icon} ${escapeHtml(item.name)}</button>`).join('') + (items.length > 5 ? `<button class="source-chip source-chip-overflow">+${items.length - 5}</button>` : '') + countLabel;
     document.querySelectorAll('#active-source-chips [data-chip-tab]').forEach(chip => chip.addEventListener('click', () => showSideTab(chip.dataset.chipTab)));
   }
 
@@ -1668,14 +1666,23 @@
     finally { setBusy(button, false); }
   }
 
-  async function continueSingleSourceIndex(sourceId, restart) {
-    let result = await server('indexProjectSource', state.currentProjectId, sourceId, restart);
-    applySourceIndexState_(sourceId, result);
+  function resolveIndexNode_(sourceRef) {
+    if (sourceRef && typeof sourceRef === 'object') return sourceRef;
+    const value = String(sourceRef || '');
+    return state.documentNodes.find(item => item.nodeId === value) || state.documentNodes.find(item => item.kind === 'source' && item.sourceId === value) || state.documentNodes.find(item => item.sourceId === value);
+  }
+
+  async function continueSingleSourceIndex(sourceRef, restart) {
+    const node = resolveIndexNode_(sourceRef);
+    if (!node || !['source','agent-source'].includes(node.kind)) throw new Error('The source is no longer available.');
+    const endpoint = node.kind === 'agent-source' ? 'indexProjectAgentSource' : 'indexProjectSource';
+    let result = await server(endpoint, state.currentProjectId, node.sourceId, restart);
+    applySourceIndexState_(node.nodeId, result);
     for (let pass = 0; result.indexStatus === 'uploading' && pass < 16; pass++) {
-      result = await server('indexProjectSource', state.currentProjectId, sourceId, false);
-      applySourceIndexState_(sourceId, result);
+      result = await server(endpoint, state.currentProjectId, node.sourceId, false);
+      applySourceIndexState_(node.nodeId, result);
     }
-    if (result.indexStatus === 'indexing') scheduleSourceIndexPoll_(sourceId);
+    if (result.indexStatus === 'indexing') scheduleSourceIndexPoll_(node.nodeId);
     return result;
   }
 
@@ -1708,8 +1715,8 @@
 
   function applySourceIndexResults_(results) { (results || []).forEach(result => applySourceIndexState_(result.sourceId, result, false)); renderDocumentGraph(); }
 
-  function applySourceIndexState_(sourceId, result, rerender = true) {
-    const node = state.documentNodes.find(item => item.sourceId === sourceId);
+  function applySourceIndexState_(sourceRef, result, rerender = true) {
+    const node = resolveIndexNode_(sourceRef);
     if (!node || !result) return;
     node.indexStatus = result.indexStatus || node.indexStatus;
     node.indexStage = result.indexStage || '';
@@ -1719,47 +1726,50 @@
     node.indexUpdatedAt = result.indexUpdatedAt || node.indexUpdatedAt || '';
     node.indexedAt = result.indexedAt || node.indexedAt || '';
     if (!['queued','uploading','indexing'].includes(node.indexStatus)) {
-      const timer = state.sourceIndexTimers.get(sourceId); if (timer) clearTimeout(timer);
-      state.sourceIndexTimers.delete(sourceId);
+      const timer = state.sourceIndexTimers.get(node.nodeId); if (timer) clearTimeout(timer);
+      state.sourceIndexTimers.delete(node.nodeId);
     }
     if (rerender) renderDocumentGraph();
   }
 
-  function queueSourceIndexes_(sourceIds) {
-    const queue = [...new Set((sourceIds || []).filter(Boolean))].filter(sourceId => !state.activeIndexSources.has(sourceId) && !state.sourceIndexTimers.has(sourceId));
+  function queueSourceIndexes_(sourceRefs) {
+    const queue = [...new Set((sourceRefs || []).map(sourceRef => resolveIndexNode_(sourceRef)).filter(Boolean).map(node => node.nodeId))].filter(sourceRef => !state.activeIndexSources.has(sourceRef) && !state.sourceIndexTimers.has(sourceRef));
     const projectId = state.currentProjectId;
     const workerCount = Math.min(2, queue.length);
     const worker = async () => {
-      const sourceId = queue.shift(); if (!sourceId || state.currentProjectId !== projectId) return;
-      state.activeIndexSources.add(sourceId);
-      try { await continueSingleSourceIndex(sourceId, false); }
+      const sourceRef = queue.shift(); if (!sourceRef || state.currentProjectId !== projectId) return;
+      state.activeIndexSources.add(sourceRef);
+      try { await continueSingleSourceIndex(sourceRef, false); }
       catch (error) {
-        const node = state.documentNodes.find(item => item.sourceId === sourceId);
+        const node = resolveIndexNode_(sourceRef);
         if (node) { node.indexStatus = 'failed'; node.indexError = error.message; renderDocumentGraph(); }
       } finally {
-        state.activeIndexSources.delete(sourceId);
+        state.activeIndexSources.delete(sourceRef);
         if (queue.length) worker();
       }
     };
     for (let index = 0; index < workerCount; index++) worker();
   }
 
-  function scheduleSourceIndexPoll_(sourceId, delay = 3500) {
-    const previous = state.sourceIndexTimers.get(sourceId); if (previous) clearTimeout(previous);
+  function scheduleSourceIndexPoll_(sourceRef, delay = 3500) {
+    const node = resolveIndexNode_(sourceRef); if (!node) return;
+    const key = node.nodeId;
+    const previous = state.sourceIndexTimers.get(key); if (previous) clearTimeout(previous);
     const projectId = state.currentProjectId;
     const timer = setTimeout(async () => {
-      state.sourceIndexTimers.delete(sourceId);
+      state.sourceIndexTimers.delete(key);
       if (state.currentProjectId !== projectId) return;
       try {
-        const result = await server('indexProjectSource', projectId, sourceId, false);
-        applySourceIndexState_(sourceId, result);
-        if (result.indexStatus === 'indexing' || result.indexStatus === 'uploading') scheduleSourceIndexPoll_(sourceId, 4000);
+        const endpoint = node.kind === 'agent-source' ? 'indexProjectAgentSource' : 'indexProjectSource';
+        const result = await server(endpoint, projectId, node.sourceId, false);
+        applySourceIndexState_(key, result);
+        if (result.indexStatus === 'indexing' || result.indexStatus === 'uploading') scheduleSourceIndexPoll_(key, 4000);
       } catch (error) {
-        const node = state.documentNodes.find(item => item.sourceId === sourceId);
-        if (node) { node.indexStatus = 'unknown'; node.indexCheckError = error.message; renderDocumentGraph(); }
+        const currentNode = resolveIndexNode_(key);
+        if (currentNode) { currentNode.indexStatus = 'unknown'; currentNode.indexCheckError = error.message; renderDocumentGraph(); }
       }
     }, delay);
-    state.sourceIndexTimers.set(sourceId, timer);
+    state.sourceIndexTimers.set(key, timer);
   }
 
   function clearSourceIndexActivity_() {
@@ -1939,8 +1949,8 @@
     setBusy(button, true);
     try {
       if (node.kind === 'source') {
-        const timer = state.sourceIndexTimers.get(node.sourceId); if (timer) clearTimeout(timer);
-        state.sourceIndexTimers.delete(node.sourceId); state.activeIndexSources.delete(node.sourceId);
+        const timer = state.sourceIndexTimers.get(node.nodeId); if (timer) clearTimeout(timer);
+        state.sourceIndexTimers.delete(node.nodeId); state.activeIndexSources.delete(node.nodeId);
       }
       const result = node.kind === 'source'
         ? await server('removeSource', state.currentProjectId, node.sourceId)
@@ -2227,7 +2237,7 @@
     document.getElementById('chat-panel').setAttribute('aria-hidden', String(state.chatCollapsed));
     const sideButton = document.getElementById('toggle-chat-from-side');
     if (sideButton) {
-      sideButton.textContent = state.chatCollapsed ? '💬' : '🗂️';
+      sideButton.textContent = state.chatCollapsed ? '➡️' : '⬅️';
       sideButton.title = state.chatCollapsed ? 'Restore chat panel' : 'Collapse chat and expand this panel';
       sideButton.setAttribute('aria-label', sideButton.title);
       sideButton.setAttribute('aria-pressed', String(state.chatCollapsed));

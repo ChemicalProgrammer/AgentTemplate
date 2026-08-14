@@ -234,7 +234,9 @@ function writeSourceIndex_(project, index) {
   writeJsonFile_(DriveApp.getFolderById(project.folders.sources), SOURCE_INDEX_FILE, index);
 }
 
-function buildSourceContext_(project, query, selectedSourceIds) {
+function buildSourceContext_(project, query, selectedSourceIds, options) {
+  options = options || {};
+  var allowInlineBinary = options.allowInlineBinary !== false;
   var requested = selectedSourceIds == null ? null : selectedSourceIds.map(String);
   if (requested && !requested.length) return {text: '', inlineParts: [], sourcesUsed: [], warnings: [], selectedIds: []};
   var selected = getDocumentContextRecords_(project).filter(function(source) {
@@ -258,6 +260,8 @@ function buildSourceContext_(project, query, selectedSourceIds) {
         chunkText_(extracted.text, 6000, 500).forEach(function(chunk, chunkIndex) {
           candidates.push({source: source, label: label, chunk: chunk, chunkIndex: chunkIndex, score: scoreChunk_((source.note || '') + '\n' + chunk, queryTerms)});
         });
+      } else if (extracted.inlineData && !allowInlineBinary) {
+        warnings.push(source.name + ': semantic indexing is still in progress, so this binary source was not used in this response.');
       } else if (extracted.inlineData && inlineBytes + extracted.byteLength <= APP.MAX_INLINE_BYTES) {
         inlineParts.push({text: '[' + label + '] Binary file: ' + source.name + (source.note ? '\nDocument note: ' + source.note : '')});
         inlineParts.push({inlineData: extracted.inlineData});

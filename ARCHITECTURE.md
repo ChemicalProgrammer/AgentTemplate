@@ -1,6 +1,6 @@
 # Arquitectura técnica
 
-Versión de referencia: 2.0.0-review.3.
+Versión de referencia: 2.0.0-review.4.
 
 ## Modelo de la consola
 
@@ -116,6 +116,10 @@ Cada usuario y llave API mantiene almacenes independientes:
 Agent {agentId} {version}  -> File Search Store del agente
 Project {projectId}       -> File Search Store del proyecto
 ```
+
+El proyecto no copia el conocimiento del agente. Sus tarjetas `agent-source:*` son referencias de solo lectura a los archivos de la versión publicada. Para una misma combinación de usuario, llave y `agentId@version`, todos los proyectos reutilizan el mismo File Search Store del agente. Un usuario nuevo no hereda los embeddings creados con la llave de otro usuario: al abrir el proyecto, la consola crea o reanuda su propio índice en segundo plano, priorizando las fuentes obligatorias y continuando después con las opcionales.
+
+Durante esa preparación, una fuente binaria aún no indexada se omite únicamente de la petición actual si la consulta ya utiliza File Search. La conversación continúa con las fuentes listas y los contextos de texto disponibles; el sistema registra `sourceWarnings` y prohíbe al modelo afirmar que leyó el archivo pendiente. De esta forma una transición de índice no bloquea todo el chat ni mezcla en una misma solicitud un binario inline con File Search.
 
 Una consulta puede incluir únicamente:
 
