@@ -14,21 +14,25 @@ function include(filename) {
 
 function getBootstrap() {
   var identity = getCurrentIdentity_();
-  var config = getPublicConfig_();
+  var config = getPublicConfig_(true);
   var initialized = Boolean(config.rootFolderId && config.organizationDomain);
-  if (initialized) {
-    assertOrganizationMember_();
-    ensureConsoleStructure_(getRootFolder_(), false);
-  }
+  if (initialized) assertOrganizationMember_();
 
   return {
     initialized: initialized,
     identity: identity,
     config: config,
-    projects: initialized ? listProjects() : [],
-    agents: initialized ? listAgents() : [],
+    projects: [],
+    agents: [],
+    catalogsDeferred: initialized,
     userSettings: getPublicUserGeminiSettings_()
   };
+}
+
+function getInitialCatalogs() {
+  assertOrganizationMember_();
+  ensureConsoleStructure_(getRootFolder_(), false);
+  return {projects:listProjects(),agents:listAgents(),loadedAt:nowIso_()};
 }
 
 function getCurrentIdentity_() {

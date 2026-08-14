@@ -21,6 +21,7 @@
     bootstrap: null,
     projects: [],
     agents: [],
+    catalogsLoading: false,
     agentSearch: '',
     currentAgentId: null,
     currentAgentDetails: null,
@@ -89,26 +90,56 @@
     });
   }
 
+  function withTimeout_(promise, milliseconds, message) {
+    let timer = null;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message || 'The request took too long.')), milliseconds); })
+    ]).finally(() => { if (timer) clearTimeout(timer); });
+  }
+
   async function startApp() {
+    const boot = window.__BOOT_UI__;
     try {
-      const data = await server('getBootstrap');
+      if (boot) boot.setStatus('Checking your workspace configuration…','Your projects are not being modified.');
+      const data = await withTimeout_(server('getBootstrap'), 20000, 'The initial Apps Script request did not answer within 20 seconds.');
       state.bootstrap = data;
       state.currentChatModel = (data.userSettings || {}).model || '';
-      document.getElementById('boot-loader').classList.add('hidden');
       if (!data.initialized) {
         document.getElementById('setup-screen').classList.remove('hidden');
         if (data.identity.email.includes('@')) document.getElementById('setup-domain').value = data.identity.email.split('@')[1];
+        if (boot) boot.complete(); else document.getElementById('boot-loader').classList.add('hidden');
         return;
       }
       state.projects = data.projects || [];
       state.agents = data.agents || [];
+      state.catalogsLoading = Boolean(data.catalogsDeferred);
       document.getElementById('app-shell').classList.remove('hidden');
       setWorkspaceMode('home');
       applyIdentity();
       showHome();
+      if (boot) { boot.setStatus('Opening Agent Console…','Project and agent cards will synchronize in the background.'); boot.complete(); }
+      else document.getElementById('boot-loader').classList.add('hidden');
+      if (data.catalogsDeferred) loadInitialCatalogs_();
     } catch (error) {
-      document.getElementById('boot-loader').classList.add('hidden');
-      showToast(error.message, true);
+      if (boot) boot.fail('The startup request could not be completed.', error.message);
+      else { document.getElementById('boot-loader').classList.add('hidden'); showToast(error.message, true); }
+    }
+  }
+
+  async function loadInitialCatalogs_() {
+    state.catalogsLoading = true; updateHomeCounts_();
+    if (!document.getElementById('agents-view').classList.contains('hidden')) renderAgents();
+    if (!document.getElementById('dashboard-view').classList.contains('hidden')) renderProjects();
+    try {
+      const data = await withTimeout_(server('getInitialCatalogs'), 60000, 'Drive did not finish synchronizing the Agents and Projects catalogs within 60 seconds.');
+      state.projects = data.projects || []; state.agents = data.agents || []; state.lastProjectRefresh = Date.now();
+    } catch (error) {
+      showToast('The console opened, but its catalogs could not be synchronized: ' + error.message, true);
+    } finally {
+      state.catalogsLoading = false; updateHomeCounts_();
+      if (!document.getElementById('agents-view').classList.contains('hidden')) renderAgents();
+      if (!document.getElementById('dashboard-view').classList.contains('hidden')) renderProjects();
     }
   }
 
@@ -241,7 +272,8 @@
       state.agents = state.bootstrap.agents || [];
       document.getElementById('setup-screen').classList.add('hidden');
       document.getElementById('app-shell').classList.remove('hidden');
-      setWorkspaceMode('home'); applyIdentity(); showHome(); showToast('Application configured.');
+      state.catalogsLoading = Boolean(state.bootstrap.catalogsDeferred);
+      setWorkspaceMode('home'); applyIdentity(); showHome(); if (state.catalogsLoading) loadInitialCatalogs_(); showToast('Application configured.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
@@ -257,8 +289,7 @@
     hideWorkspaceViews_();
     const home = document.getElementById('home-view'); home.classList.remove('hidden'); home.classList.add('view-entering');
     setWorkspaceMode('home');
-    document.getElementById('home-agent-count').textContent = state.agents.length;
-    document.getElementById('home-project-count').textContent = state.projects.length;
+    updateHomeCounts_();
     setTimeout(() => home.classList.remove('view-entering'), 360);
   }
 
@@ -270,6 +301,7 @@
   function renderAgents() {
     const agents = state.agents.filter(agent => !state.agentSearch || `${agent.name} ${agent.description} ${agent.owner}`.toLowerCase().includes(state.agentSearch));
     const grid = document.getElementById('agent-grid');
+    if (state.catalogsLoading) { grid.innerHTML = catalogSkeletonMarkup_(4); document.getElementById('empty-agents').classList.add('hidden'); return; }
     grid.innerHTML = agents.map((agent, index) => `<article class="entity-card agent-card" style="--card-index:${index};${projectColorStyle(agent.color)}" data-agent-id="${escapeHtml(agent.agentId)}" tabindex="0">
       <div class="entity-card-accent"></div>
       <div class="entity-card-top">${identityMarkHtml_(agent, 'agent-avatar')}<span class="entity-card-tools"><span class="card-drag-handle" draggable="true" title="Drag to reorder" aria-label="Drag to reorder agent">⠿</span><span class="status-pill ${escapeHtml(agent.status)}">${escapeHtml(agent.status || 'draft')}</span></span></div>
@@ -458,8 +490,12 @@
   }
 
   function updateHomeCounts_() {
-    document.getElementById('home-agent-count').textContent = state.agents.length;
-    document.getElementById('home-project-count').textContent = state.projects.length;
+    document.getElementById('home-agent-count').textContent = state.catalogsLoading ? '…' : state.agents.length;
+    document.getElementById('home-project-count').textContent = state.catalogsLoading ? '…' : state.projects.length;
+  }
+
+  function catalogSkeletonMarkup_(count) {
+    return Array.from({length:count || 4},(_,index) => `<article class="entity-card catalog-skeleton" style="--card-index:${index}"><span class="skeleton-mark"></span><span class="skeleton-line wide"></span><span class="skeleton-line"></span><span class="skeleton-line short"></span></article>`).join('');
   }
 
   function publishedAgents_() { return state.agents.filter(agent => Boolean(agent.publishedVersion)); }
@@ -476,6 +512,7 @@
 
   function renderProjects() {
     const grid = document.getElementById('project-grid');
+    if (state.catalogsLoading) { grid.innerHTML = catalogSkeletonMarkup_(6); document.getElementById('empty-projects').classList.add('hidden'); return; }
     const projects = state.projects.filter(project => {
       const matchesText = !state.search || `${project.title} ${project.description} ${project.owner}`.toLowerCase().includes(state.search);
       const matchesFilter = state.dashboardFilter === 'favorite' ? project.favorite : state.dashboardFilter === 'all' || project.status === state.dashboardFilter;
@@ -627,6 +664,7 @@
   }
 
   function openNewProjectModal() {
+    if (state.catalogsLoading) return showToast('Agents and projects are still synchronizing. Try again in a moment.');
     const agents = publishedAgents_();
     if (!agents.length) return showToast('Publish at least one agent before creating a project.', true);
     populateAgentSelect_(document.getElementById('new-project-agent'), agents[0].agentId, agents[0].publishedVersion);
@@ -970,7 +1008,7 @@
     state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
     hideWorkspaceViews_();
     const dashboard = document.getElementById('dashboard-view'); dashboard.classList.remove('hidden'); dashboard.classList.add('view-entering');
-    setWorkspaceMode('dashboard'); renderProjects(); refreshProjects(true); setTimeout(() => dashboard.classList.remove('view-entering'), 360);
+    setWorkspaceMode('dashboard'); renderProjects(); if (!state.catalogsLoading) refreshProjects(true); setTimeout(() => dashboard.classList.remove('view-entering'), 360);
   }
 
   function setWorkspaceMode(mode) {
@@ -2182,9 +2220,11 @@
       state.agents = data.agents || [];
       state.currentProjectId = null;
       state.projectDetails = null;
+      state.catalogsLoading = Boolean(data.catalogsDeferred);
       closeModals();
       applyIdentity();
       showHome();
+      if (state.catalogsLoading) loadInitialCatalogs_();
       showToast('Console location saved.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }

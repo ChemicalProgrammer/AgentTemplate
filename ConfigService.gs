@@ -1,6 +1,6 @@
 var APP = Object.freeze({
   NAME: 'Agent Console',
-  VERSION: '2.0.0-review.5',
+  VERSION: '2.0.0-review.5.1',
   ROOT_NAME: 'Agent Console',
   AGENTS_FOLDER: 'Agents',
   PROJECTS_FOLDER: 'Projects',
@@ -79,11 +79,11 @@ function setupApplication(settings) {
   return getBootstrap();
 }
 
-function getPublicConfig_() {
+function getPublicConfig_(deferDriveValidation) {
   var props = PropertiesService.getScriptProperties();
   var rootId = props.getProperty(APP.PROP_ROOT_ID) || '';
   var rootName = props.getProperty(APP.PROP_ROOT_NAME) || APP.ROOT_NAME;
-  if (rootId) {
+  if (rootId && !deferDriveValidation) {
     var root = getRootFolder_();
     rootId = root.getId();
     rootName = root.getName();
