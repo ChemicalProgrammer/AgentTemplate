@@ -39,6 +39,20 @@ function loadConversation(projectId, conversationId) {
   return readConversation_(access.project, conversationId);
 }
 
+function buildMessageAttachedSources_(project, selectedSourceIds) {
+  var requested = (selectedSourceIds || []).map(normalizeConversationSourceId_).filter(Boolean);
+  var records = {};
+  getDocumentContextRecords_(project).forEach(function(source) {
+    records[source.sourceId] = {nodeId:source.sourceId,sourceId:source.legacySourceId || String(source.sourceId).replace(/^(source|document):/,''),name:source.name,mimeType:source.mimeType || '',kind:source.kind || 'source',origin:'project'};
+  });
+  var resolved = getProjectAgentRelease_(project);
+  if (resolved && resolved.release) (resolved.release.knowledgeSources || []).filter(function(source){return source.status !== 'removed';}).forEach(function(source) {
+    var nodeId = 'agent-source:' + source.sourceId;
+    records[nodeId] = {nodeId:nodeId,sourceId:source.sourceId,name:source.name,mimeType:source.mimeType || '',kind:'agent-source',origin:'agent',mandatory:Boolean(source.mandatory),agentVersion:resolved.release.version};
+  });
+  return requested.filter(function(id,index,all){return all.indexOf(id)===index && records[id];}).map(function(id){return records[id];});
+}
+
 function sendChatMessage(projectId, conversationId, message, selectedSourceIds, selectedFlowIds, requestId, modelOverride) {
   var access = assertProjectEdit_(projectId, 'history');
   var text = sanitizeText_(message, 20000).trim();
@@ -88,13 +102,15 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
     throw new Error('None of the selected documents is still active and available. Refresh the Documents panel and select a current source.');
   }
   conversation.sourceSelection = authorizedSelection.slice();
+  var attachedSourceIds = (selectedSourceIds || []).concat(authorizedSelection).filter(function(id,index,all){return all.indexOf(id)===index;});
+  var attachedSources = buildMessageAttachedSources_(access.project, attachedSourceIds);
   var flowContext = access.allowed.sources ? buildFlowContext_(access.project, selectedFlowIds || []) : {text: '', flowsUsed: []};
   var config = getUserGeminiConfig_();
   var prompt = buildGeminiConversation_(access.project, conversation, text, sourceContext, flowContext, authorizedSelection);
   var now = nowIso_();
   var userMessage = {
     messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email,
-    sourceSelection: authorizedSelection, flowSelection: conversation.flowSelection.slice()
+    model: conversation.model, sourceSelection: authorizedSelection, attachedSources: attachedSources, flowSelection: conversation.flowSelection.slice()
   };
   delete conversation.pendingBranchMessage;
   conversation.messages.push(userMessage);
@@ -139,6 +155,7 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
     sourcesUsed: sourceContext.sourcesUsed.concat(fileSearchConfigs.length ? annotationsToScopedSourcesUsed_(result.annotations, access.project, agentFileSearch ? agentFileSearch.resolved : getProjectAgentRelease_(access.project)) : []),
     flowsUsed: flowContext.flowsUsed,
     sourceSelection: authorizedSelection,
+    attachedSources: attachedSources,
     sourceWarnings: sourceContext.warnings || [],
     retrievalAudit: result.retrievalAudit || null,
     usage: result.usage
@@ -190,9 +207,10 @@ function acceptLatestCanvas_(access, conversation, text, requestId) {
   candidate = candidate || shortCandidate;
   if (!candidate) throw new Error('No Project Approval Canvas was found in this conversation. Generate or refine the Canvas before accepting it.');
   var now = nowIso_();
+  var attachedSources = buildMessageAttachedSources_(access.project, conversation.sourceSelection);
   var userMessage = {
     messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email,
-    sourceSelection: conversation.sourceSelection.slice(), flowSelection: conversation.flowSelection.slice()
+    model: conversation.model, sourceSelection: conversation.sourceSelection.slice(), attachedSources: attachedSources, flowSelection: conversation.flowSelection.slice()
   };
   conversation.messages.push(userMessage);
   var artifact = createMarkdownArtifact_(access.project, access.email, conversation, {
@@ -205,7 +223,7 @@ function acceptLatestCanvas_(access, conversation, text, requestId) {
     messageId: uuid_(), role: 'assistant', text: '', kind: 'artifact_event', eventLabel: 'Canvas accepted and saved',
     createdAt: nowIso_(), model: conversation.model, artifact: artifact,
     actions: normalizeArtifactActions_([], 'project_approval_canvas'),
-    sourceSelection: conversation.sourceSelection.slice(), sourcesUsed: candidate.sourcesUsed || [], flowsUsed: candidate.flowsUsed || []
+    sourceSelection: conversation.sourceSelection.slice(), attachedSources: attachedSources, sourcesUsed: candidate.sourcesUsed || [], flowsUsed: candidate.flowsUsed || []
   };
   assistantMessage.agentId = access.project.agentId || '';
   assistantMessage.agentVersion = access.project.agentVersion || '';

@@ -57,7 +57,7 @@ function ensureGeneralAgent_(agentsFolder) {
     agentId: uuid_(),
     name: GENERAL_AGENT_NAME,
     description: 'General-purpose project assistant for existing and new projects.',
-    icon: '✦', color: 'violet', logoPath: '', logoDriveId: '', logoMimeType: '', status: 'draft', owner: email,
+    icon: '✦', color: 'violet', logoPath: '', logoDriveId: '', logoMimeType: '', showMandatoryKnowledgeInProjects: true, status: 'draft', owner: email,
     createdAt: now, updatedAt: now, publishedVersion: '', versions: [], folders: {}
   };
   agent = normalizeAgentStructure_(folder, agent, true);
@@ -73,14 +73,16 @@ function ensureGeneralAgent_(agentsFolder) {
 
 function listAgents() {
   var email = assertOrganizationMember_();
-  return discoverAgents_(false).map(function(agent) { return publicAgent_(agent, email); })
+  var output = discoverAgents_(false).map(function(agent) { return publicAgent_(agent, email); })
     .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return applyUserCardOrder_(output, APP.USER_AGENT_CARD_ORDER, 'agentId');
 }
 
 function refreshAgents() {
   var email = assertOrganizationMember_();
-  return discoverAgents_(true).map(function(agent) { return publicAgent_(agent, email); })
+  var output = discoverAgents_(true).map(function(agent) { return publicAgent_(agent, email); })
     .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return applyUserCardOrder_(output, APP.USER_AGENT_CARD_ORDER, 'agentId');
 }
 
 function createAgent(input) {
@@ -93,7 +95,7 @@ function createAgent(input) {
     schemaVersion: 2, agentId: uuid_(), name: name,
     description: sanitizeText_(input.description, 1000).trim(),
     icon: normalizeAgentIcon_(input.icon), color: normalizeProjectColor_(input.color || 'violet'),
-    logoPath: '', logoDriveId: '', logoMimeType: '',
+    logoPath: '', logoDriveId: '', logoMimeType: '', showMandatoryKnowledgeInProjects: input.showMandatoryKnowledgeInProjects !== false,
     status: 'draft', owner: email, createdAt: now, updatedAt: now,
     publishedVersion: '', versions: [], folders: {}
   };
@@ -128,6 +130,7 @@ function updateAgent(agentId, changes) {
   if (changes.description != null) agent.description = sanitizeText_(changes.description, 1000).trim();
   if (changes.icon != null) agent.icon = normalizeAgentIcon_(changes.icon);
   if (changes.color != null) agent.color = normalizeProjectColor_(changes.color);
+  if (changes.showMandatoryKnowledgeInProjects != null) agent.showMandatoryKnowledgeInProjects = Boolean(changes.showMandatoryKnowledgeInProjects);
   if (changes.instructions != null) writeAgentInstructions_(agent, sanitizeText_(changes.instructions, 120000));
   agent.updatedAt = nowIso_();
   agent.draftChangedAt = agent.updatedAt;
@@ -397,6 +400,7 @@ function normalizeAgentStructure_(folder, agent, allowCreate) {
   agent.icon = normalizeAgentIcon_(agent.icon);
   agent.color = normalizeProjectColor_(agent.color || 'violet');
   resolveAgentLogoReference_(agent);
+  agent.showMandatoryKnowledgeInProjects = agent.showMandatoryKnowledgeInProjects !== false;
   agent.status = agent.status || 'draft';
   agent.versions = agent.versions || [];
   return agent;
@@ -410,6 +414,7 @@ function lightweightAgentManifest_(folder, agent) {
   agent.logoPath = String(agent.logoPath || '');
   agent.logoDriveId = String(agent.logoDriveId || '');
   agent.logoMimeType = String(agent.logoMimeType || '');
+  agent.showMandatoryKnowledgeInProjects = agent.showMandatoryKnowledgeInProjects !== false;
   agent.versions = agent.versions || [];
   return agent;
 }
@@ -453,7 +458,7 @@ function publicAgent_(agent, email) {
   return {
     agentId: agent.agentId, name: agent.name, description: agent.description || '',
     icon: normalizeAgentIcon_(agent.icon), color: normalizeProjectColor_(agent.color || 'violet'),
-    logoPath: String(agent.logoPath || ''), logoUrl: agentLogoUrl_(agent.logoDriveId),
+    logoPath: String(agent.logoPath || ''), logoUrl: agentLogoUrl_(agent.logoDriveId), showMandatoryKnowledgeInProjects: agent.showMandatoryKnowledgeInProjects !== false,
     status: agent.status || 'draft', owner: agent.owner || '', createdAt: agent.createdAt, updatedAt: agent.updatedAt,
     publishedVersion: agent.publishedVersion || '', versionCount: (agent.versions || []).length,
     versions: (agent.versions || []).map(function(item){return {version:item.version,releasedAt:item.releasedAt};}),
@@ -603,7 +608,7 @@ function buildAgentReleaseManifest_(agent, releaseFolder, version, email) {
   var releaseLogo = resolveReleaseLogoAsset_(releaseFolder, agent.logoPath);
   return {
     schemaVersion: 2, agentId: agent.agentId, agentName: agent.name, version: version,
-    description: agent.description || '', icon: agent.icon, color: agent.color,
+    description: agent.description || '', icon: agent.icon, color: agent.color, showMandatoryKnowledgeInProjects: agent.showMandatoryKnowledgeInProjects !== false,
     logoPath: releaseLogo ? releaseLogo.relativePath : '', logoDriveId: releaseLogo ? releaseLogo.driveId : '', logoMimeType: releaseLogo ? releaseLogo.mimeType : '',
     releasedAt: nowIso_(), releasedBy: email, releaseFolderId: releaseFolder.getId(),
     instructions: readReleaseTextSection_(releaseFolder, AGENT_SECTION_NAMES.instructions, 120000),
@@ -692,7 +697,7 @@ function getProjectAgentRelease_(project) {
 }
 
 function publicAgentRelease_(release) {
-  return {agentId:release.agentId, name:release.agentName, version:release.version, icon:release.icon || '✦', color:release.color || 'violet', logoPath:release.logoPath || '', logoUrl:agentLogoUrl_(release.logoDriveId), sourceCount:(release.knowledgeSources || []).length, workflowCount:(release.workflows || []).length, templateCount:(release.templates || []).length, releasedAt:release.releasedAt};
+  return {agentId:release.agentId, name:release.agentName, version:release.version, icon:release.icon || '✦', color:release.color || 'violet', logoPath:release.logoPath || '', logoUrl:agentLogoUrl_(release.logoDriveId), showMandatoryKnowledgeInProjects:release.showMandatoryKnowledgeInProjects !== false, sourceCount:(release.knowledgeSources || []).length, workflowCount:(release.workflows || []).length, templateCount:(release.templates || []).length, releasedAt:release.releasedAt};
 }
 
 function agentRuntimeId_(agentId, version) { return 'agent_' + String(agentId).replace(/[^A-Za-z0-9_-]/g, '') + '_' + String(version).replace(/[^A-Za-z0-9_-]/g, '_'); }
@@ -701,11 +706,14 @@ function agentRuntimeProject_(agent, release) {
   return {projectId:agentRuntimeId_(agent.agentId, release.version), title:'Agent ' + agent.name + ' ' + release.version, folderId:release.releaseFolderId, folders:{sources:release.releaseFolderId}, scopeType:'agent', agentId:agent.agentId, agentVersion:release.version};
 }
 
-function listAgentKnowledgeNodesForProject_(project) {
+function listAgentKnowledgeNodesForProject_(project, includeHidden) {
   var resolved = getProjectAgentRelease_(project);
   if (!resolved) return [];
   var runtime = agentRuntimeProject_(resolved.agent, resolved.release);
-  return (resolved.release.knowledgeSources || []).filter(function(source) { return source.status !== 'removed'; }).map(function(source) {
+  var showMandatory = resolved.release.showMandatoryKnowledgeInProjects !== false;
+  return (resolved.release.knowledgeSources || []).filter(function(source) {
+    return source.status !== 'removed' && (includeHidden || !source.mandatory || showMandatory);
+  }).map(function(source) {
     var indexed = applyFileSearchStateToSource_(runtime, source);
     return {
       nodeId:'agent-source:' + source.sourceId, sourceId:source.sourceId, driveId:source.driveId,

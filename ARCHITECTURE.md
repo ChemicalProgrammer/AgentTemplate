@@ -1,6 +1,6 @@
 # Arquitectura técnica
 
-Versión de referencia: 2.0.0-review.4.
+Versión de referencia: 2.0.0-review.5.
 
 ## Modelo de la consola
 
@@ -43,7 +43,11 @@ Agents/Technical Governance Agent/
 └── _Runtime/
 ```
 
-`Agent Manifest.json` schema 2 agrega `logoPath`, `logoDriveId` y `logoMimeType`. `logoPath` es la referencia portable y apunta a un archivo dentro de `Assets`; `logoDriveId` es una referencia local reconstruible. Al escanear una carpeta copiada, la ruta lógica resuelve el nuevo ID de Drive. El icono y el color permanecen como respaldo cuando no hay logo.
+`Agent Manifest.json` schema 2 agrega `logoPath`, `logoDriveId`, `logoMimeType` y `showMandatoryKnowledgeInProjects`. La última preferencia se captura también en cada release: controla visibilidad en el grafo del proyecto, no autorización ni indexación. `logoPath` es la referencia portable y apunta a un archivo dentro de `Assets`; `logoDriveId` es una referencia local reconstruible. Al escanear una carpeta copiada, la ruta lógica resuelve el nuevo ID de Drive. El icono y el color permanecen como respaldo cuando no hay logo.
+
+El panel documental devuelve dos colecciones separadas: `documentGraph`, que contiene solo las tarjetas visibles, e `indexableSources`, que incluye también conocimiento mandatorio oculto. Las actualizaciones parciales vuelven a pedir ambas colecciones para evitar que el conocimiento heredado desaparezca del estado cliente.
+
+Los órdenes de tarjetas se guardan en User Properties. Agents y Projects mantienen un orden personal global; Documents mantiene uno por proyecto. Los estados colapsados de niveles y anchos de panel se conservan localmente en el navegador porque son preferencias estrictamente visuales.
 
 La carpeta es la unidad portable. Al copiarla dentro de `Agents` y pulsar **Scan agents**, la consola:
 

@@ -39,6 +39,23 @@ function getCurrentIdentity_() {
   };
 }
 
+function saveAgentCardOrder(agentIds) {
+  assertOrganizationMember_();
+  var allowed = discoverAgents_(false).map(function(agent) { return agent.agentId; });
+  return {order:saveUserCardOrder_(APP.USER_AGENT_CARD_ORDER, agentIds, allowed)};
+}
+
+function saveProjectCardOrder(projectIds) {
+  var allowed = listProjects().map(function(project) { return project.projectId; });
+  return {order:saveUserCardOrder_(APP.USER_PROJECT_CARD_ORDER, projectIds, allowed)};
+}
+
+function saveProjectDocumentOrder(projectId, nodeIds) {
+  var access = assertProjectAccess_(projectId);
+  var allowed = listAgentKnowledgeNodesForProject_(access.project, false).concat(listProjectDocuments(projectId)).map(function(node) { return node.nodeId; });
+  return {order:saveUserCardOrder_(APP.USER_DOCUMENT_CARD_ORDER_PREFIX + projectId, nodeIds, allowed)};
+}
+
 function apiError_(error) {
   var message = error && error.message ? error.message : String(error || 'Unknown error');
   throw new Error(message);

@@ -1,4 +1,4 @@
-# Propuesta de revisión — Agent Console 2.0.0-review.4
+# Propuesta de revisión — Agent Console 2.0.0-review.5
 
 ## Resultado propuesto
 
@@ -26,6 +26,13 @@ Las dos rutas son alternativas de navegación, pero ambas pueden generarse si el
 - Un PDF guardado desde el visor dentro del proyecto tiene como parent el documento mostrado; si se exporta fuera del proyecto, no entra al grafo.
 
 ## Cambios incluidos en el prototipo
+
+- La actualización parcial del grafo conserva conocimiento del agente y mantiene separadas las fuentes visibles de las que deben indexarse en segundo plano.
+- Agentes, proyectos y documentos admiten orden manual persistente. Los documentos solo se reordenan dentro de su nivel.
+- Los encabezados de niveles se pueden colapsar y ya no flotan sobre las tarjetas durante el scroll.
+- El agente define por release si el conocimiento mandatorio aparece como tarjeta en Projects; ocultarlo no cambia su carácter obligatorio.
+- Cada mensaje nuevo registra modelo y fuentes adjuntas, consultables bajo demanda mediante ℹ️.
+- El selector de modelos está junto al input y solo marca la lista como verificada cuando proviene de Gemini usando la API key asignada.
 
 - Las fuentes del agente permanecen en el release publicado y se referencian desde el proyecto; no se copian a `Project Sources`.
 - File Search del agente se reutiliza por usuario/llave y versión entre proyectos. Al abrir un proyecto se indexan automáticamente las fuentes heredadas faltantes, con prioridad para las obligatorias.

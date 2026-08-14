@@ -29,7 +29,7 @@
     <form id="project-form">
       <label>Title<input id="new-project-title" required maxlength="120"></label>
       <label>Description<textarea id="new-project-description" rows="4" maxlength="800"></textarea></label>
-      <label>Published agent<select id="new-project-agent" required></select></label>
+      <label>Published agent<span class="select-shell"><select id="new-project-agent" required></select><i aria-hidden="true"></i></span></label>
       <p id="new-project-agent-note" class="form-note">The project is pinned to the selected published version.</p>
       <p class="form-note">A default emoji will be assigned. You can change it from inside the project.</p>
       <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Create project</button></div>
@@ -43,6 +43,7 @@
       <label>Name<input id="new-agent-name" required maxlength="120"></label>
       <label>Description<textarea id="new-agent-description" rows="4" maxlength="1000"></textarea></label>
       <div class="form-grid"><label>Icon or symbol<input id="new-agent-icon" maxlength="8" value="✦" placeholder="✦"></label><label>Color<select id="new-agent-color"><option value="violet">Violet</option><option value="blue">Ocean</option><option value="indigo">Indigo</option><option value="teal">Teal</option><option value="green">Fern</option><option value="amber">Amber</option><option value="orange">Orange</option><option value="coral">Coral</option><option value="rose">Rose</option><option value="plum">Plum</option><option value="cyan">Cyan</option><option value="lime">Lime</option><option value="slate">Slate</option><option value="graphite">Graphite</option></select></label></div>
+      <label class="preference-switch"><input id="new-agent-show-mandatory" type="checkbox" checked><span aria-hidden="true"></span><b>Show mandatory knowledge in projects</b><small>When off, mandatory sources remain active and indexed but are hidden from project document cards.</small></label>
       <p class="form-note">A complete folder structure will be created in Agents. You can import a logo and refine the identity in Agent Builder before publishing.</p>
       <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn btn-gemini">Create agent</button></div>
     </form>
@@ -70,7 +71,7 @@
   <section id="change-agent-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="change-agent-title">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
     <p class="eyebrow">PROJECT AGENT</p><h2 id="change-agent-title">Load another agent</h2><p class="muted">A new chat will be created. Earlier chats retain the agent and version that produced them; project sources remain available.</p>
-    <form id="change-agent-form"><label>Published agent<select id="change-project-agent" required></select></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn btn-gemini">Load agent</button></div></form>
+    <form id="change-agent-form"><label>Published agent<span class="select-shell"><select id="change-project-agent" required></select><i aria-hidden="true"></i></span></label><div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn btn-gemini">Load agent</button></div></form>
   </section>
 
   <section id="emoji-modal" class="modal emoji-modal hidden" role="dialog" aria-modal="true" aria-labelledby="emoji-title">
@@ -135,6 +136,18 @@
     <p id="index-diagnostic-source-counts" class="muted diagnostic-counts"></p>
     <p id="index-diagnostic-counts" class="muted diagnostic-counts"></p>
     <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Close</button><button type="button" id="refresh-index-diagnostic" class="secondary-btn">Check again</button><button type="button" id="retry-index-diagnostic" class="primary-btn">Retry cleanly</button></div>
+  </section>
+
+  <section id="message-metadata-modal" class="modal message-metadata-modal hidden" role="dialog" aria-modal="true" aria-labelledby="message-metadata-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">MESSAGE CONTEXT</p><h2 id="message-metadata-title">Generation details</h2>
+    <dl class="diagnostic-grid message-metadata-grid">
+      <div><dt>Role</dt><dd id="message-metadata-role"></dd></div>
+      <div><dt>Created</dt><dd id="message-metadata-created"></dd></div>
+      <div class="diagnostic-wide"><dt>Gemini model</dt><dd id="message-metadata-model"></dd></div>
+    </dl>
+    <div class="message-metadata-sources"><h3>Attached sources</h3><div id="message-metadata-source-list"></div></div>
+    <div class="modal-actions"><button type="button" class="primary-btn" data-close-modal>Done</button></div>
   </section>
 
   <section id="source-link-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="source-link-title">

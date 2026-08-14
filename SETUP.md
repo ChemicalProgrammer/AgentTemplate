@@ -23,7 +23,7 @@ clasp open
 
 1. Selecciona **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación web**.
-3. Descripción: `Version 2.0.0-review.4`.
+3. Descripción: `Version 2.0.0-review.5`.
 4. Ejecutar como: **Usuario que accede a la aplicación web**.
 5. Acceso: usuarios del dominio de la organización.
 6. Autoriza Drive, Docs, Sheets, Slides y conexiones externas.
@@ -48,9 +48,9 @@ La migración es idempotente y conserva IDs de proyecto, chats, fuentes y docume
 
 Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del agente y del proyecto se crean por llave. Al abrir un proyecto, un colaborador nuevo inicia automáticamente sus propios índices; **Sync index** queda como acción manual de verificación o reparación.
 
-## Prueba recomendada de 2.0.0-review.4
+## Prueba recomendada de 2.0.0-review.5
 
-1. Confirma `Version 2.0.0-review.4` en Settings.
+1. Confirma `Version 2.0.0-review.5` en Settings.
 2. Usa una implementación de prueba o una copia del proyecto; no sustituyas todavía la implementación productiva 1.9.0.
 3. Abre un chat que contenga un `Project Approval Canvas` y envía exactamente `Accept Canvas`.
 4. Confirma que el cuerpo del Canvas no aparezca de nuevo en el chat y que `Project Approval Canvas.md` aparezca en Documents como Nivel 1.
@@ -76,6 +76,12 @@ Cada usuario abre Settings, guarda su llave y elige un modelo. Los stores del ag
 24. Cierra y vuelve a abrir el proyecto con una fuente pendiente; debe reanudar la transferencia o verificación automáticamente.
 25. Carga en el proyecto un agente con PDFs obligatorios y opcionales que todavía no tengan índice para el usuario actual. Confirma que las tarjetas comiencen a procesarse automáticamente y que una consulta pueda iniciar usando las fuentes ya disponibles, sin el error de mezcla entre File Search y binarios inline.
 26. Comprueba que los tres encabezados midan lo mismo, que los chips sobre el compositor adopten el color del formato y que regresar a Home tenga una transición sutil.
+27. Crea un documento o actualiza una nota y confirma que el knowledge heredado del agente permanezca visible sin recargar la página.
+28. Reordena tarjetas de Agents, Projects y Documents; recarga y confirma que el orden personal se conserve. En Documents, confirma que una tarjeta no pueda arrastrarse a otro nivel.
+29. Colapsa dos niveles documentales, recarga el proyecto y confirma que el estado se conserve y que los encabezados no cubran las tarjetas.
+30. En el borrador de un agente desactiva **Show mandatory sources in projects**, publica una versión y crea un proyecto con ella. Confirma que las fuentes mandatorias no aparezcan como tarjetas, pero se indexen y se utilicen automáticamente.
+31. Abre ℹ️ en mensajes de usuario y agente; verifica que muestre el modelo y las fuentes adjuntas correspondientes a ese envío.
+32. Abre el selector de modelo bajo el input. Debe mostrar **Available for your API key** solo después de que Gemini devuelva el catálogo compatible con `generateContent`.
 
 ## Prueba de regresión conservada de 1.9.0
 12. Verifica que la portada muestre **Agents** y **Projects**.

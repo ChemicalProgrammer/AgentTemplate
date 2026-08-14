@@ -6,6 +6,35 @@ function nowIso_() {
   return new Date().toISOString();
 }
 
+function readUserCardOrder_(propertyKey) {
+  var value = safeJsonParse_(PropertiesService.getUserProperties().getProperty(propertyKey), []);
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+}
+
+function applyUserCardOrder_(items, propertyKey, idField) {
+  var order = readUserCardOrder_(propertyKey);
+  var positions = {};
+  order.forEach(function(id, index) { if (positions[id] == null) positions[id] = index; });
+  return (items || []).map(function(item, index) { return {item:item,index:index}; }).sort(function(a, b) {
+    var aid = String(a.item && a.item[idField] || '');
+    var bid = String(b.item && b.item[idField] || '');
+    var ap = positions[aid] == null ? Number.MAX_SAFE_INTEGER : positions[aid];
+    var bp = positions[bid] == null ? Number.MAX_SAFE_INTEGER : positions[bid];
+    return ap - bp || a.index - b.index;
+  }).map(function(entry) { return entry.item; });
+}
+
+function saveUserCardOrder_(propertyKey, requestedIds, allowedIds) {
+  var allowed = {};
+  (allowedIds || []).map(String).forEach(function(id) { allowed[id] = true; });
+  var clean = (Array.isArray(requestedIds) ? requestedIds : []).map(String).filter(function(id, index, all) {
+    return Boolean(id && allowed[id] && all.indexOf(id) === index);
+  }).slice(0, 500);
+  (allowedIds || []).map(String).forEach(function(id) { if (clean.indexOf(id) === -1) clean.push(id); });
+  PropertiesService.getUserProperties().setProperty(propertyKey, JSON.stringify(clean));
+  return clean;
+}
+
 function safeJsonParse_(value, fallback) {
   try {
     return JSON.parse(String(value || ''));
