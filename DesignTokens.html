@@ -1,0 +1,80 @@
+<style>
+  /*
+   * Agent Console design dictionary.
+   * Change shared colors and typography here without hunting through views.
+   */
+  :root {
+    /* Professional blue-gray navigation palette. */
+    --color-blue-gray-950: #263442;
+    --color-blue-gray-800: #3f5062;
+    --color-blue-gray-700: #52657a;
+    --color-blue-gray-600: #6f8195;
+    --color-blue-gray-300: #c8d2dc;
+    --color-blue-gray-200: #dce3ea;
+    --color-blue-gray-100: #edf1f5;
+    --color-blue-gray-50: #f6f8fa;
+
+    /* Project-panel tabs: deliberately independent from the project theme. */
+    --side-tab-accent: var(--color-blue-gray-700);
+    --side-tab-accent-light: var(--color-blue-gray-600);
+    --side-tab-surface: var(--color-blue-gray-100);
+    --side-tab-border: var(--color-blue-gray-300);
+
+    /* Gemini-like conversation surfaces: deliberately theme-independent. */
+    --chat-user-surface: #f0f4f9;
+    --chat-assistant-surface: #ffffff;
+    --chat-message-border: #dfe5ec;
+    --chat-message-text: #1f1f1f;
+    --chat-source-surface: #f7f9fc;
+
+    /*
+     * Current typography scale. These values preserve the existing layout.
+     * Components reference these tokens, so the scale can be consolidated later
+     * from this single file without another search-and-replace operation.
+     */
+    --font-size-7: 7px;
+    --font-size-8: 8px;
+    --font-size-9: 9px;
+    --font-size-10: 10px;
+    --font-size-11: 11px;
+    --font-size-12: 12px;
+    --font-size-13: 13px;
+    --font-size-14: 14px;
+    --font-size-15: 15px;
+    --font-size-16: 16px;
+    --font-size-17: 17px;
+    --font-size-18: 18px;
+    --font-size-19: 19px;
+    --font-size-20: 20px;
+    --font-size-21: 21px;
+    --font-size-22: 22px;
+    --font-size-23: 23px;
+    --font-size-24: 24px;
+    --font-size-25: 25px;
+    --font-size-26: 26px;
+    --font-size-27: 27px;
+    --font-size-28: 28px;
+    --font-size-30: 30px;
+    --font-size-31: 31px;
+    --font-size-32: 32px;
+    --font-size-34: 34px;
+    --font-size-36: 36px;
+    --font-size-38: 38px;
+    --font-size-48: 48px;
+    --font-size-58: 58px;
+
+    /* Recommended semantic aliases for new components. */
+    --type-caption: var(--font-size-9);
+    --type-label: var(--font-size-11);
+    --type-body-small: var(--font-size-12);
+    --type-body: var(--font-size-14);
+    --type-subtitle: var(--font-size-16);
+    --type-title: var(--font-size-20);
+    --type-heading: var(--font-size-24);
+    --type-display: var(--font-size-32);
+
+    /* Material glyph sizes are separate from text sizes. */
+    --icon-size-standard: 23px;
+    --icon-size-compact: 21px;
+  }
+</style>

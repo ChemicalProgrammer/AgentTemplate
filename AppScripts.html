@@ -2620,7 +2620,7 @@
     document.getElementById('chat-panel').setAttribute('aria-hidden', String(state.chatCollapsed));
     const sideButton = document.getElementById('toggle-chat-from-side');
     if (sideButton) {
-      sideButton.textContent = state.chatCollapsed ? '➡️' : '⬅️';
+      sideButton.classList.toggle('is-chat-collapsed', state.chatCollapsed);
       sideButton.title = state.chatCollapsed ? 'Restore chat panel' : 'Collapse chat and expand this panel';
       sideButton.setAttribute('aria-label', sideButton.title);
       sideButton.setAttribute('aria-pressed', String(state.chatCollapsed));

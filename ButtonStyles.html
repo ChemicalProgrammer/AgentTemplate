@@ -104,7 +104,7 @@
     padding: 0 !important;
     overflow: hidden;
     font-family: "Material Icons Round" !important;
-    font-size: 23px;
+    font-size: var(--icon-size-standard,23px);
     font-style: normal;
     font-weight: normal;
     line-height: 24px;
@@ -126,12 +126,13 @@
   #agent-editor-back::before,
   #back-dashboard::before { content: "arrow_back"; }
   #toggle-chat-from-side::before { content: "keyboard_double_arrow_right"; }
-  #toggle-chat-from-side[aria-pressed="true"]::before,
+  #toggle-chat-from-side.is-chat-collapsed::before,
   #collapse-chat-panel::before { content: "keyboard_double_arrow_left"; }
   #send-message::before { content: "send"; }
   #send-message.is-stop::before { content: "stop"; }
   #open-project-folder::before,
-  #open-agent-folder::before { content: "folder_open"; }
+  #open-agent-folder::before,
+  #document-viewer-drive-link::before { content: "folder_open"; }
   #share-project-button::before { content: "person"; }
   #refresh-projects::before,
   #refresh-agents::before { content: "refresh"; }
@@ -145,8 +146,7 @@
   #add-flow-link::before { content: "create_new_folder"; }
   .file-button::before,
   .flow-file-button::before { content: "file_upload"; }
-  #export-document-pdf::before { content: "picture_as_pdf"; }
-  #document-viewer-drive-link::before { content: "open_in_new"; }
+  #export-document-pdf::before { content: "download"; }
   #close-document-viewer::before { content: "close"; }
   #clone-agent::before { content: "content_copy"; }
   #save-agent::before { content: "save"; }
@@ -169,7 +169,10 @@
   #add-template-link,
   #add-flow-link,
   .file-button,
-  .flow-file-button {
+  .flow-file-button,
+  #export-document-pdf,
+  #document-viewer-drive-link,
+  #close-document-viewer {
     position: relative !important;
     align-self: center !important;
     margin: 0 !important;
@@ -183,7 +186,10 @@
   #add-template-link::before,
   #add-flow-link::before,
   .file-button::before,
-  .flow-file-button::before {
+  .flow-file-button::before,
+  #export-document-pdf::before,
+  #document-viewer-drive-link::before,
+  #close-document-viewer::before {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -195,6 +201,18 @@
     overflow: visible;
     line-height: 1;
     transform: none;
+  }
+
+  /* Filled open-folder glyphs are shared by every Drive action. */
+  #open-project-folder::before,
+  #open-agent-folder::before,
+  #document-viewer-drive-link::before {
+    font-family: "Material Symbols Rounded" !important;
+    font-variation-settings: "FILL" 1,"wght" 500,"GRAD" 0,"opsz" 24;
+  }
+  #export-document-pdf::before {
+    font-family: "Material Symbols Rounded" !important;
+    font-variation-settings: "FILL" 0,"wght" 500,"GRAD" 0,"opsz" 24;
   }
 
   /* Circular navigation and state controls. */
@@ -268,11 +286,11 @@
   #export-document-pdf::before,
   #document-viewer-drive-link::before,
   #close-document-viewer::before {
-    width: 22px;
-    height: 22px;
-    flex-basis: 22px;
-    font-size: 21px;
-    line-height: 22px;
+    width: 100%;
+    height: 100%;
+    flex-basis: auto;
+    font-size: var(--icon-size-compact,21px);
+    line-height: 1;
   }
 
   /* Labeled actions share the same 44 px height and contextual gradient. */
@@ -299,7 +317,7 @@
     border-radius: 22px !important;
     background: var(--ui-button-fill) !important;
     box-shadow: none !important;
-    font-size: 14px !important;
+    font-size: var(--font-size-14,14px) !important;
     font-weight: 650 !important;
     line-height: 1 !important;
     text-decoration: none !important;
@@ -307,12 +325,16 @@
 
   /* Every tab uses the same icon and label rows. */
   .side-tab {
+    --tab-accent: var(--side-tab-accent,#52657a) !important;
     grid-template-columns: minmax(0,1fr) !important;
     grid-template-rows: 36px 14px !important;
     align-items: center !important;
     justify-items: center !important;
     align-content: center !important;
     row-gap: 5px !important;
+    color: var(--side-tab-accent,#52657a) !important;
+    border-color: transparent !important;
+    background: transparent !important;
   }
   .side-tab > span {
     position: relative !important;
@@ -322,12 +344,25 @@
     place-items: center !important;
     padding: 0 !important;
     border-radius: 11px !important;
-    color: var(--tab-accent,var(--project-accent,#0b57d0)) !important;
-    background: color-mix(in srgb,var(--tab-accent,var(--project-accent,#0b57d0)) 9%,#fff) !important;
+    color: var(--side-tab-accent,#52657a) !important;
+    background: var(--side-tab-surface,#edf1f5) !important;
+  }
+  .side-tab:hover {
+    color: var(--side-tab-accent,#52657a) !important;
+    border-color: var(--side-tab-border,#c8d2dc) !important;
+    background: color-mix(in srgb,var(--side-tab-surface,#edf1f5) 76%,#fff) !important;
+    box-shadow: none !important;
+  }
+  .side-tab.active {
+    color: #fff !important;
+    border-color: transparent !important;
+    background: linear-gradient(135deg,var(--side-tab-accent,#52657a) 0%,var(--side-tab-accent-light,#6f8195) 100%) !important;
+    box-shadow: none !important;
   }
   .side-tab.active > span {
     color: #fff !important;
-    background: linear-gradient(135deg,var(--tab-accent,var(--project-accent,#0b57d0)) 0%,color-mix(in srgb,var(--tab-accent,var(--project-accent,#0b57d0)) 78%,#fff) 100%) !important;
+    background: transparent !important;
+    box-shadow: none !important;
   }
   .side-tab > span::before {
     position: absolute;
@@ -338,7 +373,7 @@
     align-items: center;
     justify-content: center;
     flex: none;
-    font-size: 21px;
+    font-size: var(--icon-size-compact,21px);
     line-height: 1;
     overflow: visible;
   }
@@ -351,6 +386,28 @@
     justify-content: center;
     margin: 0 !important;
     line-height: 14px !important;
+  }
+  .side-tab.active > b { color: #fff !important; }
+
+  /* Conversation bubbles stay consistent when a project theme changes. */
+  .message-avatar {
+    box-shadow: 0 4px 10px rgba(60,64,67,.10) !important;
+  }
+  .message.assistant .message-body {
+    color: var(--chat-message-text,#1f1f1f) !important;
+    border-color: var(--chat-message-border,#dfe5ec) !important;
+    background: var(--chat-assistant-surface,#fff) !important;
+    box-shadow: 0 4px 14px rgba(60,64,67,.055) !important;
+  }
+  .message.user .message-body {
+    color: var(--chat-message-text,#1f1f1f) !important;
+    border-color: var(--chat-message-border,#dfe5ec) !important;
+    background: var(--chat-user-surface,#f0f4f9) !important;
+    box-shadow: none !important;
+  }
+  .message-sources {
+    border-color: var(--chat-message-border,#dfe5ec) !important;
+    background: var(--chat-source-surface,#f7f9fc) !important;
   }
 
   /* One restrained interaction language: no scale, shadow or blur. */
