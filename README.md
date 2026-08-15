@@ -1,8 +1,15 @@
 # Agent Console para Google Apps Script
 
-Versión de revisión 2.0.0-review.4-hotfix.4.
+Versión de revisión 2.0.0-review.4-hotfix.5.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
+
+## Hotfix 5 sobre 2.0.0-review.4
+
+- La barra de cada nivel conserva exactamente su altura, bordes y sombra al expandir o colapsar.
+- El contenido del nivel aparece y desaparece con una transición sutil de altura y opacidad, sin volver a renderizar todo el grafo documental.
+- Durante el drag-and-drop, las demás tarjetas se desplazan en vivo con animación para mostrar con claridad la posición de destino.
+- Cancelar un arrastre fuera del nivel devuelve las tarjetas suavemente a su orden anterior; soltar conserva el orden con la persistencia existente.
 
 ## Hotfix 4 sobre 2.0.0-review.4
 

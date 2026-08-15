@@ -43,6 +43,7 @@
     selectedFlows: new Set(),
     collapsedDocumentLevels: new Set(),
     documentDrag: null,
+    documentReflowAnimations: new WeakMap(),
     documentDragSuppressClickUntil: 0,
     selectedTemplateId: '',
     busy: false,
@@ -1400,13 +1401,18 @@
       const collapsed = state.collapsedDocumentLevels.has(level);
       const levelLabel = level === -1 ? `Agent knowledge · ${escapeHtml((state.projectAgent || {}).name || 'Loaded agent')}` : level === 0 ? 'Project sources' : `Generated · Level ${level}`;
       const levelDescription = level === -1 ? 'Inherited from the loaded agent' : level === 0 ? 'Original context and root files' : 'Derived from parent documents';
-      const trackId = `document-level-track-${String(level).replace('-', 'negative-')}`;
+      const levelKey = String(level).replace('-', 'negative-');
+      const contentId = `document-level-content-${levelKey}`;
       return `<section class="document-level ${level === -1 ? 'agent-knowledge-level' : ''} ${collapsed ? 'collapsed' : ''}" data-level="${level}">
-        <button type="button" class="level-heading" data-level-collapse="${level}" aria-expanded="${String(!collapsed)}" aria-controls="${trackId}" title="${collapsed ? 'Expand level' : 'Collapse level'}">
+        <button type="button" class="level-heading" data-level-collapse="${level}" aria-expanded="${String(!collapsed)}" aria-controls="${contentId}" title="${collapsed ? 'Expand level' : 'Collapse level'}">
           <span class="level-copy"><strong>${levelLabel}</strong><small>${levelDescription}</small></span>
           <span class="level-count"><b>${items.length}</b><small>${items.length === 1 ? 'item' : 'items'}</small></span>
         </button>
-        <div id="${trackId}" class="level-track" data-level-track="${level}" aria-hidden="${String(collapsed)}">${items.map(renderDocumentCard).join('')}</div>
+        <div id="${contentId}" class="level-content" aria-hidden="${String(collapsed)}">
+          <div class="level-content-inner">
+            <div class="level-track" data-level-track="${level}">${items.map(renderDocumentCard).join('')}</div>
+          </div>
+        </div>
       </section>`;
     }).join('');
     const pendingCount = state.pendingUploads.size;
@@ -1516,7 +1522,18 @@
     if (state.collapsedDocumentLevels.has(level)) state.collapsedDocumentLevels.delete(level);
     else state.collapsedDocumentLevels.add(level);
     persistCollapsedDocumentLevels_();
-    renderDocumentGraph();
+    const collapsed = state.collapsedDocumentLevels.has(level);
+    const section = document.querySelector(`.document-level[data-level="${level}"]`);
+    if (!section) return;
+    section.classList.toggle('collapsed', collapsed);
+    const button = section.querySelector('[data-level-collapse]');
+    const content = section.querySelector('.level-content');
+    if (button) {
+      button.setAttribute('aria-expanded', String(!collapsed));
+      button.title = collapsed ? 'Expand level' : 'Collapse level';
+    }
+    if (content) content.setAttribute('aria-hidden', String(collapsed));
+    if (collapsed) closeDocumentMenus();
   }
 
   function bindDocumentCardOrdering_(container) {
@@ -1525,16 +1542,25 @@
         if (event.target.closest('button,a,input,label')) { event.preventDefault(); return; }
         const track = card.closest('[data-level-track]');
         if (!track) { event.preventDefault(); return; }
-        state.documentDrag = {nodeId:card.dataset.nodeId, level:Number(track.dataset.levelTrack)};
+        state.documentDrag = {
+          nodeId:card.dataset.nodeId,
+          level:Number(track.dataset.levelTrack),
+          originalOrder:Array.from(track.querySelectorAll('.document-card[data-node-id]')).map(item => item.dataset.nodeId),
+          committed:false
+        };
         card.classList.add('document-dragging');
+        track.classList.add('document-reordering');
         card.setAttribute('aria-grabbed', 'true');
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', card.dataset.nodeId);
       });
       card.addEventListener('dragend', () => {
+        const drag = state.documentDrag;
+        const track = card.closest('[data-level-track]');
         card.classList.remove('document-dragging');
         card.removeAttribute('aria-grabbed');
-        clearDocumentDropIndicators_(container);
+        if (track) track.classList.remove('document-reordering');
+        if (drag && !drag.committed) restoreDocumentDragOrder_(track, drag.originalOrder);
         state.documentDrag = null;
         state.documentDragSuppressClickUntil = Date.now() + 250;
       });
@@ -1544,13 +1570,7 @@
         if (!state.documentDrag || Number(track.dataset.levelTrack) !== state.documentDrag.level) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
-        clearDocumentDropIndicators_(track);
-        const target = event.target.closest('.document-card');
-        if (!target || target.dataset.nodeId === state.documentDrag.nodeId) return;
-        target.classList.add(documentDropAfter_(event, target) ? 'document-drop-after' : 'document-drop-before');
-      });
-      track.addEventListener('dragleave', event => {
-        if (!track.contains(event.relatedTarget)) clearDocumentDropIndicators_(track);
+        moveDocumentCardLive_(event, track);
       });
       track.addEventListener('drop', event => reorderDocumentCards_(event, track));
     });
@@ -1563,21 +1583,84 @@
     return event.clientX > rect.left + rect.width / 2;
   }
 
-  function clearDocumentDropIndicators_(root = document) {
-    root.querySelectorAll('.document-drop-before,.document-drop-after').forEach(card => card.classList.remove('document-drop-before','document-drop-after'));
+  function nearestDocumentCard_(event, cards) {
+    let nearest = null;
+    let nearestDistance = Infinity;
+    cards.forEach(card => {
+      const rect = card.getBoundingClientRect();
+      const dx = event.clientX - Math.max(rect.left, Math.min(event.clientX, rect.right));
+      const dy = event.clientY - Math.max(rect.top, Math.min(event.clientY, rect.bottom));
+      const distance = dx * dx + dy * dy;
+      if (distance < nearestDistance) { nearest = card; nearestDistance = distance; }
+    });
+    return nearest;
+  }
+
+  function moveDocumentCardLive_(event, track) {
+    if (!state.documentDrag) return;
+    const dragged = Array.from(track.querySelectorAll('.document-card[data-node-id]')).find(card => card.dataset.nodeId === state.documentDrag.nodeId);
+    if (!dragged) return;
+    const siblings = Array.from(track.querySelectorAll('.document-card[data-node-id]')).filter(card => card !== dragged);
+    if (!siblings.length) return;
+    const eventTarget = event.target && event.target.closest ? event.target.closest('.document-card[data-node-id]') : null;
+    const target = eventTarget && eventTarget !== dragged && track.contains(eventTarget) ? eventTarget : nearestDocumentCard_(event, siblings);
+    if (!target) return;
+    const after = documentDropAfter_(event, target);
+    const targetIndex = siblings.indexOf(target) + (after ? 1 : 0);
+    const nextOrder = siblings.slice();
+    nextOrder.splice(targetIndex, 0, dragged);
+    const currentOrder = Array.from(track.querySelectorAll('.document-card[data-node-id]'));
+    if (currentOrder.every((card, index) => card === nextOrder[index])) return;
+    animateDocumentReflow_(track, () => {
+      const reference = siblings[targetIndex] || null;
+      track.insertBefore(dragged, reference);
+    }, dragged);
+  }
+
+  function animateDocumentReflow_(track, mutate, excludedCard) {
+    const cards = Array.from(track.querySelectorAll('.document-card[data-node-id]'));
+    const before = new Map();
+    cards.forEach(card => before.set(card, card.getBoundingClientRect()));
+    cards.forEach(card => {
+      const activeAnimation = state.documentReflowAnimations.get(card);
+      if (activeAnimation) activeAnimation.cancel();
+    });
+    mutate();
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion || typeof Element === 'undefined' || !Element.prototype.animate) return;
+    cards.forEach(card => {
+      if (card === excludedCard || !card.isConnected) return;
+      const first = before.get(card);
+      const last = card.getBoundingClientRect();
+      const deltaX = first.left - last.left;
+      const deltaY = first.top - last.top;
+      if (Math.abs(deltaX) < .5 && Math.abs(deltaY) < .5) return;
+      const animation = card.animate(
+        [{transform:`translate(${deltaX}px, ${deltaY}px)`},{transform:'translate(0, 0)'}],
+        {duration:190,easing:'cubic-bezier(.2, 0, 0, 1)'}
+      );
+      state.documentReflowAnimations.set(card, animation);
+      const releaseAnimation = () => {
+        if (state.documentReflowAnimations.get(card) === animation) state.documentReflowAnimations.delete(card);
+      };
+      animation.addEventListener('finish', releaseAnimation, {once:true});
+      animation.addEventListener('cancel', releaseAnimation, {once:true});
+    });
+  }
+
+  function restoreDocumentDragOrder_(track, originalOrder) {
+    if (!track || !Array.isArray(originalOrder)) return;
+    const byId = new Map(Array.from(track.querySelectorAll('.document-card[data-node-id]')).map(card => [card.dataset.nodeId, card]));
+    animateDocumentReflow_(track, () => originalOrder.forEach(nodeId => {
+      const card = byId.get(nodeId);
+      if (card) track.appendChild(card);
+    }));
   }
 
   async function reorderDocumentCards_(event, track) {
     if (!state.documentDrag || Number(track.dataset.levelTrack) !== state.documentDrag.level) return;
     event.preventDefault();
-    const dragged = Array.from(track.querySelectorAll('.document-card[data-node-id]')).find(card => card.dataset.nodeId === state.documentDrag.nodeId);
-    if (!dragged) return;
-    const target = event.target.closest('.document-card');
-    if (target && target !== dragged) {
-      const after = target.classList.contains('document-drop-after') || documentDropAfter_(event, target);
-      track.insertBefore(dragged, after ? target.nextSibling : target);
-    } else if (!target) track.appendChild(dragged);
-    clearDocumentDropIndicators_(track);
+    state.documentDrag.committed = true;
     const level = Number(track.dataset.levelTrack);
     const orderedNodeIds = Array.from(track.querySelectorAll('.document-card[data-node-id]')).map(card => card.dataset.nodeId);
     applyDocumentOrderToState_(level, orderedNodeIds);
