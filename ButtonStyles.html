@@ -48,7 +48,6 @@
     font-size: 0 !important;
   }
   #back-dashboard > span,
-  #toggle-project-panel > span,
   #open-project-folder > span,
   #project-settings-button > span,
   #share-project-button > span,
@@ -69,7 +68,6 @@
   #agents-back-home::before,
   #agent-editor-back::before,
   #back-dashboard::before,
-  #toggle-project-panel::before,
   #toggle-chat-from-side::before,
   #collapse-chat-panel::before,
   #send-message::before,
@@ -127,7 +125,6 @@
   #agents-back-home::before,
   #agent-editor-back::before,
   #back-dashboard::before { content: "arrow_back"; }
-  #toggle-project-panel::before { content: "menu"; }
   #toggle-chat-from-side::before { content: "keyboard_double_arrow_right"; }
   #toggle-chat-from-side[aria-pressed="true"]::before,
   #collapse-chat-panel::before { content: "keyboard_double_arrow_left"; }
@@ -160,12 +157,51 @@
   .side-tab[data-side-tab="flows"] > span::before { content: "account_tree"; }
   .composer-footer .chat-model-picker > i::before { content: "expand_more"; }
 
+  /*
+   * Icon-only controls use the complete button as their alignment box.
+   * This avoids baseline differences between individual Material glyphs.
+   */
+  #toggle-chat-from-side,
+  #collapse-chat-panel,
+  #new-conversation,
+  #sync-source-index,
+  #add-source-link,
+  #add-template-link,
+  #add-flow-link,
+  .file-button,
+  .flow-file-button {
+    position: relative !important;
+    align-self: center !important;
+    margin: 0 !important;
+    line-height: 0 !important;
+  }
+  #toggle-chat-from-side::before,
+  #collapse-chat-panel::before,
+  #new-conversation::before,
+  #sync-source-index::before,
+  #add-source-link::before,
+  #add-template-link::before,
+  #add-flow-link::before,
+  .file-button::before,
+  .flow-file-button::before {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    overflow: visible;
+    line-height: 1;
+    transform: none;
+  }
+
   /* Circular navigation and state controls. */
   #projects-back-home,
   #agents-back-home,
   #agent-editor-back,
   #back-dashboard,
-  #toggle-project-panel,
   #toggle-chat-from-side,
   #collapse-chat-panel,
   #send-message {
@@ -269,27 +305,52 @@
     text-decoration: none !important;
   }
 
-  /* Tab icons are centered, but the tab itself keeps its original layout. */
+  /* Every tab uses the same icon and label rows. */
+  .side-tab {
+    grid-template-columns: minmax(0,1fr) !important;
+    grid-template-rows: 36px 14px !important;
+    align-items: center !important;
+    justify-items: center !important;
+    align-content: center !important;
+    row-gap: 5px !important;
+  }
   .side-tab > span {
+    position: relative !important;
     width: 36px !important;
     height: 36px !important;
     display: grid !important;
     place-items: center !important;
     padding: 0 !important;
     border-radius: 11px !important;
-    color: var(--project-accent,#0b57d0) !important;
-    background: color-mix(in srgb,var(--project-accent,#0b57d0) 9%,#fff) !important;
+    color: var(--tab-accent,var(--project-accent,#0b57d0)) !important;
+    background: color-mix(in srgb,var(--tab-accent,var(--project-accent,#0b57d0)) 9%,#fff) !important;
   }
   .side-tab.active > span {
     color: #fff !important;
-    background: var(--ui-button-fill) !important;
+    background: linear-gradient(135deg,var(--tab-accent,var(--project-accent,#0b57d0)) 0%,color-mix(in srgb,var(--tab-accent,var(--project-accent,#0b57d0)) 78%,#fff) 100%) !important;
   }
   .side-tab > span::before {
-    width: 22px;
-    height: 22px;
-    flex-basis: 22px;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
     font-size: 21px;
-    line-height: 22px;
+    line-height: 1;
+    overflow: visible;
+  }
+  .side-tab > b {
+    width: 100%;
+    height: 14px;
+    min-height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 !important;
+    line-height: 14px !important;
   }
 
   /* One restrained interaction language: no scale, shadow or blur. */
@@ -298,7 +359,6 @@
   #agents-back-home,
   #agent-editor-back,
   #back-dashboard,
-  #toggle-project-panel,
   #toggle-chat-from-side,
   #collapse-chat-panel,
   #send-message,
@@ -334,7 +394,6 @@
   #agents-back-home:hover,
   #agent-editor-back:hover,
   #back-dashboard:hover,
-  #toggle-project-panel:hover,
   #toggle-chat-from-side:hover,
   #collapse-chat-panel:hover,
   #send-message:hover,
@@ -371,7 +430,6 @@
   #agents-back-home:active,
   #agent-editor-back:active,
   #back-dashboard:active,
-  #toggle-project-panel:active,
   #toggle-chat-from-side:active,
   #collapse-chat-panel:active,
   #send-message:active,
@@ -405,7 +463,6 @@
   #agents-back-home:focus-visible,
   #agent-editor-back:focus-visible,
   #back-dashboard:focus-visible,
-  #toggle-project-panel:focus-visible,
   #toggle-chat-from-side:focus-visible,
   #collapse-chat-panel:focus-visible,
   #send-message:focus-visible,
@@ -450,7 +507,6 @@
     #agents-back-home,
     #agent-editor-back,
     #back-dashboard,
-    #toggle-project-panel,
     #toggle-chat-from-side,
     #collapse-chat-panel,
     #send-message,
@@ -471,7 +527,6 @@
     #agents-back-home,
     #agent-editor-back,
     #back-dashboard,
-    #toggle-project-panel,
     #toggle-chat-from-side,
     #collapse-chat-panel,
     #send-message,
