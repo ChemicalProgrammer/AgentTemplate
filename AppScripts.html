@@ -42,6 +42,8 @@
     selectedSources: new Set(),
     selectedFlows: new Set(),
     collapsedDocumentLevels: new Set(),
+    documentDrag: null,
+    documentDragSuppressClickUntil: 0,
     selectedTemplateId: '',
     busy: false,
     activeRequest: null,
@@ -1395,29 +1397,21 @@
     const levels = [...new Set(nodes.map(node => Number(node.level || 0)))].sort((a,b) => a-b);
     container.innerHTML = levels.map(level => {
       const items = nodes.filter(node => Number(node.level || 0) === level);
-      const selectableItems = items.filter(node => node.kind !== 'pending-upload');
-      const selected = selectableItems.filter(node => state.selectedSources.has(node.nodeId)).length;
-      const allChecked = selectableItems.length > 0 && selected === selectableItems.length;
-      const partial = selected > 0 && selected < selectableItems.length;
       const collapsed = state.collapsedDocumentLevels.has(level);
       const levelLabel = level === -1 ? `Agent knowledge · ${escapeHtml((state.projectAgent || {}).name || 'Loaded agent')}` : level === 0 ? 'Project sources' : `Generated · Level ${level}`;
       const levelDescription = level === -1 ? 'Inherited from the loaded agent' : level === 0 ? 'Original context and root files' : 'Derived from parent documents';
       const trackId = `document-level-track-${String(level).replace('-', 'negative-')}`;
       return `<section class="document-level ${level === -1 ? 'agent-knowledge-level' : ''} ${collapsed ? 'collapsed' : ''}" data-level="${level}">
-        <div class="level-heading">
-          <div class="level-heading-main"><button type="button" class="level-collapse-button" data-level-collapse="${level}" aria-expanded="${String(!collapsed)}" aria-controls="${trackId}" title="${collapsed ? 'Expand level' : 'Collapse level'}"><span aria-hidden="true">⌄</span></button><label class="level-select"><input type="checkbox" data-level-select="${level}" ${allChecked ? 'checked' : ''} ${partial ? 'data-partial="true"' : ''} ${selectableItems.length ? '' : 'disabled'}><span class="level-copy"><strong>${levelLabel}</strong><small>${levelDescription}</small></span></label></div>
+        <button type="button" class="level-heading" data-level-collapse="${level}" aria-expanded="${String(!collapsed)}" aria-controls="${trackId}" title="${collapsed ? 'Expand level' : 'Collapse level'}">
+          <span class="level-copy"><strong>${levelLabel}</strong><small>${levelDescription}</small></span>
           <span class="level-count"><b>${items.length}</b><small>${items.length === 1 ? 'item' : 'items'}</small></span>
-        </div>
-        <div id="${trackId}" class="level-track" aria-hidden="${String(collapsed)}">${items.map(renderDocumentCard).join('')}</div>
+        </button>
+        <div id="${trackId}" class="level-track" data-level-track="${level}" aria-hidden="${String(collapsed)}">${items.map(renderDocumentCard).join('')}</div>
       </section>`;
     }).join('');
     const pendingCount = state.pendingUploads.size;
     document.getElementById('document-count-label').textContent = `${persistedNodes.length} ${persistedNodes.length === 1 ? 'item' : 'items'}${pendingCount ? ` · ${pendingCount} uploading` : ''}`;
     document.getElementById('empty-documents').classList.toggle('hidden', nodes.length > 0);
-    container.querySelectorAll('[data-level-select]').forEach(input => {
-      if (input.dataset.partial === 'true') input.indeterminate = true;
-      input.addEventListener('change', () => toggleDocumentLevel(Number(input.dataset.levelSelect), input.checked));
-    });
     container.querySelectorAll('[data-level-collapse]').forEach(button => button.addEventListener('click', () => toggleDocumentLevelCollapse_(Number(button.dataset.levelCollapse))));
     container.querySelectorAll('[data-document-select]').forEach(input => input.addEventListener('change', () => toggleDocumentSelection(input.dataset.documentSelect, input.checked)));
     container.querySelectorAll('[data-document-menu]').forEach(button => button.addEventListener('click', event => toggleDocumentMenu(event, button)));
@@ -1432,6 +1426,7 @@
       card.addEventListener('focusin', () => highlightDocumentRelations(card.dataset.nodeId));
       card.addEventListener('focusout', () => state.highlightedDocumentId ? highlightDocumentRelations(state.highlightedDocumentId) : clearDocumentHighlights());
       card.addEventListener('click', event => {
+        if (Date.now() < state.documentDragSuppressClickUntil) return;
         if (event.target.closest('button,a,input,label')) return;
         const clickedNode = nodes.find(node => node.nodeId === card.dataset.nodeId);
         if (clickedNode && clickedNode.kind === 'pending-upload') return;
@@ -1439,6 +1434,7 @@
         highlightDocumentRelations(state.highlightedDocumentId); openDocumentPreview(card.dataset.nodeId);
       });
     });
+    bindDocumentCardOrdering_(container);
     renderSourceChips();
   }
 
@@ -1452,7 +1448,7 @@
     const progressLabel = ['uploading','drive_uploading'].includes(node.indexStatus) && Number(node.indexProgress || 0) ? ` · ${Number(node.indexProgress)}%` : '';
     const originClass = agentKnowledge ? 'origin-agent' : pendingUpload || node.kind === 'source' ? 'origin-source' : 'origin-generated';
     const originLabel = pendingUpload ? 'Uploading source' : agentKnowledge ? (node.mandatory ? 'Agent · mandatory' : 'Agent · optional') : node.kind === 'source' ? 'Original' : node.kind === 'artifact' ? `Artifact${node.artifactVersion ? ` · v${node.artifactVersion}` : ''}` : 'Generated';
-    return `<article class="document-card file-card ${fileTypeClass(node.mimeType,node.name)} ${originClass} ${agentKnowledge ? 'agent-knowledge' : ''}" data-node-id="${escapeHtml(node.nodeId)}" tabindex="0">
+    return `<article class="document-card file-card ${fileTypeClass(node.mimeType,node.name)} ${originClass} ${agentKnowledge ? 'agent-knowledge' : ''}" data-node-id="${escapeHtml(node.nodeId)}" draggable="${String(!pendingUpload)}" tabindex="0">
       <div class="document-card-top">
         <label class="document-checkbox" title="${pendingUpload ? 'Upload in progress' : node.locked ? 'Mandatory agent knowledge' : 'Use in chat'}"><input type="checkbox" ${pendingUpload ? '' : `data-document-select="${escapeHtml(node.nodeId)}"`} ${state.selectedSources.has(node.nodeId) ? 'checked' : ''} ${node.locked || pendingUpload ? 'disabled' : ''}><span></span></label>
         <span class="file-type-icon ${fileTypeClass(node.mimeType,node.name)}">${fileTypeIcon(node.mimeType,node.name)}</span>
@@ -1496,11 +1492,6 @@
     checked ? state.selectedSources.add(nodeId) : state.selectedSources.delete(nodeId); rememberCurrentSelection(); updateDocumentSelectionUi();
   }
 
-  function toggleDocumentLevel(level, checked) {
-    state.documentNodes.filter(node => !node.hiddenInProject && Number(node.level || 0) === level).forEach(node => node.locked ? state.selectedSources.add(node.nodeId) : checked ? state.selectedSources.add(node.nodeId) : state.selectedSources.delete(node.nodeId));
-    rememberCurrentSelection(); updateDocumentSelectionUi();
-  }
-
   function documentLevelStorageKey_(projectId) {
     return 'gpa.collapsedDocumentLevels.' + String(projectId || '');
   }
@@ -1528,6 +1519,80 @@
     renderDocumentGraph();
   }
 
+  function bindDocumentCardOrdering_(container) {
+    container.querySelectorAll('.document-card[draggable="true"]').forEach(card => {
+      card.addEventListener('dragstart', event => {
+        if (event.target.closest('button,a,input,label')) { event.preventDefault(); return; }
+        const track = card.closest('[data-level-track]');
+        if (!track) { event.preventDefault(); return; }
+        state.documentDrag = {nodeId:card.dataset.nodeId, level:Number(track.dataset.levelTrack)};
+        card.classList.add('document-dragging');
+        card.setAttribute('aria-grabbed', 'true');
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', card.dataset.nodeId);
+      });
+      card.addEventListener('dragend', () => {
+        card.classList.remove('document-dragging');
+        card.removeAttribute('aria-grabbed');
+        clearDocumentDropIndicators_(container);
+        state.documentDrag = null;
+        state.documentDragSuppressClickUntil = Date.now() + 250;
+      });
+    });
+    container.querySelectorAll('[data-level-track]').forEach(track => {
+      track.addEventListener('dragover', event => {
+        if (!state.documentDrag || Number(track.dataset.levelTrack) !== state.documentDrag.level) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        clearDocumentDropIndicators_(track);
+        const target = event.target.closest('.document-card');
+        if (!target || target.dataset.nodeId === state.documentDrag.nodeId) return;
+        target.classList.add(documentDropAfter_(event, target) ? 'document-drop-after' : 'document-drop-before');
+      });
+      track.addEventListener('dragleave', event => {
+        if (!track.contains(event.relatedTarget)) clearDocumentDropIndicators_(track);
+      });
+      track.addEventListener('drop', event => reorderDocumentCards_(event, track));
+    });
+  }
+
+  function documentDropAfter_(event, target) {
+    const rect = target.getBoundingClientRect();
+    const verticalOffset = event.clientY - (rect.top + rect.height / 2);
+    if (Math.abs(verticalOffset) > rect.height * .22) return verticalOffset > 0;
+    return event.clientX > rect.left + rect.width / 2;
+  }
+
+  function clearDocumentDropIndicators_(root = document) {
+    root.querySelectorAll('.document-drop-before,.document-drop-after').forEach(card => card.classList.remove('document-drop-before','document-drop-after'));
+  }
+
+  async function reorderDocumentCards_(event, track) {
+    if (!state.documentDrag || Number(track.dataset.levelTrack) !== state.documentDrag.level) return;
+    event.preventDefault();
+    const dragged = Array.from(track.querySelectorAll('.document-card[data-node-id]')).find(card => card.dataset.nodeId === state.documentDrag.nodeId);
+    if (!dragged) return;
+    const target = event.target.closest('.document-card');
+    if (target && target !== dragged) {
+      const after = target.classList.contains('document-drop-after') || documentDropAfter_(event, target);
+      track.insertBefore(dragged, after ? target.nextSibling : target);
+    } else if (!target) track.appendChild(dragged);
+    clearDocumentDropIndicators_(track);
+    const level = Number(track.dataset.levelTrack);
+    const orderedNodeIds = Array.from(track.querySelectorAll('.document-card[data-node-id]')).map(card => card.dataset.nodeId);
+    applyDocumentOrderToState_(level, orderedNodeIds);
+    state.documentDragSuppressClickUntil = Date.now() + 250;
+    try { await server('saveProjectDocumentOrder', state.currentProjectId, level, orderedNodeIds); }
+    catch (error) { showToast('Document order could not be saved: ' + error.message, true); await refreshDocumentGraph(); }
+  }
+
+  function applyDocumentOrderToState_(level, orderedNodeIds) {
+    const byId = new Map(state.documentNodes.map(node => [node.nodeId, node]));
+    const ordered = orderedNodeIds.map(nodeId => byId.get(nodeId)).filter(Boolean);
+    let cursor = 0;
+    state.documentNodes = state.documentNodes.map(node => !node.hiddenInProject && Number(node.level || 0) === level ? ordered[cursor++] || node : node);
+  }
+
   function rememberCurrentSelection() {
     if (state.currentConversationId) state.conversationSelections.set(state.currentConversationId, Array.from(state.selectedSources));
   }
@@ -1535,11 +1600,6 @@
   function updateDocumentSelectionUi() {
     state.documentNodes.filter(node => node.locked).forEach(node => state.selectedSources.add(node.nodeId));
     document.querySelectorAll('[data-document-select]').forEach(input => { input.checked = state.selectedSources.has(input.dataset.documentSelect); });
-    document.querySelectorAll('[data-level-select]').forEach(input => {
-      const items = state.documentNodes.filter(node => !node.hiddenInProject && Number(node.level || 0) === Number(input.dataset.levelSelect));
-      const selected = items.filter(node => state.selectedSources.has(node.nodeId)).length;
-      input.checked = items.length > 0 && selected === items.length; input.indeterminate = selected > 0 && selected < items.length;
-    });
     renderSourceChips();
   }
 

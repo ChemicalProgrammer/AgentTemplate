@@ -233,14 +233,9 @@
   .document-level[data-level="0"] { --level-accent:#0b57d0;--level-tint:#eaf2ff; }
   .document-level[data-level]:not([data-level="-1"]):not([data-level="0"]) { --level-accent:#0f8b67;--level-tint:#e8f6f1; }
   .document-level + .document-level::before { content:'';position:absolute;left:28px;top:-15px;width:2px;height:15px;border-radius:2px;background:linear-gradient(var(--level-accent),color-mix(in srgb,var(--level-accent) 28%,transparent));opacity:.42; }
-  .level-heading { position:relative;z-index:4;min-height:58px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 11px;border-radius:16px 16px 0 0;border-bottom:1px solid color-mix(in srgb,var(--level-accent) 16%,var(--line));background:linear-gradient(110deg,var(--level-tint),rgba(255,255,255,.98) 70%);box-shadow:0 2px 7px rgba(60,64,67,.045); }
-  .level-heading-main { min-width:0;display:flex;align-items:center;gap:8px; }
-  .level-collapse-button { width:32px;height:32px;display:grid;place-items:center;flex:0 0 auto;padding:0;border:1px solid color-mix(in srgb,var(--level-accent) 18%,var(--line));border-radius:11px;color:var(--level-accent);background:rgba(255,255,255,.82);box-shadow:0 2px 5px rgba(60,64,67,.05); }
-  .level-collapse-button:hover,.level-collapse-button:focus-visible { background:#fff;box-shadow:0 4px 9px rgba(60,64,67,.11);outline:none; }
-  .level-collapse-button span { display:block;font-size:19px;line-height:1;transform:rotate(0deg);transition:transform .2s var(--motion-standard); }
-  .document-level.collapsed .level-collapse-button span { transform:rotate(-90deg); }
-  .level-select { min-width:0;display:flex;align-items:center;gap:9px;margin:0;letter-spacing:.02em; }
-  .level-select input { width:17px;height:17px;flex:0 0 auto;margin:0;accent-color:var(--level-accent); }
+  .level-heading { position:relative;z-index:4;width:100%;min-height:58px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 13px;border:0;border-radius:16px 16px 0 0;border-bottom:1px solid color-mix(in srgb,var(--level-accent) 16%,var(--line));color:inherit;background:linear-gradient(110deg,var(--level-tint),rgba(255,255,255,.98) 70%);box-shadow:0 2px 7px rgba(60,64,67,.045);font:inherit;text-align:left;cursor:pointer;transition:filter .17s,box-shadow .17s; }
+  .level-heading:hover { filter:saturate(1.07) brightness(.995);box-shadow:0 4px 10px rgba(60,64,67,.08); }
+  .level-heading:focus-visible { outline:3px solid color-mix(in srgb,var(--level-accent) 20%,transparent);outline-offset:2px; }
   .level-copy { min-width:0;display:grid;gap:2px; }
   .level-copy strong { overflow:hidden;color:color-mix(in srgb,var(--level-accent) 80%,#202124);text-overflow:ellipsis;white-space:nowrap;font-size:11px; }
   .level-copy small { overflow:hidden;color:var(--muted);text-overflow:ellipsis;white-space:nowrap;font-size:8px;font-weight:500;letter-spacing:0; }
@@ -252,6 +247,12 @@
   .document-level.collapsed .level-track { display:none; }
   .document-card { position: relative; min-width: 0; margin: 1px 0 2px; padding: 11px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.8); box-shadow: 0 1px 1px rgba(60,64,67,.03); transition: border-color .18s,box-shadow .18s,transform .18s,opacity .18s,background .18s; cursor: pointer; }
   .document-card:hover, .document-card:focus-visible { border-color: #b5c6dc; box-shadow: var(--shadow-sm); transform: translateY(-1px); outline: none; }
+  .document-card[draggable="true"] { cursor:grab; }
+  .document-card[draggable="true"]:active { cursor:grabbing; }
+  .document-card.document-dragging { opacity:.42;transform:scale(.985)!important;box-shadow:none!important; }
+  .document-card.document-drop-before::before,.document-card.document-drop-after::after { content:'';position:absolute;z-index:8;left:7px;right:7px;height:4px;border-radius:4px;background:linear-gradient(90deg,var(--project-accent),#a142f4);box-shadow:0 0 0 2px #fff,0 3px 8px rgba(60,64,67,.2);pointer-events:none; }
+  .document-card.document-drop-before::before { top:-6px; }
+  .document-card.document-drop-after::after { bottom:-6px; }
   .document-card.relation-focus { border-color: var(--google-blue); background: #eef5ff; box-shadow: 0 0 0 2px rgba(11,87,208,.12); }
   .document-card.relation-highlight { border-color: #7fb29a; background: #f1fbf5; }
   .document-card.relation-dim { opacity: .45; }

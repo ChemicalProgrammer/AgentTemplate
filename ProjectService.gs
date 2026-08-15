@@ -111,7 +111,60 @@ function getProjectChatPanel(projectId) {
 
 function getProjectDocumentsPanel(projectId) {
   var access = assertProjectAccess_(projectId);
-  return {documentGraph: listAgentKnowledgeNodesForProject_(access.project).concat(listProjectDocuments(projectId))};
+  var graph = listAgentKnowledgeNodesForProject_(access.project).concat(listProjectDocuments(projectId));
+  return {documentGraph: applyProjectDocumentOrder_(projectId, graph)};
+}
+
+function saveProjectDocumentOrder(projectId, level, orderedNodeIds) {
+  var access = assertProjectAccess_(projectId);
+  level = Number(level);
+  if (!isFinite(level)) throw new Error('Document level is invalid.');
+  var graph = listAgentKnowledgeNodesForProject_(access.project).concat(listProjectDocuments(projectId));
+  var valid = {};
+  graph.forEach(function(node) {
+    if (Number(node.level || 0) === level && !node.hiddenInProject) valid[String(node.nodeId)] = true;
+  });
+  var seen = {};
+  var normalized = (Array.isArray(orderedNodeIds) ? orderedNodeIds : []).map(String).filter(function(nodeId) {
+    if (!valid[nodeId] || seen[nodeId]) return false;
+    seen[nodeId] = true;
+    return true;
+  });
+  var properties = PropertiesService.getUserProperties();
+  var key = projectDocumentOrderKey_(projectId, level);
+  if (normalized.length) properties.setProperty(key, JSON.stringify(normalized));
+  else properties.deleteProperty(key);
+  return {projectId:projectId, level:level, orderedNodeIds:normalized};
+}
+
+function applyProjectDocumentOrder_(projectId, graph) {
+  graph = Array.isArray(graph) ? graph.slice() : [];
+  var levels = {};
+  graph.forEach(function(node, index) {
+    var key = String(Number(node.level || 0));
+    if (!levels[key]) levels[key] = [];
+    levels[key].push({node:node, index:index});
+  });
+  var properties = PropertiesService.getUserProperties();
+  Object.keys(levels).forEach(function(levelKey) {
+    var order = safeJsonParse_(properties.getProperty(projectDocumentOrderKey_(projectId, Number(levelKey))), []);
+    if (!Array.isArray(order) || !order.length) return;
+    var rank = {};
+    order.forEach(function(nodeId, index) { if (rank[String(nodeId)] == null) rank[String(nodeId)] = index; });
+    var entries = levels[levelKey];
+    var sorted = entries.slice().sort(function(a, b) {
+      var aId = String(a.node.nodeId || ''); var bId = String(b.node.nodeId || '');
+      var aRank = rank[aId] == null ? Number.MAX_SAFE_INTEGER : rank[aId];
+      var bRank = rank[bId] == null ? Number.MAX_SAFE_INTEGER : rank[bId];
+      return aRank === bRank ? a.index - b.index : aRank - bRank;
+    });
+    entries.forEach(function(entry, index) { graph[entry.index] = sorted[index].node; });
+  });
+  return graph;
+}
+
+function projectDocumentOrderKey_(projectId, level) {
+  return APP.USER_DOCUMENT_ORDER_PREFIX + String(projectId || '').replace(/[^A-Za-z0-9_-]/g, '') + '_' + String(Number(level));
 }
 
 function getProjectTemplatesPanel(projectId) {
