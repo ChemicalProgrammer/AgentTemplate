@@ -22,27 +22,37 @@
     background: var(--chat-source-surface,#f3f8fe) !important;
   }
 
-  /* Generated artifacts have a stable teal identity, independent of project color. */
+  /* Every chat identity follows the assigned agent, never the project theme. */
+  .message-avatar,
+  .chat-agent-mark,
+  .gemini-orb {
+    color: #fff !important;
+    background: linear-gradient(135deg,var(--identity-accent,#7451c8),color-mix(in srgb,var(--identity-accent,#7451c8) 72%,#fff)) !important;
+    box-shadow: 0 5px 13px color-mix(in srgb,var(--identity-accent,#7451c8) 19%,transparent) !important;
+  }
+
+  /* Artifact surfaces inherit the document type: PDF red, Markdown amber, etc. */
   .artifact-event-card {
-    border-color: var(--artifact-border,#bcded9) !important;
-    background: linear-gradient(145deg,var(--artifact-surface,#edf8f6),#fff 82%) !important;
-    box-shadow: 0 6px 17px rgba(15,118,110,.09) !important;
+    border-color: color-mix(in srgb,var(--file-accent,#64748b) 26%,var(--line)) !important;
+    background: radial-gradient(circle at 96% 4%,var(--file-halo,rgba(100,116,139,.12)),transparent 42%),linear-gradient(145deg,var(--file-tint,#eef2f6),#fff 82%) !important;
+    box-shadow: 0 6px 17px var(--file-halo,rgba(100,116,139,.10)) !important;
   }
   .artifact-event-heading > span {
-    background: linear-gradient(135deg,var(--artifact-accent,#0f766e),var(--artifact-accent-light,#2a9d8f)) !important;
+    background: linear-gradient(145deg,var(--file-accent,#64748b),color-mix(in srgb,var(--file-accent,#64748b) 76%,#202124)) !important;
+    box-shadow: 0 4px 10px var(--file-halo,rgba(100,116,139,.14)) !important;
   }
   .artifact-event-heading small {
-    color: var(--artifact-label,#0b665f) !important;
+    color: var(--file-accent,#64748b) !important;
   }
   .artifact-event-actions button {
-    color: var(--artifact-accent,#0f766e) !important;
-    border-color: var(--artifact-border,#bcded9) !important;
+    color: var(--file-accent,#64748b) !important;
+    border-color: color-mix(in srgb,var(--file-accent,#64748b) 25%,var(--line)) !important;
     background: #fff !important;
   }
   .artifact-event-actions button:hover {
     color: #fff !important;
-    border-color: var(--artifact-accent,#0f766e) !important;
-    background: linear-gradient(135deg,var(--artifact-accent,#0f766e),var(--artifact-accent-light,#2a9d8f)) !important;
+    border-color: var(--file-accent,#64748b) !important;
+    background: linear-gradient(135deg,var(--file-accent,#64748b),color-mix(in srgb,var(--file-accent,#64748b) 74%,#fff)) !important;
   }
 
   /* Composer: the action lives beside the input instead of inside it. */
@@ -133,27 +143,17 @@
   }
   .composer-footer .chat-model-picker > i { display: none !important; }
 
-  /* Selected source strip: compact, friendly horizontal scrollbar. */
+  /* Every active source is visible; chips wrap instead of scrolling sideways. */
   .source-chips {
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 0 8px 10px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--selected-source-scrollbar,#779fc8) var(--selected-source-scrollbar-track,#e7eff7);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    align-content: flex-start;
+    overflow: visible;
+    padding: 0 8px 8px;
+    scrollbar-width: none;
   }
-  .source-chips::-webkit-scrollbar { height: 7px; }
-  .source-chips::-webkit-scrollbar-track {
-    margin-inline: 8px;
-    border-radius: 7px;
-    background: var(--selected-source-scrollbar-track,#e7eff7);
-  }
-  .source-chips::-webkit-scrollbar-thumb {
-    border: 1px solid transparent;
-    border-radius: 7px;
-    background: linear-gradient(90deg,#89add1,var(--selected-source-scrollbar,#779fc8));
-    background-clip: padding-box;
-  }
-  .source-chips::-webkit-scrollbar-thumb:hover { background: #628db8; }
+  .source-chips::-webkit-scrollbar { display: none; }
 
   /* Thicker panel scrollbars with protected space above the rounded bottom edge. */
   :where(.side-panel-content,.chat-scroll-region,.document-viewer-content,.main-content) {
@@ -191,8 +191,9 @@
     width: 44px;
     min-width: 44px;
     height: 100%;
-    display: grid;
-    place-items: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     margin: 0;
     border-right: 1px solid color-mix(in srgb,var(--level-accent) 15%,var(--line));
     border-radius: 16px 0 0 16px;
@@ -203,6 +204,9 @@
   .level-select-all input {
     width: 18px;
     height: 18px;
+    display: block;
+    flex: 0 0 18px;
+    align-self: center;
     margin: 0;
     accent-color: var(--level-accent);
     cursor: pointer;
@@ -234,6 +238,52 @@
   .level-heading-toggle:focus-visible {
     outline: 3px solid color-mix(in srgb,var(--level-accent) 20%,transparent);
     outline-offset: -4px;
+  }
+
+  /* The top agent control reads as a deliberate combobox trigger. */
+  #project-agent-button.agent-loaded-pill {
+    min-width: 248px;
+    max-width: 330px;
+    min-height: 56px;
+    grid-template-columns: 40px minmax(0,1fr) 32px;
+    gap: 10px;
+    padding: 7px 8px 7px 9px;
+    border-color: color-mix(in srgb,var(--project-accent,#7451c8) 28%,#cbd5e1);
+    border-radius: 18px;
+    background: linear-gradient(145deg,color-mix(in srgb,var(--project-tint,#f0eafd) 74%,#fff),#fff 72%);
+    box-shadow: 0 3px 11px color-mix(in srgb,var(--project-accent,#7451c8) 10%,transparent);
+  }
+  #project-agent-button.agent-loaded-pill:hover {
+    border-color: color-mix(in srgb,var(--project-accent,#7451c8) 52%,#b9c5d3);
+    background: linear-gradient(145deg,color-mix(in srgb,var(--project-tint,#f0eafd) 92%,#fff),#fff 76%);
+    box-shadow: 0 5px 14px color-mix(in srgb,var(--project-accent,#7451c8) 14%,transparent);
+    transform: none;
+  }
+  #project-agent-button.agent-loaded-pill > span:first-child {
+    width: 40px;
+    height: 40px;
+    border-radius: 13px;
+    background: linear-gradient(135deg,var(--identity-accent,var(--project-accent,#7451c8)),color-mix(in srgb,var(--identity-accent,var(--project-accent,#7451c8)) 72%,#fff));
+    box-shadow: none;
+  }
+  #project-agent-button.agent-loaded-pill > span:nth-child(2) { gap: 2px; }
+  #project-agent-button.agent-loaded-pill b { color: #253246;font-size: var(--font-size-11); }
+  #project-agent-button.agent-loaded-pill small { color: #66758a;font-size: var(--font-size-8); }
+  #project-agent-button.agent-loaded-pill .agent-pill-caret {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    border: 1px solid color-mix(in srgb,var(--project-accent,#7451c8) 16%,#d7dee8);
+    border-radius: 11px;
+    color: var(--project-accent,#7451c8);
+    background: color-mix(in srgb,var(--project-tint,#f0eafd) 66%,#fff);
+  }
+  #project-agent-button.agent-loaded-pill:hover .agent-pill-caret {
+    color: #fff;
+    background: var(--project-accent,#7451c8);
+    transform: none;
   }
 
   @media (max-width: 760px) {

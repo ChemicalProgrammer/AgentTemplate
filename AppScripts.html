@@ -1080,6 +1080,11 @@
       state.documentNodes = []; state.selectedSources = new Set(); state.selectedFlows = new Set(); state.panelLoaded.documents = false; state.panelLoaded.templates = false; state.panelLoaded.flows = false;
       closeModals(); renderProjectDetails(); renderConversationList(); renderChatEmpty(false);
       await loadProjectDocuments_(state.currentProjectId, state.projectLoadToken);
+      if (state.panelLoaded.documents) {
+        selectDefaultDocuments();
+        rememberCurrentSelection();
+        renderDocumentGraph();
+      }
       showToast(`${result.agent.name} v${result.agent.version} loaded. A new chat was created.`);
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
@@ -1222,8 +1227,9 @@
     const flows = (message.flowsUsed || []).map(flow => `[${escapeHtml(flow.label)}] ${escapeHtml(flow.name)}`).join(' · ');
     if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div>${state.projectDetails.permissions.edit ? `<div class="message-actions"><button class="emoji-action-btn" data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">✏️</button><button class="emoji-action-btn danger" data-delete-message="${escapeHtml(message.messageId)}" title="Delete from this point" aria-label="Delete this message and later conversation">🗑️</button></div>` : ''}</article>`;
     if (message.kind === 'artifact_event' && message.artifact) return renderArtifactEvent_(message, sources, flows);
+    const agentIdentity = messageAgentIdentity_(message);
     return `<article class="message assistant" data-message-id="${escapeHtml(message.messageId)}">
-      <div class="message-header">${identityMarkHtml_(state.projectAgent || {icon:'✦'}, 'message-avatar')}<span>${escapeHtml(message.agentName || (state.projectAgent || {}).name || 'Agent')}${message.agentVersion ? ` · v${escapeHtml(message.agentVersion)}` : ''}</span></div>
+      <div class="message-header">${identityMarkHtml_(agentIdentity, 'message-avatar')}<span>${escapeHtml(message.agentName || agentIdentity.name || 'Agent')}${message.agentVersion ? ` · v${escapeHtml(message.agentVersion)}` : ''}</span></div>
       <div id="message-body-${escapeHtml(message.messageId)}" class="message-body ${message.isTyping ? 'typing-cursor' : ''}">${formatMarkdown(message.text)}</div>
       ${sources ? `<div class="message-sources">${sources}</div>` : ''}
       ${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
@@ -1233,10 +1239,13 @@
 
   function renderArtifactEvent_(message, sources, flows) {
     const artifact = message.artifact;
+    const agentIdentity = messageAgentIdentity_(message);
+    const artifactTypeClass = fileTypeClass(artifact.mimeType, artifact.name);
+    const artifactTypeIcon = fileTypeIcon(artifact.mimeType, artifact.name);
     const actions = (message.actions || []).map(action => `<button data-artifact-action="${escapeHtml(action.id)}" data-action-message="${escapeHtml(action.message)}">${escapeHtml(action.label)}</button>`).join('');
     return `<article class="message assistant artifact-event" data-message-id="${escapeHtml(message.messageId)}">
-      <div class="message-header">${identityMarkHtml_(state.projectAgent || {icon:'✦'}, 'message-avatar')}<span>${escapeHtml(message.agentName || (state.projectAgent || {}).name || 'Agent')}</span></div>
-      <div class="artifact-event-card"><button class="artifact-event-heading artifact-open-button" data-open-artifact="${escapeHtml(artifact.nodeId)}"><span aria-hidden="true">MD</span><div><small>${escapeHtml(message.eventLabel || 'Artifact saved')}</small><strong>${escapeHtml(artifact.name)}</strong></div></button>${actions ? `<div class="artifact-event-actions">${actions}</div>` : ''}</div>
+      <div class="message-header">${identityMarkHtml_(agentIdentity, 'message-avatar')}<span>${escapeHtml(message.agentName || agentIdentity.name || 'Agent')}</span></div>
+      <div class="artifact-event-card ${escapeHtml(artifactTypeClass)}"><button class="artifact-event-heading artifact-open-button" data-open-artifact="${escapeHtml(artifact.nodeId)}"><span aria-hidden="true">${escapeHtml(artifactTypeIcon)}</span><div><small>${escapeHtml(message.eventLabel || 'Artifact saved')}</small><strong>${escapeHtml(artifact.name)}</strong></div></button>${actions ? `<div class="artifact-event-actions">${actions}</div>` : ''}</div>
       ${sources ? `<div class="message-sources">${sources}</div>` : ''}${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
     </article>`;
   }
@@ -1612,7 +1621,6 @@
         <div class="level-heading">
           <label class="level-select-all" title="Select or clear this level. Mandatory sources stay selected.">
             <input type="checkbox" data-level-select-all="${level}" data-indeterminate="${String(partiallySelected)}" aria-label="Select all documents in ${levelLabel}" ${allSelected ? 'checked' : ''} ${canToggleSelection ? '' : 'disabled'}>
-            <span aria-hidden="true"></span>
           </label>
           <button type="button" class="level-heading-toggle" data-level-collapse="${level}" aria-expanded="${String(!collapsed)}" aria-controls="${contentId}" title="${collapsed ? 'Expand level' : 'Collapse level'}">
             <span class="level-copy"><strong>${levelLabel}</strong><small>${levelDescription}</small></span>
@@ -1934,7 +1942,7 @@
     const flows = state.projectDetails ? (state.projectDetails.flows || []).filter(flow => state.selectedFlows.has(flow.flowId)) : [];
     const items = selected.map(node => ({tab:'documents', icon:fileTypeIcon(node.mimeType,node.name), name:node.name, typeClass:fileTypeClass(node.mimeType,node.name)})).concat(flows.map(flow => ({tab:'flows',icon:'⇄',name:flow.name,typeClass:'type-flow'})));
     const countLabel = selected.length ? `<span class="source-chip-count">${numberValue(selected.length)} ${selected.length === 1 ? 'source' : 'sources'}${flows.length ? ` · ${numberValue(flows.length)} ${flows.length === 1 ? 'flow' : 'flows'}` : ''}</span>` : flows.length ? `<span class="source-chip-count">${numberValue(flows.length)} ${flows.length === 1 ? 'flow' : 'flows'}</span>` : '';
-    document.getElementById('active-source-chips').innerHTML = items.slice(0, 5).map(item => `<button class="source-chip ${item.typeClass}" data-chip-tab="${item.tab}" title="Open ${item.tab} panel">${item.icon} ${escapeHtml(item.name)}</button>`).join('') + (items.length > 5 ? `<button class="source-chip source-chip-overflow">+${items.length - 5}</button>` : '') + countLabel;
+    document.getElementById('active-source-chips').innerHTML = items.map(item => `<button class="source-chip ${item.typeClass}" data-chip-tab="${item.tab}" title="Open ${item.tab} panel">${item.icon} ${escapeHtml(item.name)}</button>`).join('') + countLabel;
     document.querySelectorAll('#active-source-chips [data-chip-tab]').forEach(chip => chip.addEventListener('click', () => showSideTab(chip.dataset.chipTab)));
   }
 
@@ -2769,13 +2777,27 @@
     if (/^text\//.test(value) || /\.(txt|xml|ya?ml)$/.test(lowerName)) return 'type-text';
     return 'type-generic';
   }
+  function messageAgentIdentity_(message = {}) {
+    const messageAgentId = String(message.agentId || '');
+    if (messageAgentId && state.projectAgent && String(state.projectAgent.agentId || '') === messageAgentId) return state.projectAgent;
+    const catalogAgent = messageAgentId ? (state.availableAgents || []).find(agent => String(agent.agentId || '') === messageAgentId) : null;
+    return catalogAgent || state.projectAgent || {icon:'✦',name:message.agentName || 'Agent',color:'violet'};
+  }
+  function identityColorStyle_(entity = {}) {
+    const color = PROJECT_COLORS[entity.color] || PROJECT_COLORS.violet;
+    return `--identity-accent:${color.accent};--identity-tint:${color.tint};--identity-tint-strong:${color.tintStrong};`;
+  }
   function identityMarkHtml_(entity = {}, className = 'entity-mark') {
     const logo = entity.logoUrl || entity.agentLogoUrl || '';
-    return `<div class="entity-mark ${escapeHtml(className)} ${logo ? 'has-logo' : ''}">${logo ? `<img src="${escapeHtml(logo)}" alt="" loading="lazy">` : `<span>${escapeHtml(entity.icon || '✦')}</span>`}</div>`;
+    return `<div class="entity-mark ${escapeHtml(className)} ${logo ? 'has-logo' : ''}" style="${identityColorStyle_(entity)}">${logo ? `<img src="${escapeHtml(logo)}" alt="" loading="lazy">` : `<span>${escapeHtml(entity.icon || '✦')}</span>`}</div>`;
   }
   function setIdentityMark_(element, entity = {}) {
     if (!element) return;
     const logo = entity.logoUrl || entity.agentLogoUrl || '';
+    const color = PROJECT_COLORS[entity.color] || PROJECT_COLORS.violet;
+    element.style.setProperty('--identity-accent', color.accent);
+    element.style.setProperty('--identity-tint', color.tint);
+    element.style.setProperty('--identity-tint-strong', color.tintStrong);
     element.classList.toggle('has-logo', Boolean(logo));
     element.innerHTML = logo ? `<img src="${escapeHtml(logo)}" alt="">` : `<span>${escapeHtml(entity.icon || '✦')}</span>`;
   }
