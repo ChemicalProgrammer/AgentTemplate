@@ -1,8 +1,14 @@
 # Agent Console para Google Apps Script
 
-Versión de revisión 2.0.0-review.4-hotfix.1.
+Versión de revisión 2.0.0-review.4-hotfix.2.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
+
+## Hotfix 2 sobre 2.0.0-review.4
+
+- La creación y edición de agentes permite decidir si las fuentes mandatorias se muestran en los proyectos.
+- La preferencia queda congelada en cada release; los releases antiguos conservan el comportamiento visible.
+- Las fuentes mandatorias ocultas continúan seleccionadas, indexándose y formando parte de todas las consultas, pero no aparecen en Documents ni en los chips del chat.
 
 ## Hotfix 1 sobre 2.0.0-review.4
 

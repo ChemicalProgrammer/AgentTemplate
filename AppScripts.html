@@ -290,7 +290,7 @@
   async function submitAgent(event) {
     event.preventDefault(); setBusy(event.target, true);
     try {
-      const agent = await server('createAgent', {name:document.getElementById('new-agent-name').value,description:document.getElementById('new-agent-description').value,icon:document.getElementById('new-agent-icon').value,color:document.getElementById('new-agent-color').value});
+      const agent = await server('createAgent', {name:document.getElementById('new-agent-name').value,description:document.getElementById('new-agent-description').value,icon:document.getElementById('new-agent-icon').value,color:document.getElementById('new-agent-color').value,showMandatoryKnowledgeInProjects:document.getElementById('new-agent-show-mandatory-knowledge').checked});
       state.agents.unshift(agent); closeModals(); event.target.reset(); renderAgents(); updateHomeCounts_(); await openAgent(agent.agentId); showToast('Agent draft created.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
@@ -319,6 +319,7 @@
     document.getElementById('edit-agent-instructions').value = details.instructions || '';
     document.getElementById('edit-agent-icon').value = agent.icon || '✦';
     document.getElementById('edit-agent-color').value = agent.color || 'violet';
+    document.getElementById('edit-agent-show-mandatory-knowledge').checked = agent.showMandatoryKnowledgeInProjects !== false;
     renderAgentIdentityPreview_();
     syncAgentColorOptions_();
     const validation = details.validation || {valid:true,errors:[],warnings:[]};
@@ -330,6 +331,7 @@
     document.getElementById('import-agent-logo').classList.toggle('hidden', !agent.canEdit);
     document.getElementById('remove-agent-logo').classList.toggle('hidden', !agent.canEdit || !agent.logoUrl);
     document.getElementById('edit-agent-icon').disabled = !agent.canEdit;
+    document.getElementById('edit-agent-show-mandatory-knowledge').disabled = !agent.canEdit;
     document.querySelectorAll('[data-agent-color]').forEach(button => button.disabled = !agent.canEdit);
     document.querySelectorAll('[data-agent-add]').forEach(button => button.classList.toggle('hidden', !agent.canEdit));
     renderAgentResourceList_('agent-mandatory-list', assets.mandatoryKnowledge, 'DOC', agent.canEdit);
@@ -355,7 +357,7 @@
     if (!state.currentAgentId) return;
     const button = document.getElementById('save-agent'); setBusy(button, true);
     try {
-      state.currentAgentDetails = await server('updateAgent', state.currentAgentId, {name:document.getElementById('edit-agent-name').value,description:document.getElementById('edit-agent-description').value,instructions:document.getElementById('edit-agent-instructions').value,icon:document.getElementById('edit-agent-icon').value,color:document.getElementById('edit-agent-color').value});
+      state.currentAgentDetails = await server('updateAgent', state.currentAgentId, {name:document.getElementById('edit-agent-name').value,description:document.getElementById('edit-agent-description').value,instructions:document.getElementById('edit-agent-instructions').value,icon:document.getElementById('edit-agent-icon').value,color:document.getElementById('edit-agent-color').value,showMandatoryKnowledgeInProjects:document.getElementById('edit-agent-show-mandatory-knowledge').checked});
       upsertAgentSummary_(state.currentAgentDetails.agent); renderAgentEditor(); showToast('Agent draft saved.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
@@ -1385,9 +1387,9 @@
   function renderDocumentGraph() {
     if (!state.projectDetails) return;
     const container = document.getElementById('document-levels');
-    const persistedNodes = state.documentNodes || [];
+    state.documentNodes.filter(node => node.locked).forEach(node => state.selectedSources.add(node.nodeId));
+    const persistedNodes = (state.documentNodes || []).filter(node => !node.hiddenInProject);
     const nodes = persistedNodes.concat(Array.from(state.pendingUploads.values()));
-    nodes.filter(node => node.locked).forEach(node => state.selectedSources.add(node.nodeId));
     const levels = [...new Set(nodes.map(node => Number(node.level || 0)))].sort((a,b) => a-b);
     container.innerHTML = levels.map(level => {
       const items = nodes.filter(node => Number(node.level || 0) === level);
@@ -1486,7 +1488,7 @@
   }
 
   function toggleDocumentLevel(level, checked) {
-    state.documentNodes.filter(node => Number(node.level || 0) === level).forEach(node => node.locked ? state.selectedSources.add(node.nodeId) : checked ? state.selectedSources.add(node.nodeId) : state.selectedSources.delete(node.nodeId));
+    state.documentNodes.filter(node => !node.hiddenInProject && Number(node.level || 0) === level).forEach(node => node.locked ? state.selectedSources.add(node.nodeId) : checked ? state.selectedSources.add(node.nodeId) : state.selectedSources.delete(node.nodeId));
     rememberCurrentSelection(); updateDocumentSelectionUi();
   }
 
@@ -1498,7 +1500,7 @@
     state.documentNodes.filter(node => node.locked).forEach(node => state.selectedSources.add(node.nodeId));
     document.querySelectorAll('[data-document-select]').forEach(input => { input.checked = state.selectedSources.has(input.dataset.documentSelect); });
     document.querySelectorAll('[data-level-select]').forEach(input => {
-      const items = state.documentNodes.filter(node => Number(node.level || 0) === Number(input.dataset.levelSelect));
+      const items = state.documentNodes.filter(node => !node.hiddenInProject && Number(node.level || 0) === Number(input.dataset.levelSelect));
       const selected = items.filter(node => state.selectedSources.has(node.nodeId)).length;
       input.checked = items.length > 0 && selected === items.length; input.indeterminate = selected > 0 && selected < items.length;
     });
@@ -1506,7 +1508,7 @@
   }
 
   function renderSourceChips() {
-    const selected = state.documentNodes.filter(node => state.selectedSources.has(node.nodeId));
+    const selected = state.documentNodes.filter(node => !node.hiddenInProject && state.selectedSources.has(node.nodeId));
     const flows = state.projectDetails ? (state.projectDetails.flows || []).filter(flow => state.selectedFlows.has(flow.flowId)) : [];
     const items = selected.map(node => ({tab:'documents', icon:fileTypeIcon(node.mimeType,node.name), name:node.name, typeClass:fileTypeClass(node.mimeType,node.name)})).concat(flows.map(flow => ({tab:'flows',icon:'⇄',name:flow.name,typeClass:'type-flow'})));
     const countLabel = selected.length ? `<span class="source-chip-count">${numberValue(selected.length)} ${selected.length === 1 ? 'source' : 'sources'}${flows.length ? ` · ${numberValue(flows.length)} ${flows.length === 1 ? 'flow' : 'flows'}` : ''}</span>` : flows.length ? `<span class="source-chip-count">${numberValue(flows.length)} ${flows.length === 1 ? 'flow' : 'flows'}</span>` : '';
