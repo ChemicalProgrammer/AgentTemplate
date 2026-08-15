@@ -99,12 +99,13 @@
         if (!window.__APP_SCRIPT_READY__ && loader && !loader.classList.contains('hidden') && window.__BOOT_UI__) {
           window.__BOOT_UI__.fail(
             'The AppScripts.html interface module did not initialize.',
-            'Verify that AppScripts is an HTML file named exactly “AppScripts”, begins with <script>, ends with <\/script>, and was completely saved in Apps Script.'
+            'Verify that AppScripts is an HTML file named exactly “AppScripts” and that its complete contents were saved in Apps Script.'
           );
         }
       }, 5500);
       window.addEventListener('error', function (event) {
-        if (window.__BOOT_UI__) window.__BOOT_UI__.fail('The interface script stopped before initialization.', event.message || 'Review the browser console and Apps Script deployment files.');
+        var location = event.filename ? ' · ' + event.filename + ':' + (event.lineno || '?') + ':' + (event.colno || '?') : '';
+        if (window.__BOOT_UI__) window.__BOOT_UI__.fail('The interface script stopped before initialization.', (event.message || 'Review the browser console and Apps Script deployment files.') + location);
       });
       window.addEventListener('unhandledrejection', function (event) {
         var reason = event.reason && event.reason.message ? event.reason.message : String(event.reason || 'Unhandled startup promise.');
