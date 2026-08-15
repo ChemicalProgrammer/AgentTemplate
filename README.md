@@ -1,8 +1,15 @@
 # Agent Console para Google Apps Script
 
-Versión de revisión 2.0.0-review.4-hotfix.2.
+Versión de revisión 2.0.0-review.4-hotfix.3.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
+
+## Hotfix 3 sobre 2.0.0-review.4
+
+- Cada nivel documental usa una barra visual independiente con identidad para agent knowledge, project sources y documentos generados.
+- Cada nivel puede colapsarse o expandirse desde su chevron; el estado se conserva por proyecto en el navegador.
+- Los encabezados de nivel dejan de ser sticky, evitando que las tarjetas se desplacen visualmente por debajo de la barra al hacer scroll.
+- Seleccionar o deseleccionar todo el nivel continúa funcionando independientemente de su estado visual.
 
 ## Hotfix 2 sobre 2.0.0-review.4
 

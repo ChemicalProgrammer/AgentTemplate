@@ -41,6 +41,7 @@
     flowSelections: new Map(),
     selectedSources: new Set(),
     selectedFlows: new Set(),
+    collapsedDocumentLevels: new Set(),
     selectedTemplateId: '',
     busy: false,
     activeRequest: null,
@@ -599,6 +600,7 @@
     setWorkspaceMode('project');
     clearSourceIndexActivity_();
     state.currentProjectId = projectId; state.currentConversationId = null; state.currentConversation = null;
+    loadCollapsedDocumentLevels_(projectId);
     closeDocumentViewer(true);
     state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map();
     state.selectedSources = new Set(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
@@ -899,7 +901,7 @@
     if (state.activeRequest) stopResponse();
     clearSourceIndexActivity_();
     state.projectLoadToken++;
-    state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
+    state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map(); state.selectedFlows = new Set(); state.collapsedDocumentLevels = new Set(); state.selectedTemplateId = '';
     hideWorkspaceViews_();
     const dashboard = document.getElementById('dashboard-view'); dashboard.classList.remove('hidden'); dashboard.classList.add('view-entering');
     setWorkspaceMode('dashboard'); renderProjects(); refreshProjects(true); setTimeout(() => dashboard.classList.remove('view-entering'), 360);
@@ -1397,10 +1399,16 @@
       const selected = selectableItems.filter(node => state.selectedSources.has(node.nodeId)).length;
       const allChecked = selectableItems.length > 0 && selected === selectableItems.length;
       const partial = selected > 0 && selected < selectableItems.length;
+      const collapsed = state.collapsedDocumentLevels.has(level);
       const levelLabel = level === -1 ? `Agent knowledge · ${escapeHtml((state.projectAgent || {}).name || 'Loaded agent')}` : level === 0 ? 'Project sources' : `Generated · Level ${level}`;
-      return `<section class="document-level ${level === -1 ? 'agent-knowledge-level' : ''}" data-level="${level}">
-        <div class="level-heading"><label class="level-select"><input type="checkbox" data-level-select="${level}" ${allChecked ? 'checked' : ''} ${partial ? 'data-partial="true"' : ''} ${selectableItems.length ? '' : 'disabled'}><span>${levelLabel}</span></label><small>${items.length}</small></div>
-        <div class="level-track">${items.map(renderDocumentCard).join('')}</div>
+      const levelDescription = level === -1 ? 'Inherited from the loaded agent' : level === 0 ? 'Original context and root files' : 'Derived from parent documents';
+      const trackId = `document-level-track-${String(level).replace('-', 'negative-')}`;
+      return `<section class="document-level ${level === -1 ? 'agent-knowledge-level' : ''} ${collapsed ? 'collapsed' : ''}" data-level="${level}">
+        <div class="level-heading">
+          <div class="level-heading-main"><button type="button" class="level-collapse-button" data-level-collapse="${level}" aria-expanded="${String(!collapsed)}" aria-controls="${trackId}" title="${collapsed ? 'Expand level' : 'Collapse level'}"><span aria-hidden="true">⌄</span></button><label class="level-select"><input type="checkbox" data-level-select="${level}" ${allChecked ? 'checked' : ''} ${partial ? 'data-partial="true"' : ''} ${selectableItems.length ? '' : 'disabled'}><span class="level-copy"><strong>${levelLabel}</strong><small>${levelDescription}</small></span></label></div>
+          <span class="level-count"><b>${items.length}</b><small>${items.length === 1 ? 'item' : 'items'}</small></span>
+        </div>
+        <div id="${trackId}" class="level-track" aria-hidden="${String(collapsed)}">${items.map(renderDocumentCard).join('')}</div>
       </section>`;
     }).join('');
     const pendingCount = state.pendingUploads.size;
@@ -1410,6 +1418,7 @@
       if (input.dataset.partial === 'true') input.indeterminate = true;
       input.addEventListener('change', () => toggleDocumentLevel(Number(input.dataset.levelSelect), input.checked));
     });
+    container.querySelectorAll('[data-level-collapse]').forEach(button => button.addEventListener('click', () => toggleDocumentLevelCollapse_(Number(button.dataset.levelCollapse))));
     container.querySelectorAll('[data-document-select]').forEach(input => input.addEventListener('change', () => toggleDocumentSelection(input.dataset.documentSelect, input.checked)));
     container.querySelectorAll('[data-document-menu]').forEach(button => button.addEventListener('click', event => toggleDocumentMenu(event, button)));
     container.querySelectorAll('[data-edit-document-note]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openDocumentNoteModal(button.dataset.editDocumentNote); }));
@@ -1490,6 +1499,33 @@
   function toggleDocumentLevel(level, checked) {
     state.documentNodes.filter(node => !node.hiddenInProject && Number(node.level || 0) === level).forEach(node => node.locked ? state.selectedSources.add(node.nodeId) : checked ? state.selectedSources.add(node.nodeId) : state.selectedSources.delete(node.nodeId));
     rememberCurrentSelection(); updateDocumentSelectionUi();
+  }
+
+  function documentLevelStorageKey_(projectId) {
+    return 'gpa.collapsedDocumentLevels.' + String(projectId || '');
+  }
+
+  function loadCollapsedDocumentLevels_(projectId) {
+    state.collapsedDocumentLevels = new Set();
+    if (!projectId) return;
+    try {
+      const values = JSON.parse(localStorage.getItem(documentLevelStorageKey_(projectId)) || '[]');
+      if (Array.isArray(values)) values.map(Number).filter(Number.isFinite).forEach(level => state.collapsedDocumentLevels.add(level));
+    } catch (_) {}
+  }
+
+  function persistCollapsedDocumentLevels_() {
+    if (!state.currentProjectId) return;
+    try { localStorage.setItem(documentLevelStorageKey_(state.currentProjectId), JSON.stringify(Array.from(state.collapsedDocumentLevels).sort((a,b) => a-b))); }
+    catch (_) {}
+  }
+
+  function toggleDocumentLevelCollapse_(level) {
+    if (!Number.isFinite(level)) return;
+    if (state.collapsedDocumentLevels.has(level)) state.collapsedDocumentLevels.delete(level);
+    else state.collapsedDocumentLevels.add(level);
+    persistCollapsedDocumentLevels_();
+    renderDocumentGraph();
   }
 
   function rememberCurrentSelection() {
