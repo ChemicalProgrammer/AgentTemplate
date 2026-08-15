@@ -4,20 +4,7 @@ var PROJECT_EMOJIS = ['✨', '🧠', '📚', '🧪', '⚙️', '📊', '💡', '
 var PROJECT_COLORS = ['blue', 'violet', 'coral', 'amber', 'green', 'teal', 'rose', 'slate', 'indigo', 'cyan', 'lime', 'orange', 'plum', 'graphite'];
 
 function listProjects() {
-  var email = assertOrganizationMember_();
-  var projects = discoverProjects_(false);
-  var favorites = getFavoriteIds_();
-  return projects
-    .filter(function(project) {
-      return (project.members || []).some(function(member) {
-        return String(member.email).toLowerCase() === email;
-      });
-    })
-    .map(function(project) {
-      var member = project.members.filter(function(item) { return String(item.email).toLowerCase() === email; })[0];
-      return publicProject_(project, member, favorites.indexOf(project.projectId) !== -1);
-    })
-    .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return listProjectsFromManifests_(discoverProjects_(false));
 }
 
 function refreshProjects() {
@@ -28,7 +15,7 @@ function refreshProjects() {
 function listProjectsFromManifests_(projects) {
   var email = assertOrganizationMember_();
   var favorites = getFavoriteIds_();
-  return (projects || [])
+  var visibleProjects = (projects || [])
     .filter(function(project) {
       return (project.members || []).some(function(member) {
         return String(member.email).toLowerCase() === email;
@@ -39,6 +26,12 @@ function listProjectsFromManifests_(projects) {
       return publicProject_(project, member, favorites.indexOf(project.projectId) !== -1);
     })
     .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return applyUserCatalogOrder_(visibleProjects, APP.USER_PROJECT_ORDER, 'projectId');
+}
+
+function saveProjectCatalogOrder(orderedProjectIds) {
+  var projects = listProjects();
+  return saveUserCatalogOrder_(orderedProjectIds, projects.map(function(project) { return project.projectId; }), APP.USER_PROJECT_ORDER);
 }
 
 function createProject(input) {

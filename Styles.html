@@ -235,7 +235,7 @@
   .document-level + .document-level::before { content:'';position:absolute;left:28px;top:-15px;width:2px;height:15px;border-radius:2px;background:linear-gradient(var(--level-accent),color-mix(in srgb,var(--level-accent) 28%,transparent));opacity:.42; }
   .level-heading { position:relative;z-index:4;width:100%;height:58px;min-height:58px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 13px;border:0;border-radius:16px;border-bottom:1px solid color-mix(in srgb,var(--level-accent) 16%,var(--line));color:inherit;background:linear-gradient(110deg,var(--level-tint),rgba(255,255,255,.98) 70%);box-shadow:0 2px 7px rgba(60,64,67,.045);font:inherit;text-align:left;cursor:pointer;transition:filter .17s; }
   .level-heading:hover { filter:saturate(1.07) brightness(.995); }
-  .level-heading:active { transform:none; }
+  button.level-heading:active:not(:disabled) { transform:none !important; }
   .level-heading:focus-visible { outline:3px solid color-mix(in srgb,var(--level-accent) 20%,transparent);outline-offset:2px; }
   .level-copy { min-width:0;display:grid;gap:2px; }
   .level-copy strong { overflow:hidden;color:color-mix(in srgb,var(--level-accent) 80%,#202124);text-overflow:ellipsis;white-space:nowrap;font-size:11px; }
@@ -489,6 +489,9 @@
   .entity-card-footer{min-height:26px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--project-accent) 14%,#e8eaed);overflow:hidden;color:var(--muted);font-size:10px}
   .entity-card-footer>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
   .agent-card,.project-card{min-height:258px;overflow:hidden;padding:20px;border-radius:22px;background:linear-gradient(150deg,var(--project-tint),rgba(255,255,255,.96) 54%,rgba(255,255,255,.9))}
+  .agent-card[draggable="true"],.project-card[draggable="true"]{cursor:grab}.agent-card[draggable="true"]:active,.project-card[draggable="true"]:active{cursor:grabbing}
+  .agent-grid.catalog-reordering,.project-grid.catalog-reordering{border-radius:22px;background:color-mix(in srgb,var(--google-blue) 4%,transparent)}
+  .agent-card.catalog-card-dragging,.project-card.catalog-card-dragging{animation:none!important;opacity:.3;transform:none!important;outline:2px dashed color-mix(in srgb,var(--project-accent) 72%,var(--google-blue));outline-offset:-6px;box-shadow:none!important}
   .agent-card::before,.project-card-accent,.agent-card-stats,.agent-version-row,.card-meta,.card-stats,.card-owner,.project-agent-tag{display:none}
   .agent-card-top,.card-top{display:contents}.project-card.menu-open{overflow:visible}.project-emoji{width:48px;height:48px;color:var(--project-accent);background:var(--project-tint-strong);box-shadow:inset 0 0 0 1px rgba(255,255,255,.6);font-size:24px}
 

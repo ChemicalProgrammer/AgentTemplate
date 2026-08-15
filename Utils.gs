@@ -14,6 +14,41 @@ function safeJsonParse_(value, fallback) {
   }
 }
 
+function applyUserCatalogOrder_(items, propertyKey, idField) {
+  items = Array.isArray(items) ? items.slice() : [];
+  var stored = safeJsonParse_(PropertiesService.getUserProperties().getProperty(propertyKey), []);
+  if (!Array.isArray(stored) || !stored.length) return items;
+  var rank = {};
+  stored.forEach(function(id, index) {
+    id = String(id || '');
+    if (id && rank[id] == null) rank[id] = index;
+  });
+  var orderedKnown = items.filter(function(item) {
+    return rank[String(item[idField] || '')] != null;
+  }).sort(function(a, b) {
+    return rank[String(a[idField] || '')] - rank[String(b[idField] || '')];
+  });
+  var cursor = 0;
+  return items.map(function(item) {
+    return rank[String(item[idField] || '')] == null ? item : orderedKnown[cursor++];
+  });
+}
+
+function saveUserCatalogOrder_(orderedIds, validIds, propertyKey) {
+  var valid = {};
+  (validIds || []).map(String).forEach(function(id) { valid[id] = true; });
+  var seen = {};
+  var normalized = (Array.isArray(orderedIds) ? orderedIds : []).map(String).filter(function(id) {
+    if (!valid[id] || seen[id]) return false;
+    seen[id] = true;
+    return true;
+  });
+  var properties = PropertiesService.getUserProperties();
+  if (normalized.length) properties.setProperty(propertyKey, JSON.stringify(normalized));
+  else properties.deleteProperty(propertyKey);
+  return normalized;
+}
+
 function normalizeName_(value, fallback) {
   var name = sanitizeText_(value, 120).trim().replace(/[\\/:*?"<>|]/g, '-');
   return name || fallback || 'Untitled';

@@ -73,14 +73,21 @@ function ensureGeneralAgent_(agentsFolder) {
 
 function listAgents() {
   var email = assertOrganizationMember_();
-  return discoverAgents_(false).map(function(agent) { return publicAgent_(agent, email); })
+  var agents = discoverAgents_(false).map(function(agent) { return publicAgent_(agent, email); })
     .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return applyUserCatalogOrder_(agents, APP.USER_AGENT_ORDER, 'agentId');
 }
 
 function refreshAgents() {
   var email = assertOrganizationMember_();
-  return discoverAgents_(true).map(function(agent) { return publicAgent_(agent, email); })
+  var agents = discoverAgents_(true).map(function(agent) { return publicAgent_(agent, email); })
     .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return applyUserCatalogOrder_(agents, APP.USER_AGENT_ORDER, 'agentId');
+}
+
+function saveAgentCatalogOrder(orderedAgentIds) {
+  var agents = listAgents();
+  return saveUserCatalogOrder_(orderedAgentIds, agents.map(function(agent) { return agent.agentId; }), APP.USER_AGENT_ORDER);
 }
 
 function createAgent(input) {

@@ -45,6 +45,9 @@
     documentDrag: null,
     documentReflowAnimations: new WeakMap(),
     documentDragSuppressClickUntil: 0,
+    catalogDrag: null,
+    catalogReflowAnimations: new WeakMap(),
+    catalogDragSuppressClickUntil: 0,
     selectedTemplateId: '',
     busy: false,
     activeRequest: null,
@@ -269,7 +272,7 @@
   function renderAgents() {
     const agents = state.agents.filter(agent => !state.agentSearch || `${agent.name} ${agent.description} ${agent.owner}`.toLowerCase().includes(state.agentSearch));
     const grid = document.getElementById('agent-grid');
-    grid.innerHTML = agents.map((agent, index) => `<article class="entity-card agent-card" style="--card-index:${index};${projectColorStyle(agent.color)}" data-agent-id="${escapeHtml(agent.agentId)}" tabindex="0">
+    grid.innerHTML = agents.map((agent, index) => `<article class="entity-card agent-card" style="--card-index:${index};${projectColorStyle(agent.color)}" data-agent-id="${escapeHtml(agent.agentId)}" draggable="true" tabindex="0">
       <div class="entity-card-accent"></div>
       <div class="entity-card-top">${identityMarkHtml_(agent, 'agent-avatar')}<span class="status-pill ${escapeHtml(agent.status)}">${escapeHtml(agent.status || 'draft')}</span></div>
       <div class="entity-card-copy"><h3>${escapeHtml(agent.name)}</h3><p class="description">${escapeHtml(agent.description || 'No description')}</p></div>
@@ -279,9 +282,10 @@
     </article>`).join('');
     document.getElementById('empty-agents').classList.toggle('hidden', agents.length > 0);
     grid.querySelectorAll('.agent-card').forEach(card => {
-      card.addEventListener('click', () => openAgent(card.dataset.agentId));
+      card.addEventListener('click', () => { if (Date.now() >= state.catalogDragSuppressClickUntil) openAgent(card.dataset.agentId); });
       card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openAgent(card.dataset.agentId); } });
     });
+    bindCatalogCardOrdering_(grid, 'agent', '.agent-card', 'agentId', 'saveAgentCatalogOrder');
   }
 
   async function refreshAgents() {
@@ -479,7 +483,7 @@
       const matchesFilter = state.dashboardFilter === 'favorite' ? project.favorite : state.dashboardFilter === 'all' || project.status === state.dashboardFilter;
       return matchesText && matchesFilter;
     });
-    grid.innerHTML = projects.map((project, index) => `<article class="entity-card project-card" style="--card-index:${index};${projectColorStyle(project.color)}" data-project-id="${escapeHtml(project.projectId)}" tabindex="0">
+    grid.innerHTML = projects.map((project, index) => `<article class="entity-card project-card" style="--card-index:${index};${projectColorStyle(project.color)}" data-project-id="${escapeHtml(project.projectId)}" draggable="true" tabindex="0">
       <div class="entity-card-accent"></div>
       <div class="entity-card-top">
         <div class="entity-mark project-emoji" title="Project icon"><span>${escapeHtml(project.icon || '✨')}</span></div>
@@ -501,7 +505,7 @@
     </article>`).join('');
     document.getElementById('empty-projects').classList.toggle('hidden', projects.length > 0);
     grid.querySelectorAll('.project-card').forEach(card => {
-      card.addEventListener('click', () => openProject(card.dataset.projectId));
+      card.addEventListener('click', () => { if (Date.now() >= state.catalogDragSuppressClickUntil) openProject(card.dataset.projectId); });
       card.addEventListener('keydown', event => { if (event.target === card && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openProject(card.dataset.projectId); } });
     });
     grid.querySelectorAll('[data-favorite-id]').forEach(button => button.addEventListener('click', async event => {
@@ -517,6 +521,149 @@
     grid.querySelectorAll('[data-project-menu]').forEach(button => button.addEventListener('click', event => toggleProjectCardMenu(event, button)));
     grid.querySelectorAll('[data-clone-project]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); cloneProjectFromDashboard(button.dataset.cloneProject, button); }));
     grid.querySelectorAll('[data-delete-project]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); deleteProjectFromDashboard(button.dataset.deleteProject, button); }));
+    bindCatalogCardOrdering_(grid, 'project', '.project-card', 'projectId', 'saveProjectCatalogOrder');
+  }
+
+  function bindCatalogCardOrdering_(grid, type, selector, datasetKey, saveFunction) {
+    grid.querySelectorAll(`${selector}[draggable="true"]`).forEach(card => {
+      card.addEventListener('dragstart', event => {
+        if (event.target.closest('button,a,input,label')) { event.preventDefault(); return; }
+        closeProjectCardMenus();
+        state.catalogDrag = {
+          type:type,
+          id:card.dataset[datasetKey],
+          datasetKey:datasetKey,
+          selector:selector,
+          saveFunction:saveFunction,
+          originalOrder:Array.from(grid.querySelectorAll(selector)).map(item => item.dataset[datasetKey]),
+          committed:false
+        };
+        card.classList.add('catalog-card-dragging');
+        grid.classList.add('catalog-reordering');
+        card.setAttribute('aria-grabbed', 'true');
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', card.dataset[datasetKey]);
+      });
+      card.addEventListener('dragend', () => {
+        const drag = state.catalogDrag;
+        card.classList.remove('catalog-card-dragging');
+        card.removeAttribute('aria-grabbed');
+        grid.classList.remove('catalog-reordering');
+        if (drag && !drag.committed) restoreCatalogDragOrder_(grid, drag);
+        state.catalogDrag = null;
+        state.catalogDragSuppressClickUntil = Date.now() + 250;
+      });
+    });
+    grid.ondragover = event => {
+      if (!state.catalogDrag || state.catalogDrag.type !== type) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      moveCatalogCardLive_(event, grid, state.catalogDrag);
+    };
+    grid.ondrop = event => persistCatalogCardOrder_(event, grid, state.catalogDrag);
+  }
+
+  function moveCatalogCardLive_(event, grid, drag) {
+    if (!drag) return;
+    const cards = Array.from(grid.querySelectorAll(drag.selector));
+    const dragged = cards.find(card => card.dataset[drag.datasetKey] === drag.id);
+    if (!dragged) return;
+    const siblings = cards.filter(card => card !== dragged);
+    if (!siblings.length) return;
+    const eventTarget = event.target && event.target.closest ? event.target.closest(drag.selector) : null;
+    const target = eventTarget && eventTarget !== dragged && grid.contains(eventTarget) ? eventTarget : nearestCatalogCard_(event, siblings);
+    if (!target) return;
+    const after = catalogDropAfter_(event, target);
+    const targetIndex = siblings.indexOf(target) + (after ? 1 : 0);
+    const nextOrder = siblings.slice();
+    nextOrder.splice(targetIndex, 0, dragged);
+    if (cards.every((card, index) => card === nextOrder[index])) return;
+    animateCatalogReflow_(grid, drag.selector, () => grid.insertBefore(dragged, siblings[targetIndex] || null), dragged);
+  }
+
+  function catalogDropAfter_(event, target) {
+    const rect = target.getBoundingClientRect();
+    const verticalOffset = event.clientY - (rect.top + rect.height / 2);
+    if (Math.abs(verticalOffset) > rect.height * .22) return verticalOffset > 0;
+    return event.clientX > rect.left + rect.width / 2;
+  }
+
+  function nearestCatalogCard_(event, cards) {
+    let nearest = null;
+    let nearestDistance = Infinity;
+    cards.forEach(card => {
+      const rect = card.getBoundingClientRect();
+      const dx = event.clientX - Math.max(rect.left, Math.min(event.clientX, rect.right));
+      const dy = event.clientY - Math.max(rect.top, Math.min(event.clientY, rect.bottom));
+      const distance = dx * dx + dy * dy;
+      if (distance < nearestDistance) { nearest = card; nearestDistance = distance; }
+    });
+    return nearest;
+  }
+
+  function animateCatalogReflow_(grid, selector, mutate, excludedCard) {
+    const cards = Array.from(grid.querySelectorAll(selector));
+    const before = new Map(cards.map(card => [card, card.getBoundingClientRect()]));
+    cards.forEach(card => {
+      const activeAnimation = state.catalogReflowAnimations.get(card);
+      if (activeAnimation) activeAnimation.cancel();
+    });
+    mutate();
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion || typeof Element === 'undefined' || !Element.prototype.animate) return;
+    cards.forEach(card => {
+      if (card === excludedCard || !card.isConnected) return;
+      const first = before.get(card);
+      const last = card.getBoundingClientRect();
+      const deltaX = first.left - last.left;
+      const deltaY = first.top - last.top;
+      if (Math.abs(deltaX) < .5 && Math.abs(deltaY) < .5) return;
+      const animation = card.animate(
+        [{transform:`translate(${deltaX}px, ${deltaY}px)`},{transform:'translate(0, 0)'}],
+        {duration:190,easing:'cubic-bezier(.2, 0, 0, 1)'}
+      );
+      state.catalogReflowAnimations.set(card, animation);
+      const releaseAnimation = () => {
+        if (state.catalogReflowAnimations.get(card) === animation) state.catalogReflowAnimations.delete(card);
+      };
+      animation.addEventListener('finish', releaseAnimation, {once:true});
+      animation.addEventListener('cancel', releaseAnimation, {once:true});
+    });
+  }
+
+  function restoreCatalogDragOrder_(grid, drag) {
+    if (!grid || !drag || !Array.isArray(drag.originalOrder)) return;
+    const byId = new Map(Array.from(grid.querySelectorAll(drag.selector)).map(card => [card.dataset[drag.datasetKey], card]));
+    animateCatalogReflow_(grid, drag.selector, () => drag.originalOrder.forEach(id => {
+      const card = byId.get(id);
+      if (card) grid.appendChild(card);
+    }));
+  }
+
+  async function persistCatalogCardOrder_(event, grid, drag) {
+    if (!drag) return;
+    event.preventDefault();
+    drag.committed = true;
+    const visibleIds = Array.from(grid.querySelectorAll(drag.selector)).map(card => card.dataset[drag.datasetKey]);
+    const collection = drag.type === 'agent' ? state.agents : state.projects;
+    applyVisibleCatalogOrderToState_(collection, visibleIds, drag.datasetKey);
+    state.catalogDragSuppressClickUntil = Date.now() + 250;
+    try { await server(drag.saveFunction, collection.map(item => item[drag.datasetKey])); }
+    catch (error) {
+      showToast(`${drag.type === 'agent' ? 'Agent' : 'Project'} order could not be saved: ${error.message}`, true);
+      if (drag.type === 'agent') { state.agents = await server('refreshAgents'); renderAgents(); }
+      else { state.projects = await server('refreshProjects'); renderProjects(); }
+    }
+  }
+
+  function applyVisibleCatalogOrderToState_(collection, visibleIds, idField) {
+    const visible = new Set(visibleIds);
+    const byId = new Map(collection.map(item => [item[idField], item]));
+    let cursor = 0;
+    for (let index = 0; index < collection.length; index++) {
+      if (!visible.has(collection[index][idField])) continue;
+      collection[index] = byId.get(visibleIds[cursor++]) || collection[index];
+    }
   }
 
   async function refreshProjects(silent = false) {

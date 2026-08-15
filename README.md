@@ -1,8 +1,16 @@
 # Agent Console para Google Apps Script
 
-Versión de revisión 2.0.0-review.4-hotfix.5.
+Versión de revisión 2.0.0-review.4-hotfix.6.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
+
+## Hotfix 6 sobre 2.0.0-review.4
+
+- La barra de nivel ignora completamente el efecto global de presión de los botones y ya no se encoge al hacer clic.
+- Las tarjetas de Agents y Projects pueden reordenarse con desplazamiento animado en vivo, igual que las tarjetas de Documents.
+- El orden de ambos catálogos se guarda por usuario y se recupera al refrescar la consola.
+- Reordenar una vista filtrada conserva la posición de las tarjetas que no están visibles por la búsqueda o el filtro activo.
+- Cancelar el arrastre restaura suavemente el orden anterior; hacer clic después de soltar no abre accidentalmente la tarjeta.
 
 ## Hotfix 5 sobre 2.0.0-review.4
 
