@@ -44,6 +44,7 @@
   #export-document-pdf,
   #document-viewer-drive-link,
   #close-document-viewer,
+  .modal-close,
   .tonal-icon-btn[data-agent-add] {
     font-size: 0 !important;
   }
@@ -88,6 +89,7 @@
   #export-document-pdf::before,
   #document-viewer-drive-link::before,
   #close-document-viewer::before,
+  .modal-close::before,
   #open-agent-folder::before,
   #clone-agent::before,
   #save-agent::before,
@@ -147,7 +149,8 @@
   .file-button::before,
   .flow-file-button::before { content: "file_upload"; }
   #export-document-pdf::before { content: "download"; }
-  #close-document-viewer::before { content: "close"; }
+  #close-document-viewer::before,
+  .modal-close::before { content: "close"; }
   #clone-agent::before { content: "content_copy"; }
   #save-agent::before { content: "save"; }
   #publish-agent::before { content: "publish"; }
@@ -189,7 +192,8 @@
   .flow-file-button::before,
   #export-document-pdf::before,
   #document-viewer-drive-link::before,
-  #close-document-viewer::before {
+  #close-document-viewer::before,
+  .modal-close::before {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -269,7 +273,8 @@
   /* Compact viewer controls remain aligned with the same geometry. */
   #export-document-pdf,
   #document-viewer-drive-link,
-  #close-document-viewer {
+  #close-document-viewer,
+  .modal-close {
     width: 38px !important;
     height: 38px !important;
     min-width: 38px !important;
@@ -286,7 +291,8 @@
   }
   #export-document-pdf::before,
   #document-viewer-drive-link::before,
-  #close-document-viewer::before {
+  #close-document-viewer::before,
+  .modal-close::before {
     width: 100%;
     height: 100%;
     flex-basis: auto;
@@ -609,40 +615,7 @@
     border-color:color-mix(in srgb,var(--modal-accent,#0b57d0) 48%,#cbd5e1);
     background:color-mix(in srgb,var(--modal-tint,#e8f0fe) 78%,#fff);
   }
-  .modal-close {
-    width:38px !important;
-    height:38px !important;
-    min-width:38px !important;
-    min-height:38px !important;
-    display:grid !important;
-    place-items:center !important;
-    padding:0 !important;
-    color:#fff !important;
-    border:0 !important;
-    border-radius:12px !important;
-    background:var(--ui-button-fill) !important;
-    box-shadow:none !important;
-    font-size:0 !important;
-    line-height:0 !important;
-  }
-  .modal-close::before {
-    content:"close";
-    width:24px;
-    height:24px;
-    display:grid;
-    place-items:center;
-    font-family:"Material Icons Round" !important;
-    font-size:22px;
-    font-style:normal;
-    font-weight:normal;
-    line-height:24px;
-    letter-spacing:normal;
-    text-transform:none;
-    white-space:nowrap;
-    -webkit-font-feature-settings:"liga";
-    font-feature-settings:"liga";
-    -webkit-font-smoothing:antialiased;
-  }
+  /* Modal dialogs reuse the exact viewer close-button geometry and glyph. */
   .modal-close:hover { box-shadow:0 0 0 3px var(--ui-button-ring) !important;filter:brightness(1.03); }
 
   @media (prefers-reduced-motion: reduce) {

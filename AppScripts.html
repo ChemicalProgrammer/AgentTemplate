@@ -272,6 +272,7 @@
       const workspace = document.getElementById('project-workspace');
       if (window.innerWidth <= 760 && workspace.classList.contains('chat-collapsed')) setChatPanelCollapsed_(false, false);
       if (workspace.classList.contains('viewer-open') && window.innerWidth > 760) setViewerWidth(document.getElementById('document-viewer').getBoundingClientRect().width);
+      syncProjectDescriptionTooltip_();
     });
   }
 
@@ -1017,11 +1018,23 @@
     if (details.permissions.documents && state.panelLoaded.documents) local.documentCount = state.documentNodes.filter(item => item.kind !== 'source' && item.kind !== 'agent-source').length;
   }
 
+  function syncProjectDescriptionTooltip_() {
+    const description = document.getElementById('project-description');
+    if (!description) return;
+    const fullText = description.dataset.fullText || description.textContent || '';
+    const clipped = description.scrollWidth > description.clientWidth + 1 || description.scrollHeight > description.clientHeight + 1;
+    description.title = clipped ? fullText : '';
+    description.setAttribute('aria-label', fullText);
+  }
+
   function renderProjectDetails() {
     const {project, permissions} = state.projectDetails;
     applyProjectColor(project.color);
     document.getElementById('project-title').textContent = project.title;
-    document.getElementById('project-description').textContent = project.description || 'Project workspace';
+    const projectDescription = document.getElementById('project-description');
+    projectDescription.textContent = project.description || 'Project workspace';
+    projectDescription.dataset.fullText = projectDescription.textContent;
+    requestAnimationFrame(syncProjectDescriptionTooltip_);
     const statusChip = document.getElementById('project-status-chip');
     const projectStatus = project.status || 'active';
     statusChip.textContent = statusLabel(projectStatus);
@@ -1240,10 +1253,10 @@
     if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div><div class="message-actions"><button class="emoji-action-btn" data-message-context="${escapeHtml(message.messageId)}" title="View saved request details" aria-label="View the sources, agent and model saved with this message">ℹ️</button>${state.projectDetails.permissions.edit ? `<button class="emoji-action-btn" data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">✏️</button><button class="emoji-action-btn danger" data-delete-message="${escapeHtml(message.messageId)}" title="Delete from this point" aria-label="Delete this message and later conversation">🗑️</button>` : ''}</div></article>`;
     if (message.kind === 'artifact_event' && message.artifact) return renderArtifactEvent_(message);
     const agentIdentity = messageAgentIdentity_(message);
-    return `<article class="message assistant" data-message-id="${escapeHtml(message.messageId)}">
+    return `<article class="message assistant" style="${identityColorStyle_(agentIdentity)}" data-message-id="${escapeHtml(message.messageId)}">
       <div class="message-header">${identityMarkHtml_(agentIdentity, 'message-avatar')}<span>${escapeHtml(message.agentName || agentIdentity.name || 'Agent')}${message.agentVersion ? ` · v${escapeHtml(message.agentVersion)}` : ''}</span></div>
       <div id="message-body-${escapeHtml(message.messageId)}" class="message-body ${message.isTyping ? 'typing-cursor' : ''}">${formatMarkdown(message.text)}</div>
-      ${!message.isTyping ? `<div class="message-actions"><button class="emoji-action-btn" data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response"><span class="message-copy-icon" aria-hidden="true">📋</span></button></div>` : ''}
+      ${!message.isTyping ? `<div class="message-actions"><button class="emoji-action-btn" data-message-context="${escapeHtml(message.messageId)}" title="View response sources" aria-label="View the sources and retrieval evidence saved with this response">ℹ️</button><button class="emoji-action-btn" data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response"><span class="message-copy-icon" aria-hidden="true">📋</span></button></div>` : ''}
     </article>`;
   }
 
@@ -1253,9 +1266,10 @@
     const artifactTypeClass = fileTypeClass(artifact.mimeType, artifact.name);
     const artifactTypeIcon = fileTypeIcon(artifact.mimeType, artifact.name);
     const actions = (message.actions || []).map(action => `<button data-artifact-action="${escapeHtml(action.id)}" data-action-message="${escapeHtml(action.message)}">${escapeHtml(action.label)}</button>`).join('');
-    return `<article class="message assistant artifact-event" data-message-id="${escapeHtml(message.messageId)}">
+    return `<article class="message assistant artifact-event" style="${identityColorStyle_(agentIdentity)}" data-message-id="${escapeHtml(message.messageId)}">
       <div class="message-header">${identityMarkHtml_(agentIdentity, 'message-avatar')}<span>${escapeHtml(message.agentName || agentIdentity.name || 'Agent')}</span></div>
       <div class="artifact-event-card ${escapeHtml(artifactTypeClass)}"><button class="artifact-event-heading artifact-open-button" data-open-artifact="${escapeHtml(artifact.nodeId)}"><span aria-hidden="true">${escapeHtml(artifactTypeIcon)}</span><div><small>${escapeHtml(message.eventLabel || 'Artifact saved')}</small><strong>${escapeHtml(artifact.name)}</strong></div></button>${actions ? `<div class="artifact-event-actions">${actions}</div>` : ''}</div>
+      <div class="message-actions"><button class="emoji-action-btn" data-message-context="${escapeHtml(message.messageId)}" title="View artifact response sources" aria-label="View the sources and retrieval evidence saved with this artifact response">ℹ️</button></div>
     </article>`;
   }
 
@@ -1275,7 +1289,7 @@
 
   function renderThinkingMessage(stopping) {
     const agent = state.projectAgent || {icon:'✦',name:'Agent'};
-    return `<article id="agent-thinking" class="message assistant thinking-message"><div class="message-header">${identityMarkHtml_(agent, 'message-avatar')}<span>${escapeHtml(agent.name || 'Agent')}</span></div><div class="thinking-body"><span>${stopping ? 'Stopping response…' : 'Working with your project context'}</span><span class="thinking-dots"><i></i><i></i><i></i><i></i></span></div></article>`;
+    return `<article id="agent-thinking" class="message assistant thinking-message" style="${identityColorStyle_(agent)}"><div class="message-header">${identityMarkHtml_(agent, 'message-avatar')}<span>${escapeHtml(agent.name || 'Agent')}</span></div><div class="thinking-body"><span>${stopping ? 'Stopping response…' : 'Working with your project context'}</span><span class="thinking-dots"><i></i><i></i><i></i><i></i></span></div></article>`;
   }
 
   async function copyMessage(messageId, button) {
@@ -1314,17 +1328,68 @@
     });
   }
 
+  function normalizedEvidenceSourceId_(value) {
+    return String(value || '').replace(/^(?:source|agent-source|document):/,'');
+  }
+
+  function messageResponseSources_(message) {
+    const auditIds = new Set(((message.retrievalAudit && message.retrievalAudit.sourceIds) || []).map(normalizedEvidenceSourceId_));
+    const grouped = new Map();
+    (Array.isArray(message.sourcesUsed) ? message.sourcesUsed : []).forEach((source, index) => {
+      const sourceId = String(source.sourceId || source.nodeId || '');
+      const normalizedId = normalizedEvidenceSourceId_(sourceId);
+      const key = sourceId || `${source.name || 'Source'}:${index}`;
+      const verified = Boolean(source.citationUri || source.pageNumber != null || (normalizedId && auditIds.has(normalizedId)));
+      const current = grouped.get(key) || {
+        sourceId,
+        name:String(source.name || source.label || 'Source'),
+        mimeType:String(source.mimeType || ''),
+        kind:String(source.kind || ''),
+        origin:String(source.origin || ''),
+        verified:false,
+        pages:[]
+      };
+      current.verified = current.verified || verified;
+      if (source.pageNumber != null && !current.pages.includes(String(source.pageNumber))) current.pages.push(String(source.pageNumber));
+      grouped.set(key,current);
+    });
+    if (!grouped.size && Array.isArray(message.sourceSelection) && message.sourceSelection.length) {
+      messageContextSources_(message).forEach((source, index) => grouped.set(String(source.nodeId || index), Object.assign({},source,{verified:false,pages:[],legacy:true})));
+    }
+    return Array.from(grouped.values());
+  }
+
+  function messageResponseFlows_(message) {
+    if (Array.isArray(message.flowsUsed) && message.flowsUsed.length) return message.flowsUsed.map(flow => ({flowId:String(flow.flowId || ''),name:String(flow.name || flow.label || 'Procedure'),origin:String(flow.origin || '')}));
+    return messageContextFlows_(message);
+  }
+
   function openMessageContext_(messageId) {
     const message = state.currentConversation && (state.currentConversation.messages || []).find(item => item.messageId === messageId);
     if (!message) return showToast('The saved request details are unavailable.', true);
     const agent = messageAgentIdentity_(message);
     const savedAgentName = message.agentName || state.currentConversation.agentName || agent.name || 'Agent';
     const savedAgentVersion = message.agentVersion || state.currentConversation.agentVersion || '';
-    const sources = messageContextSources_(message);
-    const flows = messageContextFlows_(message);
-    const sourceHtml = sources.length ? `<div class="message-context-items">${sources.map(source => `<span class="message-context-chip ${escapeHtml(fileTypeClass(source.mimeType,source.name))}"><b>${escapeHtml(fileTypeIcon(source.mimeType,source.name))}</b>${escapeHtml(source.name)}</span>`).join('')}</div>` : '<p class="message-context-empty">No documents were selected.</p>';
+    const assistant = message.role === 'assistant';
+    const sources = assistant ? messageResponseSources_(message) : messageContextSources_(message);
+    const flows = assistant ? messageResponseFlows_(message) : messageContextFlows_(message);
+    const verifiedSources = assistant ? sources.filter(source => source.verified) : [];
+    const contextualSources = assistant ? sources.filter(source => !source.verified) : [];
+    const citationCount = numberValue(message.retrievalAudit && message.retrievalAudit.citationCount);
+    const sourceHtml = sources.length ? `<div class="message-context-items">${sources.map(source => `<span class="message-context-chip ${escapeHtml(fileTypeClass(source.mimeType,source.name))}"><b>${escapeHtml(fileTypeIcon(source.mimeType,source.name))}</b><span>${escapeHtml(source.name)}${source.pages && source.pages.length ? ` · p. ${escapeHtml(source.pages.join(', '))}` : ''}</span>${assistant ? `<span class="source-evidence-badge ${source.verified ? 'verified' : ''}">${source.verified ? 'Retrieved' : 'Context'}</span>` : ''}</span>`).join('')}</div>` : `<p class="message-context-empty">${assistant ? 'No source citations or supplied source context were saved.' : 'No documents were selected.'}</p>`;
     const flowHtml = flows.length ? `<div class="message-context-items">${flows.map(flow => `<span class="message-context-chip type-flow"><b>⇄</b>${escapeHtml(flow.name)}</span>`).join('')}</div>` : '<p class="message-context-empty">No procedures were selected.</p>';
-    document.getElementById('message-context-content').innerHTML = `<div class="message-context-summary"><div class="message-context-agent">${identityMarkHtml_(agent,'message-context-agent-mark')}<div><small>Agent</small><strong>${escapeHtml(savedAgentName)}</strong><span>${savedAgentVersion ? `Version ${escapeHtml(savedAgentVersion)}` : 'Version unavailable'}</span></div></div><dl><div><dt>Model</dt><dd>${escapeHtml(message.model || state.currentConversation.model || 'Unavailable')}</dd></div><div><dt>Sent</dt><dd>${escapeHtml(formatDateTime(message.createdAt))}</dd></div></dl></div><section><h3>Selected sources <span>${numberValue(sources.length)}</span></h3>${sourceHtml}</section><section><h3>Selected procedures <span>${numberValue(flows.length)}</span></h3>${flowHtml}</section>`;
+    let auditHtml = '';
+    if (assistant) {
+      const auditText = verifiedSources.length
+        ? `${numberValue(verifiedSources.length)} source${verifiedSources.length === 1 ? '' : 's'} were retrieved with ${citationCount || verifiedSources.length} saved citation${(citationCount || verifiedSources.length) === 1 ? '' : 's'}.${contextualSources.length ? ` ${numberValue(contextualSources.length)} additional source${contextualSources.length === 1 ? '' : 's'} were supplied as context; their influence cannot be independently verified.` : ''}`
+        : sources.length
+          ? `${numberValue(sources.length)} source${sources.length === 1 ? '' : 's'} were supplied as context. Gemini returned no verifiable File Search citation for them, so their influence cannot be proven independently.`
+          : 'Gemini returned no source citation for this response.';
+      auditHtml = `<p class="message-context-audit ${verifiedSources.length ? 'verified' : ''}">${escapeHtml(auditText)}</p>`;
+    }
+    document.getElementById('message-context-title').textContent = assistant ? 'Response evidence' : 'Request details';
+    document.getElementById('message-context-description').textContent = assistant ? 'Retrieval evidence and supplied context are saved privately with the response.' : 'This information was saved with the message and is not added to the visible conversation.';
+    document.getElementById('message-context-content').innerHTML = `<div class="message-context-summary"><div class="message-context-agent">${identityMarkHtml_(agent,'message-context-agent-mark')}<div><small>Agent</small><strong>${escapeHtml(savedAgentName)}</strong><span>${savedAgentVersion ? `Version ${escapeHtml(savedAgentVersion)}` : 'Version unavailable'}</span></div></div><dl><div><dt>Model</dt><dd>${escapeHtml(message.model || state.currentConversation.model || 'Unavailable')}</dd></div><div><dt>${assistant ? 'Created' : 'Sent'}</dt><dd>${escapeHtml(formatDateTime(message.createdAt))}</dd></div></dl></div>${auditHtml}<section><h3>${assistant ? 'Response sources' : 'Selected sources'} <span>${numberValue(sources.length)}</span></h3>${sourceHtml}</section><section><h3>${assistant ? 'Applied procedures' : 'Selected procedures'} <span>${numberValue(flows.length)}</span></h3>${flowHtml}</section>`;
     openModal('message-context-modal');
   }
 
