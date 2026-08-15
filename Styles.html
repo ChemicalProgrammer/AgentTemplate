@@ -754,7 +754,7 @@
     .composer-spark { display: none; }
   }
 
-  /* Hotfix 8 safe rebuild: verified model picker and clearer agent selectors. */
+  /* UI patch A: selector layout only; no JavaScript changes. */
   .agent-loaded-pill .agent-pill-caret{width:25px;height:25px;display:grid;place-items:center;margin:0 0 3px 3px;border-radius:9px;color:var(--project-accent);background:color-mix(in srgb,var(--project-accent) 8%,#fff);font-size:17px;font-style:normal;font-weight:800;line-height:1;transition:background .18s,color .18s,transform .18s}
   .agent-loaded-pill:hover .agent-pill-caret{color:#fff;background:var(--project-accent);transform:translateY(1px)}
   #new-project-agent,#change-project-agent{min-height:49px;padding-right:45px;appearance:none;-webkit-appearance:none;border-color:#dce3ec;border-radius:15px;background-color:#fff;background-image:linear-gradient(45deg,transparent 50%,#667085 50%),linear-gradient(135deg,#667085 50%,transparent 50%),linear-gradient(180deg,#fff,#f8faff);background-position:calc(100% - 19px) 52%,calc(100% - 14px) 52%,0 0;background-repeat:no-repeat;background-size:5px 5px,5px 5px,100% 100%;box-shadow:0 3px 10px rgba(60,64,67,.055);font-weight:650}
@@ -766,10 +766,8 @@
   .composer-footer .model-picker-mark{width:25px;height:25px;display:grid;place-items:center;border-radius:9px;color:#fff;background:linear-gradient(135deg,var(--project-accent),color-mix(in srgb,var(--project-accent) 42%,#a142f4));font-size:13px;font-weight:700;text-transform:none}
   .composer-footer .model-picker-label{color:var(--muted);font-size:7px;font-weight:800;letter-spacing:.06em;white-space:nowrap;text-transform:uppercase}
   .composer-footer .chat-model-picker select{width:100%;max-width:none;height:24px;padding:0;overflow:hidden;border:0;border-radius:0;background:transparent;box-shadow:none;font-size:9px;font-weight:700;text-overflow:ellipsis;appearance:none;-webkit-appearance:none;cursor:pointer}.composer-footer .chat-model-picker select:focus{outline:0}.composer-footer .chat-model-picker>i{margin-bottom:4px;color:var(--project-accent);font-size:16px;font-style:normal;font-weight:800;line-height:1}
-  .chat-model-status{display:inline-flex;align-items:center;gap:6px;color:#5f6368;font-size:8px;white-space:nowrap}.chat-model-status::before{content:'';width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:#9aa0a6}.chat-model-status.checking::before{border:2px solid #d8e2ef;border-top-color:var(--project-accent);background:transparent;animation:spin .8s linear infinite}.chat-model-status.verified{color:#137333}.chat-model-status.verified::before{background:#34a853;box-shadow:0 0 0 3px rgba(52,168,83,.1)}.chat-model-status.error{color:#b3261e}.chat-model-status.error::before{background:#d93025;box-shadow:0 0 0 3px rgba(217,48,37,.09)}
   .composer-footer>small{margin-left:auto;color:var(--muted);font-size:8px;text-align:right;white-space:nowrap}
-
-  @media(max-width:760px){.composer-footer{flex-wrap:wrap;gap:6px;padding:0 3px}.composer-footer>.chat-model-picker{min-width:0;max-width:100%;flex:1 1 240px}.composer-footer>small{display:none}.chat-model-status{flex:0 1 auto}.agent-loaded-pill .agent-pill-caret{display:none}}
+  @media(max-width:760px){.composer-footer{flex-wrap:wrap;gap:6px;padding:0 3px}.composer-footer>.chat-model-picker{min-width:0;max-width:100%;flex:1 1 240px}.composer-footer>small{display:none}.agent-loaded-pill .agent-pill-caret{display:none}}
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
