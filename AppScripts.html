@@ -36,6 +36,8 @@
     currentConversationId: null,
     currentConversation: null,
     availableModels: [],
+    modelsLoading: false,
+    modelsError: '',
     currentChatModel: '',
     conversationSelections: new Map(),
     flowSelections: new Map(),
@@ -206,6 +208,7 @@
     document.getElementById('chat-model-select').addEventListener('change', event => {
       state.currentChatModel = event.target.value;
       if (state.currentConversation) state.currentConversation.model = state.currentChatModel;
+      syncChatModelStatus_();
     });
     document.getElementById('close-document-viewer').addEventListener('click', () => closeDocumentViewer(false));
     document.getElementById('export-document-pdf').addEventListener('click', openDocumentPdfExport);
@@ -908,26 +911,54 @@
   }
 
   async function loadChatModels_() {
-    const fallback = state.currentChatModel || (state.bootstrap.userSettings || {}).model || '';
-    if (fallback && !state.availableModels.length) state.availableModels = [{name:fallback, displayName:fallback}];
+    state.modelsLoading = true;
+    state.modelsError = '';
+    state.availableModels = [];
     syncChatModelPicker_();
     try {
       const models = await server('getAvailableGeminiModels');
-      state.availableModels = models || [];
-      if (!state.currentChatModel && state.availableModels.length) state.currentChatModel = state.availableModels[0].name;
+      state.availableModels = Array.isArray(models) ? models.filter(model => model && model.name && model.available !== false) : [];
+      if (!state.availableModels.length) throw new Error('No models compatible with chat are available for this API key.');
+    } catch (error) {
+      state.availableModels = [];
+      state.modelsError = clientErrorMessage(error);
+    } finally {
+      state.modelsLoading = false;
       syncChatModelPicker_();
-    } catch (_) {
-      syncChatModelPicker_();
+      updateComposerAvailability_();
     }
   }
 
   function syncChatModelPicker_() {
     const select = document.getElementById('chat-model-select'); if (!select) return;
     const models = (state.availableModels || []).slice();
-    if (state.currentChatModel && !models.some(model => model.name === state.currentChatModel)) models.unshift({name:state.currentChatModel, displayName:state.currentChatModel});
-    select.innerHTML = models.map(model => `<option value="${escapeHtml(model.name)}">${escapeHtml(model.displayName || model.name)}</option>`).join('');
-    if (state.currentChatModel) select.value = state.currentChatModel;
-    select.disabled = state.busy || !models.length;
+    if (models.length) {
+      const preferred = state.currentChatModel || (state.bootstrap.userSettings || {}).model || '';
+      const resolved = models.find(model => model.name === preferred) || models[0];
+      state.currentChatModel = resolved.name;
+      if (state.currentConversation) state.currentConversation.model = resolved.name;
+      select.innerHTML = models.map(model => `<option value="${escapeHtml(model.name)}">${escapeHtml(model.displayName || model.name)}</option>`).join('');
+      select.value = state.currentChatModel;
+    } else {
+      const label = state.modelsLoading ? 'Checking models…' : state.modelsError ? 'Models unavailable' : 'No verified models';
+      select.innerHTML = `<option value="">${escapeHtml(label)}</option>`;
+      select.value = '';
+    }
+    select.disabled = state.busy || state.modelsLoading || !models.length;
+    syncChatModelStatus_();
+  }
+
+  function syncChatModelStatus_() {
+    const status = document.getElementById('chat-model-status'); if (!status) return;
+    const copy = status.querySelector('span');
+    status.classList.toggle('checking', state.modelsLoading);
+    status.classList.toggle('error', Boolean(!state.modelsLoading && state.modelsError));
+    status.classList.toggle('verified', Boolean(!state.modelsLoading && !state.modelsError && state.availableModels.length));
+    if (state.modelsLoading) copy.textContent = 'Checking models for your API key…';
+    else if (state.modelsError) copy.textContent = (state.bootstrap.userSettings || {}).configured ? 'Model access could not be verified' : 'Add your Gemini API key in Settings';
+    else if (state.availableModels.length) copy.textContent = `${state.availableModels.length} verified for your API key`;
+    else copy.textContent = 'No verified chat models';
+    status.title = state.modelsError || (state.availableModels.length ? 'This list comes from the Gemini models endpoint using your personal API key.' : '');
   }
 
   async function ensurePanelLoaded_(name) {
@@ -971,10 +1002,11 @@
     const permissions = state.projectDetails.permissions;
     const documentsReady = !permissions.sources && !permissions.documents || state.panelLoaded.documents;
     const chatsReady = !permissions.history || state.panelLoaded.chats;
-    const available = Boolean(permissions.edit && permissions.history && documentsReady && chatsReady && !state.busy);
+    const modelsReady = !state.modelsLoading && !state.modelsError && (state.availableModels || []).some(model => model.name === state.currentChatModel);
+    const available = Boolean(permissions.edit && permissions.history && documentsReady && chatsReady && modelsReady && !state.busy);
     document.getElementById('chat-input').disabled = !available;
     document.getElementById('send-message').disabled = !available;
-    document.getElementById('chat-model-select').disabled = !available || !(state.availableModels || []).length;
+    document.getElementById('chat-model-select').disabled = !available;
   }
 
   function syncProjectSummary(details) {
@@ -1033,8 +1065,6 @@
     const record = (state.projectDetails.conversations || []).find(item => item.conversationId === state.currentConversationId);
     const conversationTitle = state.currentConversation && state.currentConversation.title || record && record.title || 'New chat';
     document.getElementById('chat-conversation-title').textContent = conversationTitle;
-    document.getElementById('chat-context-agent-name').textContent = agent.name || 'Agent';
-    document.getElementById('chat-context-agent-version').textContent = agent.version ? `v${agent.version}` : '—';
     const identityStyle = projectColorStyle(agent.color || 'violet');
     ['chat-agent-mark','chat-empty-agent-mark'].forEach(id => {
       const mark = document.getElementById(id);
@@ -1122,7 +1152,7 @@
     const button = document.getElementById('new-conversation'); if (!silent) setBusy(button, true);
     try {
       const conversation = await server('createConversation', state.currentProjectId, 'New chat', state.currentChatModel);
-      state.projectDetails.conversations.unshift({conversationId: conversation.conversationId, title: conversation.title, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, messageCount: 0});
+      state.projectDetails.conversations.unshift({conversationId: conversation.conversationId, title: conversation.title, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, messageCount: 0, model: conversation.model});
       state.currentConversationId = conversation.conversationId; state.currentConversation = conversation; selectDefaultDocuments(); state.selectedFlows = new Set();
       state.currentChatModel = conversation.model || state.currentChatModel; syncChatModelPicker_();
       rememberCurrentSelection();
@@ -1335,6 +1365,10 @@
   async function sendMessage() {
     if (state.busy) return;
     const input = document.getElementById('chat-input'); const text = input.value.trim(); if (!text) return;
+    if (!(state.availableModels || []).some(model => model.name === state.currentChatModel)) {
+      showToast(state.modelsError || 'Wait until a Gemini model has been verified for your API key.', true);
+      return;
+    }
     state.busy = true;
     try {
       if (!state.currentConversationId) await newConversation(true);
@@ -1538,7 +1572,7 @@
     document.getElementById('send-message').classList.toggle('hidden', busy);
     document.getElementById('stop-response').classList.toggle('hidden', !busy);
     document.getElementById('chat-input').disabled = busy;
-    document.getElementById('chat-model-select').disabled = busy || !(state.availableModels || []).length;
+    document.getElementById('chat-model-select').disabled = busy || state.modelsLoading || !(state.availableModels || []).some(model => model.name === state.currentChatModel);
     if (!busy) updateComposerAvailability_();
   }
 
@@ -2397,7 +2431,9 @@
     event.preventDefault(); setBusy(event.target, true); const key = document.getElementById('gemini-api-key').value.trim();
     try {
       const settings = await server('saveUserGeminiSettings', {apiKey: key, model: document.getElementById('gemini-model').value});
-      state.bootstrap.userSettings = settings; updateKeyStatus(settings); closeModals(); showToast('API key validated and saved for your account.');
+      state.bootstrap.userSettings = settings; updateKeyStatus(settings); closeModals();
+      if (state.currentProjectId) await loadChatModels_();
+      showToast('API key validated and saved for your account.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }

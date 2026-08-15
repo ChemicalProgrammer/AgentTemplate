@@ -1,21 +1,40 @@
 function listGeminiModels_(apiKey) {
-  var response = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models', {
-    method: 'get',
-    headers: {'x-goog-api-key': apiKey},
-    muteHttpExceptions: true
-  });
-  var payload = safeJsonParse_(response.getContentText(), {});
-  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
-    throw new Error(extractGeminiError_(payload, response.getResponseCode()));
-  }
-  return (payload.models || []).filter(function(model) {
+  var models = [];
+  var pageToken = '';
+  var pageCount = 0;
+  do {
+    var query = '?pageSize=100' + (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '');
+    var response = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models' + query, {
+      method: 'get',
+      headers: {'x-goog-api-key': apiKey},
+      muteHttpExceptions: true
+    });
+    var payload = safeJsonParse_(response.getContentText(), {});
+    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+      throw new Error(extractGeminiError_(payload, response.getResponseCode()));
+    }
+    models = models.concat(payload.models || []);
+    pageToken = String(payload.nextPageToken || '');
+    pageCount++;
+  } while (pageToken && pageCount < 10);
+
+  var seen = {};
+  return models.filter(function(model) {
     return (model.supportedGenerationMethods || []).indexOf('generateContent') !== -1;
   }).map(function(model) {
+    var name = normalizeModel_(model.name);
     return {
-      name: normalizeModel_(model.name),
-      displayName: model.displayName || normalizeModel_(model.name),
-      description: model.description || ''
+      name: name,
+      displayName: model.displayName || name,
+      description: model.description || '',
+      inputTokenLimit: Number(model.inputTokenLimit || 0),
+      outputTokenLimit: Number(model.outputTokenLimit || 0),
+      available: true
     };
+  }).filter(function(model) {
+    if (!model.name || seen[model.name]) return false;
+    seen[model.name] = true;
+    return true;
   }).sort(function(a, b) {
     var af = /flash/i.test(a.name) ? 0 : 1;
     var bf = /flash/i.test(b.name) ? 0 : 1;

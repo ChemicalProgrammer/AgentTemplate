@@ -94,7 +94,7 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   var now = nowIso_();
   var userMessage = {
     messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email,
-    sourceSelection: authorizedSelection, flowSelection: conversation.flowSelection.slice()
+    sourceSelection: authorizedSelection, flowSelection: conversation.flowSelection.slice(), model: conversation.model
   };
   delete conversation.pendingBranchMessage;
   conversation.messages.push(userMessage);
@@ -192,7 +192,7 @@ function acceptLatestCanvas_(access, conversation, text, requestId) {
   var now = nowIso_();
   var userMessage = {
     messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email,
-    sourceSelection: conversation.sourceSelection.slice(), flowSelection: conversation.flowSelection.slice()
+    sourceSelection: conversation.sourceSelection.slice(), flowSelection: conversation.flowSelection.slice(), model: conversation.model
   };
   conversation.messages.push(userMessage);
   var artifact = createMarkdownArtifact_(access.project, access.email, conversation, {
