@@ -92,14 +92,16 @@
   }
 
   async function startApp() {
+    setBootStage_('Checking your access and workspace…', 'Your agents, projects, and preferences are loading securely.');
     try {
       const data = await server('getBootstrap');
       state.bootstrap = data;
       state.currentChatModel = (data.userSettings || {}).model || '';
-      document.getElementById('boot-loader').classList.add('hidden');
+      setBootStage_('Opening Agent Console…', 'Your workspace is ready.');
       if (!data.initialized) {
         document.getElementById('setup-screen').classList.remove('hidden');
         if (data.identity.email.includes('@')) document.getElementById('setup-domain').value = data.identity.email.split('@')[1];
+        finishBootLoader_();
         return;
       }
       state.projects = data.projects || [];
@@ -108,10 +110,34 @@
       setWorkspaceMode('home');
       applyIdentity();
       showHome();
+      finishBootLoader_();
     } catch (error) {
-      document.getElementById('boot-loader').classList.add('hidden');
-      showToast(error.message, true);
+      showBootFailure_(error);
     }
+  }
+
+  function setBootStage_(status, detail) {
+    const loader = document.getElementById('boot-loader');
+    if (!loader || loader.classList.contains('is-error')) return;
+    const statusNode = document.getElementById('boot-status');
+    const detailNode = document.getElementById('boot-detail');
+    if (statusNode && status) statusNode.textContent = status;
+    if (detailNode && detail) detailNode.textContent = detail;
+  }
+
+  function finishBootLoader_() {
+    const loader = document.getElementById('boot-loader');
+    window.__agentConsoleBootFinished = true;
+    clearTimeout(window.__agentConsoleBootWatchdog);
+    if (!loader) return;
+    loader.classList.add('is-complete');
+    setTimeout(() => loader.classList.add('hidden'), 260);
+  }
+
+  function showBootFailure_(error) {
+    const message = error && error.message ? error.message : String(error || 'An unexpected startup error occurred.');
+    if (window.__showAgentConsoleBootFailure) window.__showAgentConsoleBootFailure(message);
+    else showToast(message, true);
   }
 
   function applyIdentity() {

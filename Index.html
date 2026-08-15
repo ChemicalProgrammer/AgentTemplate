@@ -7,9 +7,21 @@
     <?!= include('Styles'); ?>
   </head>
   <body>
-    <div id="boot-loader" class="boot-loader">
-      <div class="gemini-mark">✦</div>
-      <div class="spinner"></div>
+    <div id="boot-loader" class="boot-loader" role="status" aria-live="polite" aria-label="Preparing Agent Console">
+      <span class="boot-ambient boot-ambient-one" aria-hidden="true"></span>
+      <span class="boot-ambient boot-ambient-two" aria-hidden="true"></span>
+      <div class="boot-card">
+        <div class="boot-progress" aria-hidden="true"><span></span></div>
+        <div class="boot-logo" aria-hidden="true"><span>✦</span><i></i></div>
+        <p class="boot-kicker">Agent Console</p>
+        <h1 id="boot-title">Preparing your workspace</h1>
+        <p id="boot-status">Checking your access and workspace…</p>
+        <div class="boot-stage-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+        <p id="boot-detail" class="boot-detail">Your agents, projects, and preferences are loading securely.</p>
+        <div id="boot-error-actions" class="boot-error-actions hidden">
+          <button id="boot-retry" class="boot-retry" type="button"><span>↻</span> Try again</button>
+        </div>
+      </div>
     </div>
 
     <section id="setup-screen" class="setup-screen hidden">
@@ -44,6 +56,34 @@
 
     <?!= include('SettingsView'); ?>
     <div id="toast" class="toast hidden"></div>
+    <script>
+      (function () {
+        window.__agentConsoleBootFinished = false;
+        var loader = document.getElementById('boot-loader');
+        var retry = document.getElementById('boot-retry');
+        window.__showAgentConsoleBootFailure = function (message) {
+          if (window.__agentConsoleBootFinished || !loader) return;
+          clearTimeout(window.__agentConsoleBootWatchdog);
+          loader.classList.remove('is-complete');
+          loader.classList.add('is-error');
+          document.getElementById('boot-title').textContent = 'Agent Console could not start';
+          document.getElementById('boot-status').textContent = 'The interface stopped before initialization.';
+          document.getElementById('boot-detail').textContent = String(message || 'An unexpected startup error occurred.');
+          document.getElementById('boot-error-actions').classList.remove('hidden');
+        };
+        retry.addEventListener('click', function () { window.location.reload(); });
+        window.__agentConsoleBootWatchdog = setTimeout(function () {
+          window.__showAgentConsoleBootFailure('Startup is taking longer than expected. Check Apps Script execution logs if retrying does not resolve it.');
+        }, 30000);
+        window.addEventListener('error', function (event) {
+          window.__showAgentConsoleBootFailure(event && event.message ? event.message : 'The interface script could not be executed.');
+        });
+        window.addEventListener('unhandledrejection', function (event) {
+          var reason = event && event.reason;
+          window.__showAgentConsoleBootFailure(reason && reason.message ? reason.message : String(reason || 'The startup request was interrupted.'));
+        });
+      }());
+    </script>
     <?!= include('AppScripts'); ?>
   </body>
 </html>

@@ -1,8 +1,16 @@
 # Agent Console para Google Apps Script
 
-Versión de revisión 2.0.0-review.4-hotfix.6.
+Versión de revisión 2.0.0-review.4-hotfix.7.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
+
+## Hotfix 7 sobre 2.0.0-review.4
+
+- La pantalla inicial usa una tarjeta visual de Agent Console, progreso animado, etapas de carga y transición de salida.
+- Un watchdog independiente muestra un error recuperable con `Try again` si la interfaz tarda demasiado o el script falla antes de inicializarse.
+- Chats, Documents, Templates y Flows usan un nuevo selector segmentado con identidad cromática e iconos más claros.
+- Los controles de regresar, abrir panel, abrir en Drive y Settings comparten botones circulares y gradientes consistentes con el botón de envío.
+- Los paneles incorporan espacio inferior adicional y scrollbars más delgados con margen de pista para evitar que el extremo inferior se vea cortado.
 
 ## Hotfix 6 sobre 2.0.0-review.4
 
