@@ -4,6 +4,20 @@
    * Change shared colors and typography here without hunting through views.
    */
   :root {
+    /*
+     * Typography system.
+     * Comfortaa gives the console its identity; Nunito Sans remains highly
+     * legible in chat, forms, cards, documents, and other dense interfaces.
+     */
+    --font-family-display: "Comfortaa", "Trebuchet MS", sans-serif;
+    --font-family-body: "Nunito Sans", Arial, Helvetica, sans-serif;
+    --font-family: var(--font-family-body);
+    --font-weight-regular: 400;
+    --font-weight-medium: 600;
+    --font-weight-bold: 700;
+    --line-height-tight: 1.2;
+    --line-height-body: 1.55;
+
     /* Professional blue-gray navigation palette. */
     --color-blue-gray-950: #263442;
     --color-blue-gray-800: #3f5062;
@@ -45,51 +59,50 @@
     --selected-source-scrollbar-track: #e7eff7;
     --panel-scrollbar-size: 12px;
 
-    /*
-     * Current typography scale. These values preserve the existing layout.
-     * Components reference these tokens, so the scale can be consolidated later
-     * from this single file without another search-and-replace operation.
-     */
-    --font-size-7: 7px;
-    --font-size-8: 8px;
-    --font-size-9: 9px;
-    --font-size-10: 10px;
-    --font-size-11: 11px;
-    --font-size-12: 12px;
-    --font-size-13: 13px;
-    --font-size-14: 14px;
-    --font-size-15: 15px;
-    --font-size-16: 16px;
-    --font-size-17: 17px;
-    --font-size-18: 18px;
-    --font-size-19: 19px;
-    --font-size-20: 20px;
-    --font-size-21: 21px;
-    --font-size-22: 22px;
-    --font-size-23: 23px;
-    --font-size-24: 24px;
-    --font-size-25: 25px;
-    --font-size-26: 26px;
-    --font-size-27: 27px;
-    --font-size-28: 28px;
-    --font-size-30: 30px;
-    --font-size-31: 31px;
-    --font-size-32: 32px;
-    --font-size-34: 34px;
-    --font-size-36: 36px;
-    --font-size-38: 38px;
-    --font-size-48: 48px;
-    --font-size-58: 58px;
+    /* Seven readable sizes control the entire application. */
+    --type-meta: 12px;
+    --type-label: 14px;
+    --type-body: 16px;
+    --type-subtitle: 18px;
+    --type-title: 24px;
+    --type-heading: 32px;
+    --type-display: 48px;
 
-    /* Recommended semantic aliases for new components. */
-    --type-caption: var(--font-size-9);
-    --type-label: var(--font-size-11);
-    --type-body-small: var(--font-size-12);
-    --type-body: var(--font-size-14);
-    --type-subtitle: var(--font-size-16);
-    --type-title: var(--font-size-20);
-    --type-heading: var(--font-size-24);
-    --type-display: var(--font-size-32);
+    /* Compatibility map: existing components now resolve to the seven sizes. */
+    --font-size-7: var(--type-meta);
+    --font-size-8: var(--type-meta);
+    --font-size-9: var(--type-meta);
+    --font-size-10: var(--type-meta);
+    --font-size-11: var(--type-label);
+    --font-size-12: var(--type-label);
+    --font-size-13: var(--type-label);
+    --font-size-14: var(--type-body);
+    --font-size-15: var(--type-body);
+    --font-size-16: var(--type-body);
+    --font-size-17: var(--type-subtitle);
+    --font-size-18: var(--type-subtitle);
+    --font-size-19: var(--type-subtitle);
+    --font-size-20: var(--type-subtitle);
+    --font-size-21: var(--type-title);
+    --font-size-22: var(--type-title);
+    --font-size-23: var(--type-title);
+    --font-size-24: var(--type-title);
+    --font-size-25: var(--type-title);
+    --font-size-26: var(--type-title);
+    --font-size-27: var(--type-title);
+    --font-size-28: var(--type-title);
+    --font-size-30: var(--type-heading);
+    --font-size-31: var(--type-heading);
+    --font-size-32: var(--type-heading);
+    --font-size-34: var(--type-heading);
+    --font-size-36: var(--type-heading);
+    --font-size-38: var(--type-heading);
+    --font-size-48: var(--type-display);
+    --font-size-58: var(--type-display);
+
+    /* Semantic aliases retained for components that need finer naming. */
+    --type-caption: var(--type-meta);
+    --type-body-small: var(--type-label);
 
     /* Material glyph sizes are separate from text sizes. */
     --icon-size-standard: 23px;

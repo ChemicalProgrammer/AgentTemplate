@@ -27,8 +27,24 @@
 
   * { box-sizing: border-box; }
   html, body { height: 100%; }
-  body { margin: 0; color: var(--ink); background: var(--page); font:var(--font-size-14)/1.45 "Google Sans",Roboto,Arial,Helvetica,sans-serif; overflow: hidden; }
+  body { margin: 0; color: var(--ink); background: var(--page); font:var(--type-body)/var(--line-height-body) var(--font-family-body); overflow: hidden; }
   button, input, textarea, select { font: inherit; }
+  h1, h2, h3, h4, h5, h6,
+  strong, b,
+  .brand {
+    font-family: var(--font-family-display);
+    font-weight: var(--font-weight-bold);
+  }
+  h1, h2, h3, h4, h5, h6 { line-height: var(--line-height-tight); }
+  .chat-messages,
+  .message-body,
+  .composer textarea,
+  .document-viewer-content,
+  .modal input,
+  .modal textarea,
+  .modal select {
+    font-family: var(--font-family-body);
+  }
   button { cursor: pointer; }
   button { transition: transform .14s ease,box-shadow .14s ease,filter .14s ease,opacity .14s ease; }
   button:active:not(:disabled) { transform: scale(.975); }
