@@ -1,7 +1,15 @@
-# Agent Console Index-only correction
+# AppScripts-only HTML Service compatibility correction
 
-If `2.0.0-review.5.2` shows `Failed to execute 'write' on 'Document': Unexpected identifier 's'`, replace only `Index.html` with the file in this folder.
+Build marker: `2.0.0-review.5.2.2-htmlservice-compat`
 
-The correction removes literal script-wrapper markup from the loader's diagnostic message so Google Apps Script cannot reinterpret it while composing the HTML page.
+Replace only `AppScripts.html`.
 
-Save the project and reopen the `/dev` test URL. Do not replace `AppScripts.html` or delete the test deployment again.
+This is not the same file as the preceding delivery. The block beginning at `renderIndexDiagnostic` was rewritten to remove nested template literals and ternary interpolations from the location rejected by Google Apps Script HTML Service.
+
+Expected verification:
+
+- First lines include `CLIENT_BUILD: 2.0.0-review.5.2.2-htmlservice-compat`.
+- Total length: 2,546 lines.
+- The `renderIndexDiagnostic` block uses `var driveAvailability` and `var fileSummary`; it no longer begins with an interpolated backtick expression.
+
+Replacing this browser file does not alter Drive files or Gemini/File Search indexes.

@@ -1,4 +1,5 @@
 <script>
+  // CLIENT_BUILD: 2.0.0-review.5.2.2-htmlservice-compat
   if (window.__BOOT_UI__ && window.__BOOT_UI__.scriptReady) window.__BOOT_UI__.scriptReady();
   else window.__APP_SCRIPT_READY__ = true;
 
@@ -1960,16 +1961,24 @@
     document.getElementById('index-diagnostic-status').textContent = indexStatusLabel(diagnostic.indexStatus);
     document.getElementById('index-diagnostic-stage').textContent = String(diagnostic.indexStage || 'not_started').replace(/_/g, ' ');
     document.getElementById('index-diagnostic-profile').textContent = diagnostic.indexProfile || 'Not available';
-    document.getElementById('index-diagnostic-file').textContent = `${friendlyMime(diagnostic.mimeType)} · ${formatFileSize(diagnostic.size)} · ${diagnostic.driveAvailable ? 'Drive copy available' : 'Drive copy unavailable'}`;
-    document.getElementById('index-diagnostic-time').textContent = diagnostic.indexedAt ? `Indexed ${formatDateTime(diagnostic.indexedAt)}` : diagnostic.attemptStartedAt ? `Started ${formatDateTime(diagnostic.attemptStartedAt)} · checked ${formatDateTime(diagnostic.updatedAt)}` : diagnostic.updatedAt ? `Checked ${formatDateTime(diagnostic.updatedAt)}` : 'Not checked yet';
+    var driveAvailability = diagnostic.driveAvailable ? 'Drive copy available' : 'Drive copy unavailable';
+    var fileSummary = friendlyMime(diagnostic.mimeType) + ' · ' + formatFileSize(diagnostic.size) + ' · ' + driveAvailability;
+    document.getElementById('index-diagnostic-file').textContent = fileSummary;
+    var timeSummary = 'Not checked yet';
+    if (diagnostic.indexedAt) timeSummary = 'Indexed ' + formatDateTime(diagnostic.indexedAt);
+    else if (diagnostic.attemptStartedAt) timeSummary = 'Started ' + formatDateTime(diagnostic.attemptStartedAt) + ' · checked ' + formatDateTime(diagnostic.updatedAt);
+    else if (diagnostic.updatedAt) timeSummary = 'Checked ' + formatDateTime(diagnostic.updatedAt);
+    document.getElementById('index-diagnostic-time').textContent = timeSummary;
     document.getElementById('index-diagnostic-message').textContent = diagnostic.message || '';
-    const error = diagnostic.indexError || diagnostic.checkError || diagnostic.driveError || '';
-    const errorBox = document.getElementById('index-diagnostic-error'); errorBox.textContent = error; errorBox.classList.toggle('hidden', !error);
-    const counts = diagnostic.storeCounts;
-    const sourceCounts = diagnostic.sourceCounts;
-    document.getElementById('index-diagnostic-source-counts').textContent = sourceCounts ? `This source: ${sourceCounts.active} active · ${sourceCounts.pending} processing · ${sourceCounts.failed} failed` : '';
-    document.getElementById('index-diagnostic-counts').textContent = counts ? `Project store: ${counts.active} active · ${counts.pending} processing · ${counts.failed} failed` : '';
-    const canRetry = state.projectDetails.permissions.edit && state.projectDetails.permissions.sources && !['uploading','indexing','queued'].includes(diagnostic.indexStatus);
+    var diagnosticError = diagnostic.indexError || diagnostic.checkError || diagnostic.driveError || '';
+    var errorBox = document.getElementById('index-diagnostic-error'); errorBox.textContent = diagnosticError; errorBox.classList.toggle('hidden', !diagnosticError);
+    var counts = diagnostic.storeCounts;
+    var sourceCounts = diagnostic.sourceCounts;
+    var sourceSummary = sourceCounts ? 'This source: ' + sourceCounts.active + ' active · ' + sourceCounts.pending + ' processing · ' + sourceCounts.failed + ' failed' : '';
+    var storeSummary = counts ? 'Project store: ' + counts.active + ' active · ' + counts.pending + ' processing · ' + counts.failed + ' failed' : '';
+    document.getElementById('index-diagnostic-source-counts').textContent = sourceSummary;
+    document.getElementById('index-diagnostic-counts').textContent = storeSummary;
+    var canRetry = state.projectDetails.permissions.edit && state.projectDetails.permissions.sources && ['uploading','indexing','queued'].indexOf(diagnostic.indexStatus) === -1;
     const retry = document.getElementById('retry-index-diagnostic');
     retry.classList.toggle('hidden', !canRetry);
     retry.textContent = diagnostic.indexStatus === 'ready' ? 'Reindex cleanly' : 'Retry cleanly';
