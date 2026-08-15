@@ -4,8 +4,8 @@
     <span class="project-header-orb project-header-orb-two" aria-hidden="true"></span>
     <div class="project-identity">
       <div class="project-nav-actions">
-        <button id="back-dashboard" class="icon-btn project-nav-button panel-nav-btn" aria-label="Back to projects" title="Back to projects">←</button>
-        <button id="toggle-project-panel" class="icon-btn project-panel-toggle project-nav-button panel-nav-btn" aria-label="Open project panel" title="Open project panel">☰</button>
+        <button id="back-dashboard" class="icon-btn project-nav-button" aria-label="Back to projects" title="Back to projects">←</button>
+        <button id="toggle-project-panel" class="icon-btn project-panel-toggle project-nav-button" aria-label="Open project panel" title="Open project panel">☰</button>
       </div>
       <button id="project-header-icon" class="project-emoji project-emoji-button" aria-label="Change project emoji" title="Change project emoji">✨</button>
       <div class="project-title-wrap">
@@ -15,10 +15,10 @@
       </div>
     </div>
     <div class="project-actions">
-      <button id="project-agent-button" class="agent-loaded-pill" title="Change loaded agent"><span id="project-agent-icon">✦</span><span><b id="project-agent-name">Agent</b><small id="project-agent-version">—</small></span><i class="agent-selector-chevron" aria-hidden="true"></i></button>
-      <a id="open-project-folder" class="icon-btn action-icon project-action-button hidden" target="_blank" aria-label="Open project folder" title="Open in Drive">📂</a>
+      <button id="project-agent-button" class="agent-loaded-pill" title="Change loaded agent"><span id="project-agent-icon">✦</span><span><b id="project-agent-name">Agent</b><small id="project-agent-version">—</small></span><i>⌄</i></button>
+      <a id="open-project-folder" class="icon-btn action-icon hidden" target="_blank" aria-label="Open project folder" title="Open project folder">↗</a>
       <button id="share-project-button" class="primary-btn compact-btn owner-only"><span>♙</span> Share</button>
-      <button id="project-settings-button" class="icon-btn action-icon project-action-button" title="Settings" aria-label="Settings">⚙️</button>
+      <button id="project-settings-button" class="icon-btn action-icon" title="Settings" aria-label="Settings">⚙</button>
     </div>
   </header>
 
@@ -26,13 +26,13 @@
     <aside id="project-side-panel" class="project-side-panel" aria-label="Project navigation">
       <div class="side-panel-heading">
         <div><span class="side-panel-eyebrow">Project tools</span><strong>Workspace</strong></div>
-        <div class="side-panel-window-actions"><span class="side-panel-live"><i></i> Ready</span><button id="toggle-chat-from-side" class="emoji-action-btn panel-visibility-btn panel-nav-btn" type="button" title="Collapse chat and expand this panel" aria-label="Collapse chat and expand project panel" aria-pressed="false">◀</button></div>
+        <div class="side-panel-window-actions"><span class="side-panel-live"><i></i> Ready</span><button id="toggle-chat-from-side" class="emoji-action-btn panel-visibility-btn" type="button" title="Collapse chat and expand this panel" aria-label="Collapse chat and expand project panel" aria-pressed="false">⬅️</button></div>
       </div>
       <div class="side-tabs" role="tablist" aria-label="Project sections">
-        <button class="side-tab active" data-side-tab="chats" role="tab" aria-selected="true"><span aria-hidden="true">💬</span><b>Chats</b></button>
-        <button class="side-tab" data-side-tab="documents" role="tab" aria-selected="false"><span aria-hidden="true">📚</span><b>Documents</b></button>
-        <button class="side-tab" data-side-tab="templates" role="tab" aria-selected="false"><span aria-hidden="true">🧩</span><b>Templates</b></button>
-        <button class="side-tab" data-side-tab="flows" role="tab" aria-selected="false"><span aria-hidden="true">🔀</span><b>Flows</b></button>
+        <button class="side-tab active" data-side-tab="chats" role="tab" aria-selected="true"><span aria-hidden="true">◫</span><b>Chats</b></button>
+        <button class="side-tab" data-side-tab="documents" role="tab" aria-selected="false"><span aria-hidden="true">▤</span><b>Documents</b></button>
+        <button class="side-tab" data-side-tab="templates" role="tab" aria-selected="false"><span aria-hidden="true">▧</span><b>Templates</b></button>
+        <button class="side-tab" data-side-tab="flows" role="tab" aria-selected="false"><span aria-hidden="true">⇄</span><b>Flows</b></button>
       </div>
 
       <section id="side-panel-chats" class="side-panel-content active" role="tabpanel">
@@ -112,7 +112,9 @@
           </div>
         </div>
         <div class="chat-context-meta">
-          <span class="chat-context-actions"><button id="collapse-chat-panel" class="emoji-action-btn panel-nav-btn" title="Collapse chat and expand the project panel" aria-label="Collapse chat and expand project panel">◀</button></span>
+          <label class="chat-model-picker" title="Gemini model for this conversation"><span>Model</span><select id="chat-model-select" aria-label="Gemini model for this conversation"></select></label>
+          <span class="chat-context-agent"><i class="gemini-mini-spark">✦</i><b id="chat-context-agent-name">Agent</b><small id="chat-context-agent-version">—</small></span>
+          <span class="chat-context-actions"><button id="collapse-chat-panel" class="emoji-action-btn" title="Collapse chat and expand the project panel" aria-label="Collapse chat and expand project panel">⬅️</button></span>
         </div>
       </header>
       <div id="chat-scroll-region" class="chat-scroll-region">
@@ -135,8 +137,10 @@
       <div class="composer-wrap">
         <div id="active-source-chips" class="source-chips"></div>
         <div class="composer">
-          <div class="composer-input-row"><span class="composer-spark" aria-hidden="true">✦</span><textarea id="chat-input" rows="1" placeholder="Ask Gemini about this project" aria-label="Message Gemini"></textarea><button id="send-message" class="send-btn" aria-label="Send message" title="Send">➤</button><button id="stop-response" class="stop-btn hidden" aria-label="Stop response" title="Stop response"><span></span></button></div>
-          <div class="composer-footer-row"><label class="chat-model-picker" title="Gemini model for the next message"><span>Gemini model</span><span class="select-shell compact-select"><select id="chat-model-select" aria-label="Gemini model for this conversation"></select><i aria-hidden="true"></i></span></label><span id="chat-model-status" class="model-key-status">Checking models…</span></div>
+          <span class="composer-spark" aria-hidden="true">✦</span>
+          <textarea id="chat-input" rows="1" placeholder="Ask Gemini about this project" aria-label="Message Gemini"></textarea>
+          <button id="send-message" class="send-btn" aria-label="Send message" title="Send">➤</button>
+          <button id="stop-response" class="stop-btn hidden" aria-label="Stop response" title="Stop response"><span></span></button>
         </div>
         <small>Gemini can make mistakes. Check important information.</small>
       </div>
@@ -147,7 +151,7 @@
     <aside id="document-viewer" class="document-viewer hidden" aria-label="Document preview">
       <header class="document-viewer-header">
         <div><span>Document preview</span><strong id="document-viewer-title">Document</strong></div>
-        <div class="document-viewer-actions"><button id="export-document-pdf" class="emoji-action-btn" title="Export to PDF" aria-label="Export document to PDF">📄</button><a id="document-viewer-drive-link" class="emoji-action-btn" target="_blank" rel="noopener" title="Open in Drive" aria-label="Open in Drive">📂</a><button id="close-document-viewer" class="emoji-action-btn panel-nav-btn" title="Collapse preview" aria-label="Collapse preview">▶</button></div>
+        <div class="document-viewer-actions"><button id="export-document-pdf" class="emoji-action-btn" title="Export to PDF" aria-label="Export document to PDF">📄</button><a id="document-viewer-drive-link" class="emoji-action-btn" target="_blank" rel="noopener" title="Open in Drive" aria-label="Open in Drive">📂</a><button id="close-document-viewer" class="emoji-action-btn" title="Close preview" aria-label="Close preview">❌</button></div>
       </header>
       <div id="document-viewer-tabs" class="document-viewer-tabs" role="tablist"><button class="active" data-preview-mode="preview" role="tab">Preview</button><button data-preview-mode="raw" role="tab">Raw</button></div>
       <div id="document-viewer-loader" class="document-viewer-loader hidden"><span class="spinner"></span></div>

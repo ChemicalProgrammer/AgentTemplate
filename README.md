@@ -1,21 +1,14 @@
 # Agent Console para Google Apps Script
 
-Versión de revisión 2.0.0-review.5.
+Versión de revisión 2.0.0-review.4-hotfix.1.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
 
-## Qué cambia en 2.0.0-review.5
+## Hotfix 1 sobre 2.0.0-review.4
 
-- Corrige la desaparición temporal de knowledge heredado: toda actualización del grafo vuelve a solicitar el panel completo, no solo los documentos propios del proyecto.
-- El borrador del agente permite decidir si las fuentes mandatorias publicadas se muestran en Projects. Aunque estén ocultas, siguen autorizadas y se indexan en segundo plano.
-- Agentes, proyectos y documentos pueden reordenarse mediante drag-and-drop; el orden es personal, persistente y los documentos solo se mueven dentro de su nivel.
-- Cada barra de nivel funciona como encabezado visual y control para colapsar o expandir sus tarjetas; deja de ser sticky para no cubrir documentos durante el desplazamiento.
-- Las pestañas Chats, Documents, Templates y Flows, los controles de panel, el selector de agente, Open in Drive y Settings comparten una jerarquía visual más consistente.
-- El selector de modelo se trasladó al compositor. La consola consulta `/v1beta/models` con la API key del usuario y distingue una lista verificada de un valor de respaldo no verificado.
-- Cada mensaje nuevo conserva el modelo y una instantánea descriptiva de las fuentes adjuntas. El botón ℹ️ permite consultarlos sin recargar de metadatos la conversación.
-- Scrollbars más discretos, sin botones inferiores cortados y con margen de seguridad al final de cada panel.
+- Los refrescos del grafo documental conservan las fuentes heredadas del agente y los documentos del proyecto, usando el mismo endpoint que la carga inicial.
 
-## Base conservada de 2.0.0-review.4
+## Qué cambia en 2.0.0-review.4
 
 - El proyecto referencia la copia inmutable de las fuentes del release del agente; no las duplica dentro de `Project Sources`.
 - El índice del conocimiento del agente se conserva por usuario, llave y versión, y se reutiliza entre todos los proyectos que cargan esa misma versión.
@@ -235,7 +228,7 @@ Los límites se concentran en `ConfigService.gs`.
 
 ## Versión
 
-`2.0.0-review.5` — estabiliza el conocimiento heredado, agrega orden y colapso persistentes, registra contexto por mensaje y valida los modelos contra la llave asignada.
+`2.0.0-review.4` — reutiliza e indexa automáticamente conocimiento heredado, elimina el bloqueo de consultas mixtas y alinea encabezados, controles, chips y transiciones.
 
 `2.0.0-review.3` — agrega layout de tres paneles adaptable, colapso del chat, borrado desde mensajes con poda de ramas e indexación no bloqueante con progreso por tarjeta.
 

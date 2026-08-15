@@ -1,8 +1,4 @@
 <script>
-  // CLIENT_BUILD: 2.0.0-review.5.2.2-htmlservice-compat
-  if (window.__BOOT_UI__ && window.__BOOT_UI__.scriptReady) window.__BOOT_UI__.scriptReady();
-  else window.__APP_SCRIPT_READY__ = true;
-
   const PROJECT_EMOJIS = Object.freeze(['✨','🧠','📚','🧪','⚙️','📊','💡','🚀','🌱','🎯','🧭','🧩','🔬','🏗️','📝','💼','🎨','🌎','🤖','🗂️','⚗️','🧬','🧮','📐','🛠️','🏭','🔋','🌡️','💧','🔥','♻️','✅','📈','🔎','🛰️','🛡️','🎓','📋','🔗','🌐']);
   const PROJECT_COLORS = Object.freeze({
     blue:   {label:'Ocean', accent:'#0b57d0', tint:'#e8f0fe', tintStrong:'#d3e3fd'},
@@ -25,7 +21,6 @@
     bootstrap: null,
     projects: [],
     agents: [],
-    catalogsLoading: false,
     agentSearch: '',
     currentAgentId: null,
     currentAgentDetails: null,
@@ -37,14 +32,11 @@
     search: '',
     projectDetails: null,
     documentNodes: [],
-    backgroundIndexNodes: [],
     currentProjectId: null,
     currentConversationId: null,
     currentConversation: null,
     availableModels: [],
     currentChatModel: '',
-    modelCatalogVerified: false,
-    modelCatalogError: '',
     conversationSelections: new Map(),
     flowSelections: new Map(),
     selectedSources: new Set(),
@@ -61,8 +53,6 @@
     documentPreviewMode: 'preview',
     viewerCloseTimer: null,
     chatCollapsed: false,
-    collapsedDocumentLevels: new Set(),
-    cardDragging: false,
     pendingUploads: new Map(),
     sourceIndexTimers: new Map(),
     activeIndexSources: new Set(),
@@ -74,7 +64,7 @@
     panelLoading: {chats:false, documents:false, templates:false, flows:false, members:false}
   };
 
-  function initializeClient_() {
+  document.addEventListener('DOMContentLoaded', () => {
     renderEmojiOptions();
     renderColorOptions();
     renderAgentColorOptions();
@@ -83,10 +73,7 @@
     restoreViewerWidth();
     restoreChatPanelState();
     startApp();
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeClient_, {once:true});
-  else setTimeout(initializeClient_, 0);
+  });
 
   function server(functionName, ...args) {
     return new Promise((resolve, reject) => {
@@ -97,60 +84,26 @@
     });
   }
 
-  function withTimeout_(promise, milliseconds, message) {
-    let timer = null;
-    const result = Promise.race([
-      promise,
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message || 'The request took too long.')), milliseconds); })
-    ]);
-    return result.then(
-      value => { if (timer) clearTimeout(timer); return value; },
-      error => { if (timer) clearTimeout(timer); throw error; }
-    );
-  }
-
   async function startApp() {
-    const boot = window.__BOOT_UI__;
     try {
-      if (boot) boot.setStatus('Checking your workspace configuration…','Your projects are not being modified.');
-      const data = await withTimeout_(server('getBootstrap'), 20000, 'The initial Apps Script request did not answer within 20 seconds.');
+      const data = await server('getBootstrap');
       state.bootstrap = data;
       state.currentChatModel = (data.userSettings || {}).model || '';
+      document.getElementById('boot-loader').classList.add('hidden');
       if (!data.initialized) {
         document.getElementById('setup-screen').classList.remove('hidden');
         if (data.identity.email.includes('@')) document.getElementById('setup-domain').value = data.identity.email.split('@')[1];
-        if (boot) boot.complete(); else document.getElementById('boot-loader').classList.add('hidden');
         return;
       }
       state.projects = data.projects || [];
       state.agents = data.agents || [];
-      state.catalogsLoading = Boolean(data.catalogsDeferred);
       document.getElementById('app-shell').classList.remove('hidden');
       setWorkspaceMode('home');
       applyIdentity();
       showHome();
-      if (boot) { boot.setStatus('Opening Agent Console…','Project and agent cards will synchronize in the background.'); boot.complete(); }
-      else document.getElementById('boot-loader').classList.add('hidden');
-      if (data.catalogsDeferred) loadInitialCatalogs_();
     } catch (error) {
-      if (boot) boot.fail('The startup request could not be completed.', error.message);
-      else { document.getElementById('boot-loader').classList.add('hidden'); showToast(error.message, true); }
-    }
-  }
-
-  async function loadInitialCatalogs_() {
-    state.catalogsLoading = true; updateHomeCounts_();
-    if (!document.getElementById('agents-view').classList.contains('hidden')) renderAgents();
-    if (!document.getElementById('dashboard-view').classList.contains('hidden')) renderProjects();
-    try {
-      const data = await withTimeout_(server('getInitialCatalogs'), 60000, 'Drive did not finish synchronizing the Agents and Projects catalogs within 60 seconds.');
-      state.projects = data.projects || []; state.agents = data.agents || []; state.lastProjectRefresh = Date.now();
-    } catch (error) {
-      showToast('The console opened, but its catalogs could not be synchronized: ' + error.message, true);
-    } finally {
-      state.catalogsLoading = false; updateHomeCounts_();
-      if (!document.getElementById('agents-view').classList.contains('hidden')) renderAgents();
-      if (!document.getElementById('dashboard-view').classList.contains('hidden')) renderProjects();
+      document.getElementById('boot-loader').classList.add('hidden');
+      showToast(error.message, true);
     }
   }
 
@@ -283,8 +236,7 @@
       state.agents = state.bootstrap.agents || [];
       document.getElementById('setup-screen').classList.add('hidden');
       document.getElementById('app-shell').classList.remove('hidden');
-      state.catalogsLoading = Boolean(state.bootstrap.catalogsDeferred);
-      setWorkspaceMode('home'); applyIdentity(); showHome(); if (state.catalogsLoading) loadInitialCatalogs_(); showToast('Application configured.');
+      setWorkspaceMode('home'); applyIdentity(); showHome(); showToast('Application configured.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
   }
@@ -296,11 +248,12 @@
   function showHome() {
     if (state.activeRequest) stopResponse();
     state.projectLoadToken++;
-    state.currentProjectId = null; state.projectDetails = null; state.currentAgentId = null; state.currentAgentDetails = null; state.documentNodes = []; state.backgroundIndexNodes = [];
+    state.currentProjectId = null; state.projectDetails = null; state.currentAgentId = null; state.currentAgentDetails = null;
     hideWorkspaceViews_();
     const home = document.getElementById('home-view'); home.classList.remove('hidden'); home.classList.add('view-entering');
     setWorkspaceMode('home');
-    updateHomeCounts_();
+    document.getElementById('home-agent-count').textContent = state.agents.length;
+    document.getElementById('home-project-count').textContent = state.projects.length;
     setTimeout(() => home.classList.remove('view-entering'), 360);
   }
 
@@ -312,10 +265,9 @@
   function renderAgents() {
     const agents = state.agents.filter(agent => !state.agentSearch || `${agent.name} ${agent.description} ${agent.owner}`.toLowerCase().includes(state.agentSearch));
     const grid = document.getElementById('agent-grid');
-    if (state.catalogsLoading) { grid.innerHTML = catalogSkeletonMarkup_(4); document.getElementById('empty-agents').classList.add('hidden'); return; }
     grid.innerHTML = agents.map((agent, index) => `<article class="entity-card agent-card" style="--card-index:${index};${projectColorStyle(agent.color)}" data-agent-id="${escapeHtml(agent.agentId)}" tabindex="0">
       <div class="entity-card-accent"></div>
-      <div class="entity-card-top">${identityMarkHtml_(agent, 'agent-avatar')}<span class="entity-card-tools"><span class="card-drag-handle" draggable="true" title="Drag to reorder" aria-label="Drag to reorder agent">⠿</span><span class="status-pill ${escapeHtml(agent.status)}">${escapeHtml(agent.status || 'draft')}</span></span></div>
+      <div class="entity-card-top">${identityMarkHtml_(agent, 'agent-avatar')}<span class="status-pill ${escapeHtml(agent.status)}">${escapeHtml(agent.status || 'draft')}</span></div>
       <div class="entity-card-copy"><h3>${escapeHtml(agent.name)}</h3><p class="description">${escapeHtml(agent.description || 'No description')}</p></div>
       <div class="entity-context-chip"><span>✦</span>${agent.publishedVersion ? `Published · v${escapeHtml(agent.publishedVersion)}` : 'Editable draft'}</div>
       <div class="entity-card-stats"><span><b>${numberValue(agent.sourceCount)}</b> knowledge</span><span><b>${numberValue(agent.workflowCount)}</b> workflows</span><span><b>${numberValue(agent.templateCount)}</b> templates</span></div>
@@ -323,10 +275,9 @@
     </article>`).join('');
     document.getElementById('empty-agents').classList.toggle('hidden', agents.length > 0);
     grid.querySelectorAll('.agent-card').forEach(card => {
-      card.addEventListener('click', () => { if (!state.cardDragging) openAgent(card.dataset.agentId); });
+      card.addEventListener('click', () => openAgent(card.dataset.agentId));
       card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openAgent(card.dataset.agentId); } });
     });
-    bindCardReordering_(grid, '.agent-card', 'agentId', orderedIds => persistEntityCardOrder_('agents', orderedIds));
   }
 
   async function refreshAgents() {
@@ -339,7 +290,7 @@
   async function submitAgent(event) {
     event.preventDefault(); setBusy(event.target, true);
     try {
-      const agent = await server('createAgent', {name:document.getElementById('new-agent-name').value,description:document.getElementById('new-agent-description').value,icon:document.getElementById('new-agent-icon').value,color:document.getElementById('new-agent-color').value,showMandatoryKnowledgeInProjects:document.getElementById('new-agent-show-mandatory').checked});
+      const agent = await server('createAgent', {name:document.getElementById('new-agent-name').value,description:document.getElementById('new-agent-description').value,icon:document.getElementById('new-agent-icon').value,color:document.getElementById('new-agent-color').value});
       state.agents.unshift(agent); closeModals(); event.target.reset(); renderAgents(); updateHomeCounts_(); await openAgent(agent.agentId); showToast('Agent draft created.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
@@ -368,7 +319,6 @@
     document.getElementById('edit-agent-instructions').value = details.instructions || '';
     document.getElementById('edit-agent-icon').value = agent.icon || '✦';
     document.getElementById('edit-agent-color').value = agent.color || 'violet';
-    document.getElementById('edit-agent-show-mandatory').checked = agent.showMandatoryKnowledgeInProjects !== false;
     renderAgentIdentityPreview_();
     syncAgentColorOptions_();
     const validation = details.validation || {valid:true,errors:[],warnings:[]};
@@ -380,7 +330,6 @@
     document.getElementById('import-agent-logo').classList.toggle('hidden', !agent.canEdit);
     document.getElementById('remove-agent-logo').classList.toggle('hidden', !agent.canEdit || !agent.logoUrl);
     document.getElementById('edit-agent-icon').disabled = !agent.canEdit;
-    document.getElementById('edit-agent-show-mandatory').disabled = !agent.canEdit;
     document.querySelectorAll('[data-agent-color]').forEach(button => button.disabled = !agent.canEdit);
     document.querySelectorAll('[data-agent-add]').forEach(button => button.classList.toggle('hidden', !agent.canEdit));
     renderAgentResourceList_('agent-mandatory-list', assets.mandatoryKnowledge, 'DOC', agent.canEdit);
@@ -406,7 +355,7 @@
     if (!state.currentAgentId) return;
     const button = document.getElementById('save-agent'); setBusy(button, true);
     try {
-      state.currentAgentDetails = await server('updateAgent', state.currentAgentId, {name:document.getElementById('edit-agent-name').value,description:document.getElementById('edit-agent-description').value,instructions:document.getElementById('edit-agent-instructions').value,icon:document.getElementById('edit-agent-icon').value,color:document.getElementById('edit-agent-color').value,showMandatoryKnowledgeInProjects:document.getElementById('edit-agent-show-mandatory').checked});
+      state.currentAgentDetails = await server('updateAgent', state.currentAgentId, {name:document.getElementById('edit-agent-name').value,description:document.getElementById('edit-agent-description').value,instructions:document.getElementById('edit-agent-instructions').value,icon:document.getElementById('edit-agent-icon').value,color:document.getElementById('edit-agent-color').value});
       upsertAgentSummary_(state.currentAgentDetails.agent); renderAgentEditor(); showToast('Agent draft saved.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
@@ -501,12 +450,8 @@
   }
 
   function updateHomeCounts_() {
-    document.getElementById('home-agent-count').textContent = state.catalogsLoading ? '…' : state.agents.length;
-    document.getElementById('home-project-count').textContent = state.catalogsLoading ? '…' : state.projects.length;
-  }
-
-  function catalogSkeletonMarkup_(count) {
-    return Array.from({length:count || 4},(_,index) => `<article class="entity-card catalog-skeleton" style="--card-index:${index}"><span class="skeleton-mark"></span><span class="skeleton-line wide"></span><span class="skeleton-line"></span><span class="skeleton-line short"></span></article>`).join('');
+    document.getElementById('home-agent-count').textContent = state.agents.length;
+    document.getElementById('home-project-count').textContent = state.projects.length;
   }
 
   function publishedAgents_() { return state.agents.filter(agent => Boolean(agent.publishedVersion)); }
@@ -523,7 +468,6 @@
 
   function renderProjects() {
     const grid = document.getElementById('project-grid');
-    if (state.catalogsLoading) { grid.innerHTML = catalogSkeletonMarkup_(6); document.getElementById('empty-projects').classList.add('hidden'); return; }
     const projects = state.projects.filter(project => {
       const matchesText = !state.search || `${project.title} ${project.description} ${project.owner}`.toLowerCase().includes(state.search);
       const matchesFilter = state.dashboardFilter === 'favorite' ? project.favorite : state.dashboardFilter === 'all' || project.status === state.dashboardFilter;
@@ -534,7 +478,6 @@
       <div class="entity-card-top">
         <div class="entity-mark project-emoji" title="Project icon"><span>${escapeHtml(project.icon || '✨')}</span></div>
         <div class="project-card-controls">
-          <span class="card-drag-handle" draggable="true" title="Drag to reorder" aria-label="Drag to reorder project">⠿</span>
           <button class="favorite-btn ${project.favorite ? 'on' : ''}" data-favorite-id="${escapeHtml(project.projectId)}" title="Favorite" aria-label="Favorite">★</button>
           <div class="project-card-menu-wrap">
             <button class="project-card-menu-button" data-project-menu="${escapeHtml(project.projectId)}" title="Project actions" aria-label="Project actions">⋮</button>
@@ -552,7 +495,7 @@
     </article>`).join('');
     document.getElementById('empty-projects').classList.toggle('hidden', projects.length > 0);
     grid.querySelectorAll('.project-card').forEach(card => {
-      card.addEventListener('click', () => { if (!state.cardDragging) openProject(card.dataset.projectId); });
+      card.addEventListener('click', () => openProject(card.dataset.projectId));
       card.addEventListener('keydown', event => { if (event.target === card && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openProject(card.dataset.projectId); } });
     });
     grid.querySelectorAll('[data-favorite-id]').forEach(button => button.addEventListener('click', async event => {
@@ -568,57 +511,6 @@
     grid.querySelectorAll('[data-project-menu]').forEach(button => button.addEventListener('click', event => toggleProjectCardMenu(event, button)));
     grid.querySelectorAll('[data-clone-project]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); cloneProjectFromDashboard(button.dataset.cloneProject, button); }));
     grid.querySelectorAll('[data-delete-project]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); deleteProjectFromDashboard(button.dataset.deleteProject, button); }));
-    bindCardReordering_(grid, '.project-card', 'projectId', orderedIds => persistEntityCardOrder_('projects', orderedIds));
-  }
-
-  function bindCardReordering_(container, cardSelector, idField, onCommit) {
-    let draggedCard = null;
-    container.querySelectorAll('.card-drag-handle').forEach(handle => {
-      handle.addEventListener('click', event => event.stopPropagation());
-      handle.addEventListener('keydown', event => event.stopPropagation());
-      handle.addEventListener('dragstart', event => {
-        draggedCard = handle.closest(cardSelector); if (!draggedCard) return;
-        state.cardDragging = true; draggedCard.classList.add('dragging');
-        event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', draggedCard.dataset[idField] || draggedCard.dataset.nodeId || '');
-      });
-      handle.addEventListener('dragend', () => {
-        if (!draggedCard) return;
-        draggedCard.classList.remove('dragging');
-        container.querySelectorAll('.drag-target').forEach(card => card.classList.remove('drag-target'));
-        const orderedIds = Array.from(container.querySelectorAll(cardSelector)).map(card => card.dataset[idField] || card.dataset.nodeId).filter(Boolean);
-        draggedCard = null; setTimeout(() => { state.cardDragging = false; }, 180); onCommit(orderedIds);
-      });
-    });
-    container.addEventListener('dragover', event => {
-      if (!draggedCard) return;
-      const target = event.target.closest(cardSelector);
-      if (!target || target === draggedCard || target.parentElement !== draggedCard.parentElement) return;
-      event.preventDefault(); event.dataTransfer.dropEffect = 'move';
-      container.querySelectorAll('.drag-target').forEach(card => card.classList.remove('drag-target')); target.classList.add('drag-target');
-      const rect = target.getBoundingClientRect();
-      const after = target.parentElement.classList.contains('level-track') ? event.clientX > rect.left + rect.width / 2 : event.clientY > rect.top + rect.height / 2;
-      target.parentElement.insertBefore(draggedCard, after ? target.nextSibling : target);
-    });
-    container.addEventListener('drop', event => { if (draggedCard) event.preventDefault(); });
-  }
-
-  function mergeVisibleCardOrder_(items, orderedIds, idField) {
-    const byId = new Map(items.map(item => [String(item[idField]), item]));
-    const queue = orderedIds.map(String).filter(id => byId.has(id));
-    const visible = new Set(queue); let cursor = 0;
-    return items.map(item => visible.has(String(item[idField])) ? byId.get(queue[cursor++]) : item);
-  }
-
-  async function persistEntityCardOrder_(kind, orderedIds) {
-    try {
-      if (kind === 'agents') {
-        state.agents = mergeVisibleCardOrder_(state.agents, orderedIds, 'agentId');
-        await server('saveAgentCardOrder', state.agents.map(item => item.agentId));
-      } else {
-        state.projects = mergeVisibleCardOrder_(state.projects, orderedIds, 'projectId');
-        await server('saveProjectCardOrder', state.projects.map(item => item.projectId));
-      }
-    } catch (error) { showToast('The new card order could not be saved: ' + error.message, true); }
   }
 
   async function refreshProjects(silent = false) {
@@ -675,7 +567,6 @@
   }
 
   function openNewProjectModal() {
-    if (state.catalogsLoading) return showToast('Agents and projects are still synchronizing. Try again in a moment.');
     const agents = publishedAgents_();
     if (!agents.length) return showToast('Publish at least one agent before creating a project.', true);
     populateAgentSelect_(document.getElementById('new-project-agent'), agents[0].agentId, agents[0].publishedVersion);
@@ -707,8 +598,7 @@
     clearSourceIndexActivity_();
     state.currentProjectId = projectId; state.currentConversationId = null; state.currentConversation = null;
     closeDocumentViewer(true);
-    state.documentNodes = []; state.backgroundIndexNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map();
-    state.collapsedDocumentLevels = readCollapsedDocumentLevels_(projectId);
+    state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map();
     state.selectedSources = new Set(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
     state.projectAgent = null; state.availableAgents = publishedAgents_();
     state.panelLoaded = {chats:false, documents:false, templates:false, flows:false, members:false};
@@ -815,13 +705,12 @@
       const data = await server('getProjectDocumentsPanel', projectId);
       if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
       state.documentNodes = data.documentGraph || [];
-      state.backgroundIndexNodes = data.indexableSources || state.documentNodes.filter(node => node.kind === 'source' || node.kind === 'agent-source');
       state.projectDetails.sources = state.documentNodes.filter(node => node.kind === 'source');
       state.projectDetails.documents = state.documentNodes.filter(node => node.kind !== 'source' && node.kind !== 'agent-source');
       state.panelLoaded.documents = true;
       applyCurrentConversationSelections_();
       syncProjectSummary(state.projectDetails); renderDocumentGraph();
-      const indexableSources = state.backgroundIndexNodes;
+      const indexableSources = state.documentNodes.filter(node => node.kind === 'source' || node.kind === 'agent-source');
       if (state.projectDetails.permissions.edit) {
         const queued = indexableSources.filter(node => ['queued','uploading','not_indexed'].includes(node.indexStatus)).sort((a,b) => Number(Boolean(b.mandatory)) - Number(Boolean(a.mandatory)));
         queueSourceIndexes_(queued.map(node => node.nodeId));
@@ -841,17 +730,13 @@
   async function loadChatModels_() {
     const fallback = state.currentChatModel || (state.bootstrap.userSettings || {}).model || '';
     if (fallback && !state.availableModels.length) state.availableModels = [{name:fallback, displayName:fallback}];
-    state.modelCatalogVerified = false; state.modelCatalogError = '';
     syncChatModelPicker_();
     try {
       const models = await server('getAvailableGeminiModels');
-      if (!(models || []).length) throw new Error('The assigned API key returned no models compatible with generateContent.');
       state.availableModels = models || [];
-      state.modelCatalogVerified = true;
-      if (state.availableModels.length && !state.availableModels.some(model => model.name === state.currentChatModel)) state.currentChatModel = state.availableModels[0].name;
+      if (!state.currentChatModel && state.availableModels.length) state.currentChatModel = state.availableModels[0].name;
       syncChatModelPicker_();
-    } catch (error) {
-      state.modelCatalogVerified = false; state.modelCatalogError = error.message || 'Model catalog could not be verified.';
+    } catch (_) {
       syncChatModelPicker_();
     }
   }
@@ -863,12 +748,6 @@
     select.innerHTML = models.map(model => `<option value="${escapeHtml(model.name)}">${escapeHtml(model.displayName || model.name)}</option>`).join('');
     if (state.currentChatModel) select.value = state.currentChatModel;
     select.disabled = state.busy || !models.length;
-    const status = document.getElementById('chat-model-status');
-    if (status) {
-      status.textContent = state.modelCatalogVerified ? '✓ Available for your API key' : 'Not verified · check Settings';
-      status.className = `model-key-status ${state.modelCatalogVerified ? 'verified' : 'unverified'}`;
-      status.title = state.modelCatalogVerified ? 'This list was returned by Gemini for your assigned API key.' : (state.modelCatalogError || 'The current value is a fallback and has not been verified for your API key.');
-    }
   }
 
   async function ensurePanelLoaded_(name) {
@@ -974,6 +853,8 @@
     const record = (state.projectDetails.conversations || []).find(item => item.conversationId === state.currentConversationId);
     const conversationTitle = state.currentConversation && state.currentConversation.title || record && record.title || 'New chat';
     document.getElementById('chat-conversation-title').textContent = conversationTitle;
+    document.getElementById('chat-context-agent-name').textContent = agent.name || 'Agent';
+    document.getElementById('chat-context-agent-version').textContent = agent.version ? `v${agent.version}` : '—';
     const identityStyle = projectColorStyle(agent.color || 'violet');
     ['chat-agent-mark','chat-empty-agent-mark'].forEach(id => {
       const mark = document.getElementById(id);
@@ -1019,7 +900,7 @@
     state.currentProjectId = null; state.projectDetails = null; state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
     hideWorkspaceViews_();
     const dashboard = document.getElementById('dashboard-view'); dashboard.classList.remove('hidden'); dashboard.classList.add('view-entering');
-    setWorkspaceMode('dashboard'); renderProjects(); if (!state.catalogsLoading) refreshProjects(true); setTimeout(() => dashboard.classList.remove('view-entering'), 360);
+    setWorkspaceMode('dashboard'); renderProjects(); refreshProjects(true); setTimeout(() => dashboard.classList.remove('view-entering'), 360);
   }
 
   function setWorkspaceMode(mode) {
@@ -1147,14 +1028,14 @@
       return source.citationUri ? `<a href="${escapeHtml(source.citationUri)}" target="_blank" rel="noopener">${label}</a>` : label;
     }).join(' · ');
     const flows = (message.flowsUsed || []).map(flow => `[${escapeHtml(flow.label)}] ${escapeHtml(flow.name)}`).join(' · ');
-    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div><div class="message-actions"><button class="emoji-action-btn" data-message-info="${escapeHtml(message.messageId)}" title="View model and attached sources" aria-label="View message details">ℹ️</button>${state.projectDetails.permissions.edit ? `<button class="emoji-action-btn" data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">✏️</button><button class="emoji-action-btn danger" data-delete-message="${escapeHtml(message.messageId)}" title="Delete from this point" aria-label="Delete this message and later conversation">🗑️</button>` : ''}</div></article>`;
+    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div>${state.projectDetails.permissions.edit ? `<div class="message-actions"><button class="emoji-action-btn" data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">✏️</button><button class="emoji-action-btn danger" data-delete-message="${escapeHtml(message.messageId)}" title="Delete from this point" aria-label="Delete this message and later conversation">🗑️</button></div>` : ''}</article>`;
     if (message.kind === 'artifact_event' && message.artifact) return renderArtifactEvent_(message, sources, flows);
     return `<article class="message assistant" data-message-id="${escapeHtml(message.messageId)}">
       <div class="message-header">${identityMarkHtml_(state.projectAgent || {icon:'✦'}, 'message-avatar')}<span>${escapeHtml(message.agentName || (state.projectAgent || {}).name || 'Agent')}${message.agentVersion ? ` · v${escapeHtml(message.agentVersion)}` : ''}</span></div>
       <div id="message-body-${escapeHtml(message.messageId)}" class="message-body ${message.isTyping ? 'typing-cursor' : ''}">${formatMarkdown(message.text)}</div>
       ${sources ? `<div class="message-sources">${sources}</div>` : ''}
       ${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
-      ${!message.isTyping ? `<div class="message-actions"><button class="emoji-action-btn" data-message-info="${escapeHtml(message.messageId)}" title="View model and attached sources" aria-label="View message details">ℹ️</button><button class="emoji-action-btn" data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response"><span class="message-copy-icon" aria-hidden="true">📋</span></button></div>` : ''}
+      ${!message.isTyping ? `<div class="message-actions"><button class="emoji-action-btn" data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response"><span class="message-copy-icon" aria-hidden="true">📋</span></button></div>` : ''}
     </article>`;
   }
 
@@ -1164,13 +1045,12 @@
     return `<article class="message assistant artifact-event" data-message-id="${escapeHtml(message.messageId)}">
       <div class="message-header">${identityMarkHtml_(state.projectAgent || {icon:'✦'}, 'message-avatar')}<span>${escapeHtml(message.agentName || (state.projectAgent || {}).name || 'Agent')}</span></div>
       <div class="artifact-event-card"><button class="artifact-event-heading artifact-open-button" data-open-artifact="${escapeHtml(artifact.nodeId)}"><span aria-hidden="true">MD</span><div><small>${escapeHtml(message.eventLabel || 'Artifact saved')}</small><strong>${escapeHtml(artifact.name)}</strong></div></button>${actions ? `<div class="artifact-event-actions">${actions}</div>` : ''}</div>
-      ${sources ? `<div class="message-sources">${sources}</div>` : ''}${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}<div class="message-actions"><button class="emoji-action-btn" data-message-info="${escapeHtml(message.messageId)}" title="View model and attached sources" aria-label="View message details">ℹ️</button></div>
+      ${sources ? `<div class="message-sources">${sources}</div>` : ''}${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
     </article>`;
   }
 
   function bindRenderedMessageActions_(container) {
     container.querySelectorAll('[data-copy-message]').forEach(button => button.addEventListener('click', () => copyMessage(button.dataset.copyMessage, button)));
-    container.querySelectorAll('[data-message-info]').forEach(button => button.addEventListener('click', () => openMessageMetadata_(button.dataset.messageInfo)));
     container.querySelectorAll('[data-branch-message]').forEach(button => button.addEventListener('click', () => openConversationBranch(button.dataset.branchMessage)));
     container.querySelectorAll('[data-delete-message]').forEach(button => button.addEventListener('click', () => deleteMessageFromConversation(button.dataset.deleteMessage, button)));
     container.querySelectorAll('[data-open-artifact]').forEach(button => button.addEventListener('click', () => openDocumentPreview(button.dataset.openArtifact)));
@@ -1180,20 +1060,6 @@
       try { await navigator.clipboard.writeText(code); const previous = button.textContent; button.textContent = '✓ Copied'; setTimeout(() => button.textContent = previous, 1200); }
       catch (_) { showToast('Could not copy the code.', true); }
     }));
-  }
-
-  function openMessageMetadata_(messageId) {
-    const message = state.currentConversation && (state.currentConversation.messages || []).find(item => item.messageId === messageId);
-    if (!message) return;
-    const nodeMap = new Map((state.documentNodes || []).concat(state.backgroundIndexNodes || []).flatMap(node => [[node.nodeId,node], ...(node.sourceId ? [[node.sourceId,node]] : [])]));
-    let sources = Array.isArray(message.attachedSources) ? message.attachedSources : [];
-    if (!sources.length) sources = (message.sourceSelection || []).map(id => nodeMap.get(id) || nodeMap.get(String(id).replace(/^(source|agent-source):/,''))).filter(Boolean);
-    if (!sources.length) sources = (message.sourcesUsed || []).map(source => ({name:source.name || source.sourceId,mimeType:source.mimeType || '',origin:/^agent-source:/.test(source.sourceId || '') ? 'agent' : 'project',mandatory:Boolean(source.mandatory)}));
-    document.getElementById('message-metadata-role').textContent = message.role === 'assistant' ? 'Agent response' : 'User request';
-    document.getElementById('message-metadata-created').textContent = formatDateTime(message.createdAt);
-    document.getElementById('message-metadata-model').textContent = message.model || (state.currentConversation || {}).model || 'Not recorded';
-    document.getElementById('message-metadata-source-list').innerHTML = sources.length ? sources.map(source => `<article class="metadata-source-card ${fileTypeClass(source.mimeType,source.name)}"><span class="file-type-icon ${fileTypeClass(source.mimeType,source.name)}">${fileTypeIcon(source.mimeType,source.name)}</span><span><strong>${escapeHtml(source.name || source.sourceId || 'Source')}</strong><small>${escapeHtml(source.origin === 'agent' ? `Agent knowledge${source.mandatory ? ' · mandatory' : ''}` : friendlyMime(source.mimeType,source.name))}</small></span></article>`).join('') : '<p class="muted">No sources were attached to this message.</p>';
-    openModal('message-metadata-modal');
   }
 
   function renderThinkingMessage(stopping) {
@@ -1295,7 +1161,7 @@
       input.value = ''; autoSizeComposer();
       const request = {id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`, cancelled: false, phase: 'waiting', displayedText: ''};
       state.activeRequest = request;
-      const temporary = {messageId: `temp-${Date.now()}`, role: 'user', text, createdAt: new Date().toISOString(), model:state.currentChatModel, sourceSelection:Array.from(state.selectedSources)};
+      const temporary = {messageId: `temp-${Date.now()}`, role: 'user', text, createdAt: new Date().toISOString()};
       state.currentConversation.messages.push(temporary); setAgentBusy(true); renderMessages({thinking: true});
       const selection = Array.from(state.selectedSources);
       const flowSelection = Array.from(state.selectedFlows);
@@ -1306,11 +1172,9 @@
       state.currentConversation.messages.push(result.userMessage);
       const artifactEvent = result.assistantMessage.kind === 'artifact_event';
       const assistantMessage = artifactEvent ? Object.assign({}, result.assistantMessage) : Object.assign({}, result.assistantMessage, {text: '', isTyping: true});
-      const authorizedSelection = result.userMessage.sourceSelection || selection;
-      state.currentConversation.messages.push(assistantMessage); state.currentConversation.title = result.title; state.currentConversation.sourceSelection = authorizedSelection; state.currentConversation.flowSelection = flowSelection;
-      state.selectedSources = new Set(normalizeSelectedDocumentIds(authorizedSelection));
+      state.currentConversation.messages.push(assistantMessage); state.currentConversation.title = result.title; state.currentConversation.sourceSelection = selection; state.currentConversation.flowSelection = flowSelection;
       state.currentConversation.model = state.currentChatModel;
-      state.conversationSelections.set(result.conversationId, authorizedSelection);
+      state.conversationSelections.set(result.conversationId, selection);
       state.flowSelections.set(result.conversationId, flowSelection);
       const record = state.projectDetails.conversations.find(item => item.conversationId === result.conversationId);
       if (record) { record.title = result.title; record.updatedAt = result.assistantMessage.createdAt; record.messageCount = result.messageCount; record.model = state.currentChatModel; }
@@ -1532,9 +1396,8 @@
       const allChecked = selectableItems.length > 0 && selected === selectableItems.length;
       const partial = selected > 0 && selected < selectableItems.length;
       const levelLabel = level === -1 ? `Agent knowledge · ${escapeHtml((state.projectAgent || {}).name || 'Loaded agent')}` : level === 0 ? 'Project sources' : `Generated · Level ${level}`;
-      const collapsed = state.collapsedDocumentLevels.has(level);
-      return `<section class="document-level ${level === -1 ? 'agent-knowledge-level' : ''} ${collapsed ? 'collapsed' : ''}" data-level="${level}">
-        <div class="level-heading"><label class="level-select"><input type="checkbox" data-level-select="${level}" ${allChecked ? 'checked' : ''} ${partial ? 'data-partial="true"' : ''} ${selectableItems.length ? '' : 'disabled'}><span class="level-icon" aria-hidden="true">${level === -1 ? '🧠' : level === 0 ? '📥' : '✨'}</span><span class="level-title">${levelLabel}</span></label><span class="level-heading-actions"><small>${items.length}</small><button type="button" class="level-collapse-button" data-level-collapse="${level}" aria-expanded="${collapsed ? 'false' : 'true'}" title="${collapsed ? 'Expand' : 'Collapse'} this level"><i aria-hidden="true"></i></button></span></div>
+      return `<section class="document-level ${level === -1 ? 'agent-knowledge-level' : ''}" data-level="${level}">
+        <div class="level-heading"><label class="level-select"><input type="checkbox" data-level-select="${level}" ${allChecked ? 'checked' : ''} ${partial ? 'data-partial="true"' : ''} ${selectableItems.length ? '' : 'disabled'}><span>${levelLabel}</span></label><small>${items.length}</small></div>
         <div class="level-track">${items.map(renderDocumentCard).join('')}</div>
       </section>`;
     }).join('');
@@ -1545,7 +1408,6 @@
       if (input.dataset.partial === 'true') input.indeterminate = true;
       input.addEventListener('change', () => toggleDocumentLevel(Number(input.dataset.levelSelect), input.checked));
     });
-    container.querySelectorAll('[data-level-collapse]').forEach(button => button.addEventListener('click', () => toggleDocumentLevelCollapsed_(Number(button.dataset.levelCollapse))));
     container.querySelectorAll('[data-document-select]').forEach(input => input.addEventListener('change', () => toggleDocumentSelection(input.dataset.documentSelect, input.checked)));
     container.querySelectorAll('[data-document-menu]').forEach(button => button.addEventListener('click', event => toggleDocumentMenu(event, button)));
     container.querySelectorAll('[data-edit-document-note]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openDocumentNoteModal(button.dataset.editDocumentNote); }));
@@ -1566,31 +1428,7 @@
         highlightDocumentRelations(state.highlightedDocumentId); openDocumentPreview(card.dataset.nodeId);
       });
     });
-    bindCardReordering_(container, '.document-card', 'nodeId', persistDocumentCardOrder_);
     renderSourceChips();
-  }
-
-  function documentLevelStorageKey_(projectId) { return `gpa.collapsedDocumentLevels.${projectId}`; }
-
-  function readCollapsedDocumentLevels_(projectId) {
-    try { return new Set(JSON.parse(localStorage.getItem(documentLevelStorageKey_(projectId)) || '[]').map(Number)); }
-    catch (_) { return new Set(); }
-  }
-
-  function toggleDocumentLevelCollapsed_(level) {
-    state.collapsedDocumentLevels.has(level) ? state.collapsedDocumentLevels.delete(level) : state.collapsedDocumentLevels.add(level);
-    try { localStorage.setItem(documentLevelStorageKey_(state.currentProjectId), JSON.stringify(Array.from(state.collapsedDocumentLevels))); } catch (_) {}
-    renderDocumentGraph();
-  }
-
-  async function persistDocumentCardOrder_(orderedIds) {
-    const persistedIds = orderedIds.filter(id => !String(id).startsWith('pending:'));
-    const byId = new Map(state.documentNodes.map(node => [node.nodeId, node]));
-    const ordered = persistedIds.map(id => byId.get(id)).filter(Boolean);
-    const included = new Set(persistedIds);
-    state.documentNodes = ordered.concat(state.documentNodes.filter(node => !included.has(node.nodeId)));
-    try { await server('saveProjectDocumentOrder', state.currentProjectId, state.documentNodes.map(node => node.nodeId)); }
-    catch (error) { showToast('The document order could not be saved: ' + error.message, true); }
   }
 
   function renderDocumentCard(node) {
@@ -1608,7 +1446,6 @@
         <label class="document-checkbox" title="${pendingUpload ? 'Upload in progress' : node.locked ? 'Mandatory agent knowledge' : 'Use in chat'}"><input type="checkbox" ${pendingUpload ? '' : `data-document-select="${escapeHtml(node.nodeId)}"`} ${state.selectedSources.has(node.nodeId) ? 'checked' : ''} ${node.locked || pendingUpload ? 'disabled' : ''}><span></span></label>
         <span class="file-type-icon ${fileTypeClass(node.mimeType,node.name)}">${fileTypeIcon(node.mimeType,node.name)}</span>
         <div class="document-card-copy"><strong title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</strong><div class="document-meta"><span class="file-format-pill">${escapeHtml(friendlyMime(node.mimeType,node.name))}</span><span>${formatFileSize(node.size)}</span><span>${formatDate(node.createdAt)}</span></div></div>
-        ${pendingUpload ? '' : `<span class="card-drag-handle document-drag-handle" draggable="true" title="Drag within this level" aria-label="Drag to reorder document">⠿</span>`}
         ${pendingUpload ? '' : `<div class="document-menu-wrap">
           <button class="document-menu-button" data-document-menu="${escapeHtml(node.nodeId)}" aria-label="Document actions" title="Document actions">⋮</button>
           <div class="document-menu hidden" role="menu">
@@ -1832,8 +1669,7 @@
   function resolveIndexNode_(sourceRef) {
     if (sourceRef && typeof sourceRef === 'object') return sourceRef;
     const value = String(sourceRef || '');
-    const candidates = state.documentNodes.concat(state.backgroundIndexNodes || []);
-    return candidates.find(item => item.nodeId === value) || candidates.find(item => item.kind === 'source' && item.sourceId === value) || candidates.find(item => item.sourceId === value);
+    return state.documentNodes.find(item => item.nodeId === value) || state.documentNodes.find(item => item.kind === 'source' && item.sourceId === value) || state.documentNodes.find(item => item.sourceId === value);
   }
 
   async function continueSingleSourceIndex(sourceRef, restart) {
@@ -1856,9 +1692,6 @@
       const existingIndex = state.documentNodes.findIndex(item => item.nodeId === node.nodeId);
       if (existingIndex >= 0) state.documentNodes[existingIndex] = Object.assign(state.documentNodes[existingIndex], node);
       else state.documentNodes.push(node);
-      const backgroundIndex = state.backgroundIndexNodes.findIndex(item => item.nodeId === node.nodeId);
-      if (backgroundIndex >= 0) state.backgroundIndexNodes[backgroundIndex] = Object.assign(state.backgroundIndexNodes[backgroundIndex], node);
-      else state.backgroundIndexNodes.push(node);
       state.selectedSources.add(node.nodeId);
       if (!(state.projectDetails.sources || []).some(item => item.sourceId === source.sourceId)) state.projectDetails.sources.push(node);
     });
@@ -1885,16 +1718,13 @@
   function applySourceIndexState_(sourceRef, result, rerender = true) {
     const node = resolveIndexNode_(sourceRef);
     if (!node || !result) return;
-    const matching = state.documentNodes.concat(state.backgroundIndexNodes || []).filter(item => item.nodeId === node.nodeId || item.sourceId && item.sourceId === node.sourceId);
-    matching.forEach(item => {
-      item.indexStatus = result.indexStatus || item.indexStatus;
-      item.indexStage = result.indexStage || '';
-      item.indexProgress = Number(result.indexProgress || 0);
-      item.indexError = result.indexError || '';
-      item.indexCheckError = result.indexCheckError || '';
-      item.indexUpdatedAt = result.indexUpdatedAt || item.indexUpdatedAt || '';
-      item.indexedAt = result.indexedAt || item.indexedAt || '';
-    });
+    node.indexStatus = result.indexStatus || node.indexStatus;
+    node.indexStage = result.indexStage || '';
+    node.indexProgress = Number(result.indexProgress || 0);
+    node.indexError = result.indexError || '';
+    node.indexCheckError = result.indexCheckError || '';
+    node.indexUpdatedAt = result.indexUpdatedAt || node.indexUpdatedAt || '';
+    node.indexedAt = result.indexedAt || node.indexedAt || '';
     if (!['queued','uploading','indexing'].includes(node.indexStatus)) {
       const timer = state.sourceIndexTimers.get(node.nodeId); if (timer) clearTimeout(timer);
       state.sourceIndexTimers.delete(node.nodeId);
@@ -1961,24 +1791,16 @@
     document.getElementById('index-diagnostic-status').textContent = indexStatusLabel(diagnostic.indexStatus);
     document.getElementById('index-diagnostic-stage').textContent = String(diagnostic.indexStage || 'not_started').replace(/_/g, ' ');
     document.getElementById('index-diagnostic-profile').textContent = diagnostic.indexProfile || 'Not available';
-    var driveAvailability = diagnostic.driveAvailable ? 'Drive copy available' : 'Drive copy unavailable';
-    var fileSummary = friendlyMime(diagnostic.mimeType) + ' · ' + formatFileSize(diagnostic.size) + ' · ' + driveAvailability;
-    document.getElementById('index-diagnostic-file').textContent = fileSummary;
-    var timeSummary = 'Not checked yet';
-    if (diagnostic.indexedAt) timeSummary = 'Indexed ' + formatDateTime(diagnostic.indexedAt);
-    else if (diagnostic.attemptStartedAt) timeSummary = 'Started ' + formatDateTime(diagnostic.attemptStartedAt) + ' · checked ' + formatDateTime(diagnostic.updatedAt);
-    else if (diagnostic.updatedAt) timeSummary = 'Checked ' + formatDateTime(diagnostic.updatedAt);
-    document.getElementById('index-diagnostic-time').textContent = timeSummary;
+    document.getElementById('index-diagnostic-file').textContent = `${friendlyMime(diagnostic.mimeType)} · ${formatFileSize(diagnostic.size)} · ${diagnostic.driveAvailable ? 'Drive copy available' : 'Drive copy unavailable'}`;
+    document.getElementById('index-diagnostic-time').textContent = diagnostic.indexedAt ? `Indexed ${formatDateTime(diagnostic.indexedAt)}` : diagnostic.attemptStartedAt ? `Started ${formatDateTime(diagnostic.attemptStartedAt)} · checked ${formatDateTime(diagnostic.updatedAt)}` : diagnostic.updatedAt ? `Checked ${formatDateTime(diagnostic.updatedAt)}` : 'Not checked yet';
     document.getElementById('index-diagnostic-message').textContent = diagnostic.message || '';
-    var diagnosticError = diagnostic.indexError || diagnostic.checkError || diagnostic.driveError || '';
-    var errorBox = document.getElementById('index-diagnostic-error'); errorBox.textContent = diagnosticError; errorBox.classList.toggle('hidden', !diagnosticError);
-    var counts = diagnostic.storeCounts;
-    var sourceCounts = diagnostic.sourceCounts;
-    var sourceSummary = sourceCounts ? 'This source: ' + sourceCounts.active + ' active · ' + sourceCounts.pending + ' processing · ' + sourceCounts.failed + ' failed' : '';
-    var storeSummary = counts ? 'Project store: ' + counts.active + ' active · ' + counts.pending + ' processing · ' + counts.failed + ' failed' : '';
-    document.getElementById('index-diagnostic-source-counts').textContent = sourceSummary;
-    document.getElementById('index-diagnostic-counts').textContent = storeSummary;
-    var canRetry = state.projectDetails.permissions.edit && state.projectDetails.permissions.sources && ['uploading','indexing','queued'].indexOf(diagnostic.indexStatus) === -1;
+    const error = diagnostic.indexError || diagnostic.checkError || diagnostic.driveError || '';
+    const errorBox = document.getElementById('index-diagnostic-error'); errorBox.textContent = error; errorBox.classList.toggle('hidden', !error);
+    const counts = diagnostic.storeCounts;
+    const sourceCounts = diagnostic.sourceCounts;
+    document.getElementById('index-diagnostic-source-counts').textContent = sourceCounts ? `This source: ${sourceCounts.active} active · ${sourceCounts.pending} processing · ${sourceCounts.failed} failed` : '';
+    document.getElementById('index-diagnostic-counts').textContent = counts ? `Project store: ${counts.active} active · ${counts.pending} processing · ${counts.failed} failed` : '';
+    const canRetry = state.projectDetails.permissions.edit && state.projectDetails.permissions.sources && !['uploading','indexing','queued'].includes(diagnostic.indexStatus);
     const retry = document.getElementById('retry-index-diagnostic');
     retry.classList.toggle('hidden', !canRetry);
     retry.textContent = diagnostic.indexStatus === 'ready' ? 'Reindex cleanly' : 'Retry cleanly';
@@ -2144,7 +1966,6 @@
     const previousSelection = new Set(state.selectedSources);
     const data = await server('getProjectDocumentsPanel', state.currentProjectId);
     state.documentNodes = data.documentGraph || [];
-    state.backgroundIndexNodes = data.indexableSources || state.documentNodes.filter(node => node.kind === 'source' || node.kind === 'agent-source');
     state.selectedSources = new Set(state.documentNodes.filter(node => previousSelection.has(node.nodeId) || !previousIds.has(node.nodeId) && node.selectedByDefault).map(node => node.nodeId));
     rememberCurrentSelection();
     state.projectDetails.documentGraph = state.documentNodes;
@@ -2239,11 +2060,9 @@
       state.agents = data.agents || [];
       state.currentProjectId = null;
       state.projectDetails = null;
-      state.catalogsLoading = Boolean(data.catalogsDeferred);
       closeModals();
       applyIdentity();
       showHome();
-      if (state.catalogsLoading) loadInitialCatalogs_();
       showToast('Console location saved.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(event.target, false); }
@@ -2419,7 +2238,7 @@
     document.getElementById('chat-panel').setAttribute('aria-hidden', String(state.chatCollapsed));
     const sideButton = document.getElementById('toggle-chat-from-side');
     if (sideButton) {
-      sideButton.textContent = state.chatCollapsed ? '▶' : '◀';
+      sideButton.textContent = state.chatCollapsed ? '➡️' : '⬅️';
       sideButton.title = state.chatCollapsed ? 'Restore chat panel' : 'Collapse chat and expand this panel';
       sideButton.setAttribute('aria-label', sideButton.title);
       sideButton.setAttribute('aria-pressed', String(state.chatCollapsed));

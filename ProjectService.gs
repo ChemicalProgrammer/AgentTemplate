@@ -7,7 +7,7 @@ function listProjects() {
   var email = assertOrganizationMember_();
   var projects = discoverProjects_(false);
   var favorites = getFavoriteIds_();
-  var output = projects
+  return projects
     .filter(function(project) {
       return (project.members || []).some(function(member) {
         return String(member.email).toLowerCase() === email;
@@ -18,7 +18,6 @@ function listProjects() {
       return publicProject_(project, member, favorites.indexOf(project.projectId) !== -1);
     })
     .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
-  return applyUserCardOrder_(output, APP.USER_PROJECT_CARD_ORDER, 'projectId');
 }
 
 function refreshProjects() {
@@ -29,7 +28,7 @@ function refreshProjects() {
 function listProjectsFromManifests_(projects) {
   var email = assertOrganizationMember_();
   var favorites = getFavoriteIds_();
-  var output = (projects || [])
+  return (projects || [])
     .filter(function(project) {
       return (project.members || []).some(function(member) {
         return String(member.email).toLowerCase() === email;
@@ -40,7 +39,6 @@ function listProjectsFromManifests_(projects) {
       return publicProject_(project, member, favorites.indexOf(project.projectId) !== -1);
     })
     .sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
-  return applyUserCardOrder_(output, APP.USER_PROJECT_CARD_ORDER, 'projectId');
 }
 
 function createProject(input) {
@@ -113,13 +111,7 @@ function getProjectChatPanel(projectId) {
 
 function getProjectDocumentsPanel(projectId) {
   var access = assertProjectAccess_(projectId);
-  var allAgentSources = listAgentKnowledgeNodesForProject_(access.project, true);
-  var resolvedAgent = getProjectAgentRelease_(access.project);
-  var showMandatory = !resolvedAgent || resolvedAgent.release.showMandatoryKnowledgeInProjects !== false;
-  var agentSources = allAgentSources.filter(function(node) { return showMandatory || !node.mandatory; });
-  var projectNodes = listProjectDocuments(projectId);
-  var graph = applyUserCardOrder_(agentSources.concat(projectNodes), APP.USER_DOCUMENT_CARD_ORDER_PREFIX + projectId, 'nodeId');
-  return {documentGraph:graph,indexableSources:allAgentSources.concat(projectNodes.filter(function(node){return node.kind==='source';}))};
+  return {documentGraph: listAgentKnowledgeNodesForProject_(access.project).concat(listProjectDocuments(projectId))};
 }
 
 function getProjectTemplatesPanel(projectId) {

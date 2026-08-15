@@ -1,6 +1,6 @@
 var APP = Object.freeze({
   NAME: 'Agent Console',
-  VERSION: '2.0.0-review.5.2',
+  VERSION: '2.0.0-review.4-hotfix.1',
   ROOT_NAME: 'Agent Console',
   AGENTS_FOLDER: 'Agents',
   PROJECTS_FOLDER: 'Projects',
@@ -13,9 +13,6 @@ var APP = Object.freeze({
   USER_API_KEY: 'GEMINI_API_KEY',
   USER_MODEL: 'GEMINI_MODEL',
   USER_FAVORITES: 'FAVORITE_PROJECTS',
-  USER_AGENT_CARD_ORDER: 'AGENT_CARD_ORDER',
-  USER_PROJECT_CARD_ORDER: 'PROJECT_CARD_ORDER',
-  USER_DOCUMENT_CARD_ORDER_PREFIX: 'DOCUMENT_CARD_ORDER_',
   USER_TEMPLATE_PREFIX: 'REPORT_TEMPLATE_',
   USER_FILE_SEARCH_STORE_PREFIX: 'FILE_SEARCH_STORE_',
   USER_FILE_SEARCH_SOURCE_PREFIX: 'FILE_SEARCH_SOURCE_',
@@ -79,11 +76,11 @@ function setupApplication(settings) {
   return getBootstrap();
 }
 
-function getPublicConfig_(deferDriveValidation) {
+function getPublicConfig_() {
   var props = PropertiesService.getScriptProperties();
   var rootId = props.getProperty(APP.PROP_ROOT_ID) || '';
   var rootName = props.getProperty(APP.PROP_ROOT_NAME) || APP.ROOT_NAME;
-  if (rootId && !deferDriveValidation) {
+  if (rootId) {
     var root = getRootFolder_();
     rootId = root.getId();
     rootName = root.getName();

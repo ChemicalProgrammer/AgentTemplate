@@ -7,16 +7,9 @@
     <?!= include('Styles'); ?>
   </head>
   <body>
-    <div id="boot-loader" class="boot-loader" role="status" aria-live="polite">
-      <div class="boot-card">
-        <div class="boot-visual" aria-hidden="true"><span class="boot-orbit orbit-one"></span><span class="boot-orbit orbit-two"></span><span class="boot-gemini-mark">✦</span><span class="boot-satellite satellite-one">●</span><span class="boot-satellite satellite-two">●</span></div>
-        <p class="boot-eyebrow">AGENT CONSOLE</p>
-        <h1 id="boot-title">Preparing your workspace</h1>
-        <p id="boot-status">Connecting securely…</p>
-        <div id="boot-progress" class="boot-progress" aria-hidden="true"><span></span></div>
-        <small id="boot-detail">This usually takes only a few seconds.</small>
-        <button id="boot-retry" class="boot-retry hidden" type="button">↻ Try again</button>
-      </div>
+    <div id="boot-loader" class="boot-loader">
+      <div class="gemini-mark">✦</div>
+      <div class="spinner"></div>
     </div>
 
     <section id="setup-screen" class="setup-screen hidden">
@@ -51,67 +44,6 @@
 
     <?!= include('SettingsView'); ?>
     <div id="toast" class="toast hidden"></div>
-    <script>
-      window.__BOOT_UI__ = (function () {
-        var loader = document.getElementById('boot-loader');
-        var title = document.getElementById('boot-title');
-        var status = document.getElementById('boot-status');
-        var detail = document.getElementById('boot-detail');
-        var progress = document.getElementById('boot-progress');
-        var retry = document.getElementById('boot-retry');
-        var startedAt = Date.now();
-        var watchdog = setTimeout(function () {
-          if (!loader.classList.contains('hidden')) {
-            status.textContent = 'Drive is taking longer than expected…';
-            detail.textContent = 'The console is still waiting. You can retry without changing any project data.';
-            retry.classList.remove('hidden');
-          }
-        }, 18000);
-        retry.addEventListener('click', function () { window.location.reload(); });
-        function setStatus(message, secondary) {
-          status.textContent = message || 'Preparing your workspace…';
-          if (secondary) detail.textContent = secondary;
-        }
-        function complete() {
-          clearTimeout(watchdog);
-          if (window.__APP_SCRIPT_WATCHDOG__) clearTimeout(window.__APP_SCRIPT_WATCHDOG__);
-          loader.classList.add('boot-complete');
-          setTimeout(function () { loader.classList.add('hidden'); }, 260);
-        }
-        function fail(message, secondary) {
-          clearTimeout(watchdog);
-          if (window.__APP_SCRIPT_WATCHDOG__) clearTimeout(window.__APP_SCRIPT_WATCHDOG__);
-          loader.classList.remove('hidden','boot-complete'); loader.classList.add('boot-failed');
-          title.textContent = 'Agent Console could not start'; status.textContent = message || 'An unexpected startup error occurred.';
-          detail.textContent = secondary || 'Retry the page. If the issue continues, review the Apps Script execution log.';
-          progress.setAttribute('aria-hidden','true'); retry.classList.remove('hidden');
-        }
-        function scriptReady() {
-          window.__APP_SCRIPT_READY__ = true;
-          if (window.__APP_SCRIPT_WATCHDOG__) clearTimeout(window.__APP_SCRIPT_WATCHDOG__);
-          setStatus('Interface loaded. Checking your workspace…','Your projects are not being modified.');
-        }
-        return {startedAt:startedAt,setStatus:setStatus,complete:complete,fail:fail,scriptReady:scriptReady};
-      }());
-      window.__APP_SCRIPT_READY__ = false;
-      window.__APP_SCRIPT_WATCHDOG__ = setTimeout(function () {
-        var loader = document.getElementById('boot-loader');
-        if (!window.__APP_SCRIPT_READY__ && loader && !loader.classList.contains('hidden') && window.__BOOT_UI__) {
-          window.__BOOT_UI__.fail(
-            'The AppScripts.html interface module did not initialize.',
-            'Verify that AppScripts is an HTML file named exactly “AppScripts” and that its complete contents were saved in Apps Script.'
-          );
-        }
-      }, 5500);
-      window.addEventListener('error', function (event) {
-        var location = event.filename ? ' · ' + event.filename + ':' + (event.lineno || '?') + ':' + (event.colno || '?') : '';
-        if (window.__BOOT_UI__) window.__BOOT_UI__.fail('The interface script stopped before initialization.', (event.message || 'Review the browser console and Apps Script deployment files.') + location);
-      });
-      window.addEventListener('unhandledrejection', function (event) {
-        var reason = event.reason && event.reason.message ? event.reason.message : String(event.reason || 'Unhandled startup promise.');
-        if (window.__BOOT_UI__ && !document.getElementById('boot-loader').classList.contains('hidden')) window.__BOOT_UI__.fail('A startup request could not be completed.', reason);
-      });
-    </script>
     <?!= include('AppScripts'); ?>
   </body>
 </html>
