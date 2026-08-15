@@ -1,18 +1,18 @@
 # Agent Console para Google Apps Script
 
-Versión de revisión 2.0.0-review.4-hotfix.8.
+Versión de revisión 2.0.0-review.4-hotfix.8-safe.
 
 Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
 
-## Hotfix 8 sobre 2.0.0-review.4
+## Hotfix 8 safe sobre 2.0.0-review.4
 
-- El selector de modelo se trasladó debajo del input del chat y ahora comparte el lenguaje visual del compositor.
-- La lista se obtiene en vivo desde el endpoint de modelos usando la API key personal; solo habilita modelos confirmados con `generateContent` y muestra su estado de verificación.
-- La consulta recorre las páginas del catálogo de Gemini, elimina duplicados y conserva límites de tokens como metadatos disponibles.
-- Si un modelo histórico ya no está disponible para la llave, el chat resuelve un modelo compatible verificado en vez de presentar el modelo antiguo como si siguiera habilitado.
-- Los selectores de agente al crear un proyecto o cambiar su agente usan una flecha propia, estados de foco claros y una superficie visual consistente.
-- La etiqueta redundante con nombre y versión del agente se retiró del encabezado del chat; esa identidad permanece en el encabezado general del proyecto.
-- Cada mensaje del usuario conserva también el modelo elegido, además de sus fuentes y flows; los mensajes del asistente ya conservaban el modelo realmente utilizado.
+- Reconstruido directamente desde el hotfix 7 funcional, sin reutilizar archivos del hotfix 8 fallido.
+- El selector de modelo se mueve debajo del input del chat y muestra estados de verificación, disponibilidad o error.
+- La lista continúa usando el endpoint dinámico existente de hotfix 7: la API key personal y el método `generateContent` determinan qué modelos aparecen.
+- Un modelo guardado que ya no figure entre los modelos verificados se sustituye en el selector por una opción disponible, sin presentar el modelo histórico como habilitado.
+- Los selectores de agente al crear un proyecto o cambiar el agente cargado reciben una flecha y estados de foco más claros.
+- Se oculta la etiqueta redundante del agente dentro del chat; la identidad principal permanece en el encabezado del proyecto.
+- Los mensajes nuevos del usuario guardan también el modelo elegido junto con las fuentes y flows seleccionados.
 
 ## Hotfix 7 sobre 2.0.0-review.4
 
@@ -68,7 +68,7 @@ Consola web para construir agentes autocontenidos y versionados, y cargarlos den
 - Al abrir un proyecto se inicia o continúa automáticamente la indexación de conocimiento heredado, primero las fuentes obligatorias y después las opcionales.
 - Una fuente binaria que todavía se indexa ya no bloquea una consulta combinada. Gemini responde con la evidencia disponible y el mensaje registra una advertencia de disponibilidad.
 - Los encabezados de Documents, chat y visor comparten una altura única de 68 px.
-- El encabezado del chat queda limitado al título de la conversación y el control de colapso; el selector de modelo vive junto al compositor, y la edición o borrado permanece junto a cada mensaje o chat correspondiente.
+- El encabezado del chat queda limitado al título de la conversación y el control de colapso; el modelo se selecciona debajo del input y la edición o borrado permanece junto a cada mensaje o chat correspondiente.
 - Los controles de colapso usan flechas direccionales y el contador de contexto se trasladó junto a las tarjetas sobre el compositor.
 - Las tarjetas de contexto usan el color semántico del formato: PDF rojo, documentos azul, hojas verde, presentaciones naranja y demás tipos según su familia.
 - Regresar a la portada usa la misma animación sutil aplicada al resto de las transiciones de vista.
