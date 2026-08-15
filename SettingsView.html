@@ -180,6 +180,14 @@
     </form>
   </section>
 
+  <section id="message-context-modal" class="modal message-context-modal hidden" role="dialog" aria-modal="true" aria-labelledby="message-context-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">MESSAGE CONTEXT</p><h2 id="message-context-title">Request details</h2>
+    <p class="muted">This information was saved with the message and is not added to the visible conversation.</p>
+    <div id="message-context-content" class="message-context-content"></div>
+    <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Close</button></div>
+  </section>
+
   <section id="confirm-modal" class="modal confirm-modal hidden" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
     <div id="confirm-icon" class="confirm-icon">⚠️</div>
     <h2 id="confirm-title">Are you sure?</h2>

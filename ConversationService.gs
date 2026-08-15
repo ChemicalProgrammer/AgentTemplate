@@ -39,7 +39,7 @@ function loadConversation(projectId, conversationId) {
   return readConversation_(access.project, conversationId);
 }
 
-function sendChatMessage(projectId, conversationId, message, selectedSourceIds, selectedFlowIds, requestId, modelOverride) {
+function sendChatMessage(projectId, conversationId, message, selectedSourceIds, selectedFlowIds, requestId, modelOverride, contextSnapshot) {
   var access = assertProjectEdit_(projectId, 'history');
   var text = sanitizeText_(message, 20000).trim();
   if (!text) throw new Error('Enter a message.');
@@ -55,7 +55,7 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   conversation.model = normalizeModel_(modelOverride || conversation.model || getPublicUserGeminiSettings_().model || APP.DEFAULT_MODEL);
 
   if (isStandaloneAcceptCanvasCommand_(text)) {
-    return acceptLatestCanvas_(access, conversation, text, requestId);
+    return acceptLatestCanvas_(access, conversation, text, requestId, contextSnapshot);
   }
 
   var projectContext = {text: '', inlineParts: [], sourcesUsed: [], warnings: [], selectedIds: []};
@@ -89,12 +89,16 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   }
   conversation.sourceSelection = authorizedSelection.slice();
   var flowContext = access.allowed.sources ? buildFlowContext_(access.project, selectedFlowIds || []) : {text: '', flowsUsed: []};
+  var messageContext = normalizeMessageContextSnapshot_(contextSnapshot, authorizedSelection, conversation.flowSelection);
   var config = getUserGeminiConfig_();
   var prompt = buildGeminiConversation_(access.project, conversation, text, sourceContext, flowContext, authorizedSelection);
   var now = nowIso_();
   var userMessage = {
     messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email,
-    sourceSelection: authorizedSelection, flowSelection: conversation.flowSelection.slice(), model: conversation.model
+    sourceSelection: authorizedSelection, flowSelection: conversation.flowSelection.slice(),
+    sourceSnapshot: messageContext.sources, flowSnapshot: messageContext.flows,
+    agentId: access.project.agentId || '', agentVersion: access.project.agentVersion || '',
+    agentName: getAgentExecutionContext_(access.project).name, model: conversation.model
   };
   delete conversation.pendingBranchMessage;
   conversation.messages.push(userMessage);
@@ -176,7 +180,7 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   };
 }
 
-function acceptLatestCanvas_(access, conversation, text, requestId) {
+function acceptLatestCanvas_(access, conversation, text, requestId, contextSnapshot) {
   assertProjectEdit_(conversation.projectId, 'documents');
   var candidate = null;
   var shortCandidate = null;
@@ -190,9 +194,13 @@ function acceptLatestCanvas_(access, conversation, text, requestId) {
   candidate = candidate || shortCandidate;
   if (!candidate) throw new Error('No Project Approval Canvas was found in this conversation. Generate or refine the Canvas before accepting it.');
   var now = nowIso_();
+  var messageContext = normalizeMessageContextSnapshot_(contextSnapshot, conversation.sourceSelection, conversation.flowSelection);
   var userMessage = {
     messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email,
-    sourceSelection: conversation.sourceSelection.slice(), flowSelection: conversation.flowSelection.slice(), model: conversation.model
+    sourceSelection: conversation.sourceSelection.slice(), flowSelection: conversation.flowSelection.slice(),
+    sourceSnapshot: messageContext.sources, flowSnapshot: messageContext.flows,
+    agentId: access.project.agentId || '', agentVersion: access.project.agentVersion || '',
+    agentName: getAgentExecutionContext_(access.project).name, model: conversation.model
   };
   conversation.messages.push(userMessage);
   var artifact = createMarkdownArtifact_(access.project, access.email, conversation, {
@@ -222,6 +230,40 @@ function acceptLatestCanvas_(access, conversation, text, requestId) {
     userMessage: userMessage,
     assistantMessage: assistantMessage,
     messageCount: conversation.messages.length
+  };
+}
+
+function normalizeMessageContextSnapshot_(snapshot, selectedSourceIds, selectedFlowIds) {
+  snapshot = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  var sourceMap = {};
+  (Array.isArray(snapshot.sources) ? snapshot.sources : []).forEach(function(source) {
+    var nodeId = sanitizeText_(source && source.nodeId, 240).trim();
+    if (!nodeId || sourceMap[nodeId]) return;
+    sourceMap[nodeId] = {
+      nodeId: nodeId,
+      name: sanitizeText_(source.name || nodeId, 260).trim() || nodeId,
+      mimeType: sanitizeText_(source.mimeType || '', 160).trim(),
+      kind: sanitizeText_(source.kind || '', 80).trim(),
+      origin: sanitizeText_(source.origin || '', 80).trim()
+    };
+  });
+  var flowMap = {};
+  (Array.isArray(snapshot.flows) ? snapshot.flows : []).forEach(function(flow) {
+    var flowId = sanitizeText_(flow && flow.flowId, 240).trim();
+    if (!flowId || flowMap[flowId]) return;
+    flowMap[flowId] = {
+      flowId: flowId,
+      name: sanitizeText_(flow.name || flowId, 260).trim() || flowId,
+      origin: sanitizeText_(flow.origin || '', 80).trim()
+    };
+  });
+  return {
+    sources: (selectedSourceIds || []).map(String).filter(function(id, index, all) { return id && all.indexOf(id) === index; }).map(function(id) {
+      return sourceMap[id] || {nodeId:id,name:id,mimeType:'',kind:'',origin:''};
+    }),
+    flows: (selectedFlowIds || []).map(String).filter(function(id, index, all) { return id && all.indexOf(id) === index; }).map(function(id) {
+      return flowMap[id] || {flowId:id,name:id,origin:''};
+    })
   };
 }
 

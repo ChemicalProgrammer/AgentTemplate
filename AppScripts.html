@@ -1014,7 +1014,7 @@
     setIdentityMark_(document.getElementById('project-agent-icon'), agent);
     document.getElementById('project-agent-name').textContent = agent.name || 'Agent unavailable';
     document.getElementById('project-agent-version').textContent = agent.version ? `Version ${agent.version}` : 'Version unavailable';
-    document.getElementById('project-agent-button').setAttribute('style', projectColorStyle(agent.color || 'violet'));
+    document.getElementById('project-agent-button').setAttribute('style', projectColorStyle(agent.color || 'violet') + identityColorStyle_(agent));
     document.getElementById('project-agent-button').disabled = !permissions.edit || !permissions.project;
     syncProjectWorkspaceChrome_(agent);
     const folder = document.getElementById('open-project-folder');
@@ -1220,24 +1220,17 @@
 
   function renderMessage(message) {
     const assistant = message.role === 'assistant';
-    const sources = (message.sourcesUsed || []).map(source => {
-      const label = `[${escapeHtml(source.label)}] ${escapeHtml(source.name)}${source.pageNumber ? ` · p. ${numberValue(source.pageNumber)}` : ''}`;
-      return source.citationUri ? `<a href="${escapeHtml(source.citationUri)}" target="_blank" rel="noopener">${label}</a>` : label;
-    }).join(' · ');
-    const flows = (message.flowsUsed || []).map(flow => `[${escapeHtml(flow.label)}] ${escapeHtml(flow.name)}`).join(' · ');
-    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div>${state.projectDetails.permissions.edit ? `<div class="message-actions"><button class="emoji-action-btn" data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">✏️</button><button class="emoji-action-btn danger" data-delete-message="${escapeHtml(message.messageId)}" title="Delete from this point" aria-label="Delete this message and later conversation">🗑️</button></div>` : ''}</article>`;
-    if (message.kind === 'artifact_event' && message.artifact) return renderArtifactEvent_(message, sources, flows);
+    if (!assistant) return `<article class="message user" data-message-id="${escapeHtml(message.messageId)}"><div class="message-body">${formatMarkdown(message.text)}</div><div class="message-actions"><button class="emoji-action-btn" data-message-context="${escapeHtml(message.messageId)}" title="View saved request details" aria-label="View the sources, agent and model saved with this message">ℹ️</button>${state.projectDetails.permissions.edit ? `<button class="emoji-action-btn" data-branch-message="${escapeHtml(message.messageId)}" title="Edit in a new branch" aria-label="Edit this message in a new conversation branch">✏️</button><button class="emoji-action-btn danger" data-delete-message="${escapeHtml(message.messageId)}" title="Delete from this point" aria-label="Delete this message and later conversation">🗑️</button>` : ''}</div></article>`;
+    if (message.kind === 'artifact_event' && message.artifact) return renderArtifactEvent_(message);
     const agentIdentity = messageAgentIdentity_(message);
     return `<article class="message assistant" data-message-id="${escapeHtml(message.messageId)}">
       <div class="message-header">${identityMarkHtml_(agentIdentity, 'message-avatar')}<span>${escapeHtml(message.agentName || agentIdentity.name || 'Agent')}${message.agentVersion ? ` · v${escapeHtml(message.agentVersion)}` : ''}</span></div>
       <div id="message-body-${escapeHtml(message.messageId)}" class="message-body ${message.isTyping ? 'typing-cursor' : ''}">${formatMarkdown(message.text)}</div>
-      ${sources ? `<div class="message-sources">${sources}</div>` : ''}
-      ${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
       ${!message.isTyping ? `<div class="message-actions"><button class="emoji-action-btn" data-copy-message="${escapeHtml(message.messageId)}" title="Copy response" aria-label="Copy response"><span class="message-copy-icon" aria-hidden="true">📋</span></button></div>` : ''}
     </article>`;
   }
 
-  function renderArtifactEvent_(message, sources, flows) {
+  function renderArtifactEvent_(message) {
     const artifact = message.artifact;
     const agentIdentity = messageAgentIdentity_(message);
     const artifactTypeClass = fileTypeClass(artifact.mimeType, artifact.name);
@@ -1246,12 +1239,12 @@
     return `<article class="message assistant artifact-event" data-message-id="${escapeHtml(message.messageId)}">
       <div class="message-header">${identityMarkHtml_(agentIdentity, 'message-avatar')}<span>${escapeHtml(message.agentName || agentIdentity.name || 'Agent')}</span></div>
       <div class="artifact-event-card ${escapeHtml(artifactTypeClass)}"><button class="artifact-event-heading artifact-open-button" data-open-artifact="${escapeHtml(artifact.nodeId)}"><span aria-hidden="true">${escapeHtml(artifactTypeIcon)}</span><div><small>${escapeHtml(message.eventLabel || 'Artifact saved')}</small><strong>${escapeHtml(artifact.name)}</strong></div></button>${actions ? `<div class="artifact-event-actions">${actions}</div>` : ''}</div>
-      ${sources ? `<div class="message-sources">${sources}</div>` : ''}${flows ? `<div class="message-flows">Procedure: ${flows}</div>` : ''}
     </article>`;
   }
 
   function bindRenderedMessageActions_(container) {
     container.querySelectorAll('[data-copy-message]').forEach(button => button.addEventListener('click', () => copyMessage(button.dataset.copyMessage, button)));
+    container.querySelectorAll('[data-message-context]').forEach(button => button.addEventListener('click', () => openMessageContext_(button.dataset.messageContext)));
     container.querySelectorAll('[data-branch-message]').forEach(button => button.addEventListener('click', () => openConversationBranch(button.dataset.branchMessage)));
     container.querySelectorAll('[data-delete-message]').forEach(button => button.addEventListener('click', () => deleteMessageFromConversation(button.dataset.deleteMessage, button)));
     container.querySelectorAll('[data-open-artifact]').forEach(button => button.addEventListener('click', () => openDocumentPreview(button.dataset.openArtifact)));
@@ -1273,6 +1266,49 @@
     if (!message) return;
     try { await navigator.clipboard.writeText(message.text); button.innerHTML = '✅'; setTimeout(() => button.innerHTML = '<span class="message-copy-icon" aria-hidden="true">📋</span>', 1200); }
     catch (_) { showToast('Could not copy the response.', true); }
+  }
+
+  function buildMessageContextSnapshot_(sourceIds, flowIds) {
+    const selectedSourceIds = new Set((sourceIds || []).map(String));
+    const selectedFlowIds = new Set((flowIds || []).map(String));
+    return {
+      sources: (state.documentNodes || []).filter(node => selectedSourceIds.has(String(node.nodeId))).map(node => ({
+        nodeId:String(node.nodeId || ''), name:String(node.name || 'Document'), mimeType:String(node.mimeType || ''), kind:String(node.kind || ''), origin:String(node.origin || '')
+      })),
+      flows: (state.projectDetails && state.projectDetails.flows || []).filter(flow => selectedFlowIds.has(String(flow.flowId))).map(flow => ({
+        flowId:String(flow.flowId || ''), name:String(flow.name || 'Procedure'), origin:String(flow.origin || '')
+      }))
+    };
+  }
+
+  function messageContextSources_(message) {
+    if (Array.isArray(message.sourceSnapshot) && message.sourceSnapshot.length) return message.sourceSnapshot;
+    return (message.sourceSelection || []).map(nodeId => {
+      const node = (state.documentNodes || []).find(item => String(item.nodeId) === String(nodeId));
+      return node ? {nodeId:String(node.nodeId),name:node.name,mimeType:node.mimeType,kind:node.kind,origin:node.origin} : {nodeId:String(nodeId),name:String(nodeId),mimeType:'',kind:'',origin:''};
+    });
+  }
+
+  function messageContextFlows_(message) {
+    if (Array.isArray(message.flowSnapshot) && message.flowSnapshot.length) return message.flowSnapshot;
+    return (message.flowSelection || []).map(flowId => {
+      const flow = (state.projectDetails && state.projectDetails.flows || []).find(item => String(item.flowId) === String(flowId));
+      return flow ? {flowId:String(flow.flowId),name:flow.name,origin:flow.origin} : {flowId:String(flowId),name:String(flowId),origin:''};
+    });
+  }
+
+  function openMessageContext_(messageId) {
+    const message = state.currentConversation && (state.currentConversation.messages || []).find(item => item.messageId === messageId);
+    if (!message) return showToast('The saved request details are unavailable.', true);
+    const agent = messageAgentIdentity_(message);
+    const savedAgentName = message.agentName || state.currentConversation.agentName || agent.name || 'Agent';
+    const savedAgentVersion = message.agentVersion || state.currentConversation.agentVersion || '';
+    const sources = messageContextSources_(message);
+    const flows = messageContextFlows_(message);
+    const sourceHtml = sources.length ? `<div class="message-context-items">${sources.map(source => `<span class="message-context-chip ${escapeHtml(fileTypeClass(source.mimeType,source.name))}"><b>${escapeHtml(fileTypeIcon(source.mimeType,source.name))}</b>${escapeHtml(source.name)}</span>`).join('')}</div>` : '<p class="message-context-empty">No documents were selected.</p>';
+    const flowHtml = flows.length ? `<div class="message-context-items">${flows.map(flow => `<span class="message-context-chip type-flow"><b>⇄</b>${escapeHtml(flow.name)}</span>`).join('')}</div>` : '<p class="message-context-empty">No procedures were selected.</p>';
+    document.getElementById('message-context-content').innerHTML = `<div class="message-context-summary"><div class="message-context-agent">${identityMarkHtml_(agent,'message-context-agent-mark')}<div><small>Agent</small><strong>${escapeHtml(savedAgentName)}</strong><span>${savedAgentVersion ? `Version ${escapeHtml(savedAgentVersion)}` : 'Version unavailable'}</span></div></div><dl><div><dt>Model</dt><dd>${escapeHtml(message.model || state.currentConversation.model || 'Unavailable')}</dd></div><div><dt>Sent</dt><dd>${escapeHtml(formatDateTime(message.createdAt))}</dd></div></dl></div><section><h3>Selected sources <span>${numberValue(sources.length)}</span></h3>${sourceHtml}</section><section><h3>Selected procedures <span>${numberValue(flows.length)}</span></h3>${flowHtml}</section>`;
+    openModal('message-context-modal');
   }
 
   async function deleteMessageFromConversation(messageId, button) {
@@ -1371,11 +1407,16 @@
       input.value = ''; autoSizeComposer();
       const request = {id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`, cancelled: false, phase: 'waiting', displayedText: ''};
       state.activeRequest = request;
-      const temporary = {messageId: `temp-${Date.now()}`, role: 'user', text, createdAt: new Date().toISOString()};
-      state.currentConversation.messages.push(temporary); setAgentBusy(true); renderMessages({thinking: true});
       const selection = Array.from(state.selectedSources);
       const flowSelection = Array.from(state.selectedFlows);
-      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId, text, selection, flowSelection, request.id, state.currentChatModel);
+      const contextSnapshot = buildMessageContextSnapshot_(selection, flowSelection);
+      const temporary = {
+        messageId:`temp-${Date.now()}`,role:'user',text,createdAt:new Date().toISOString(),
+        sourceSelection:selection.slice(),flowSelection:flowSelection.slice(),sourceSnapshot:contextSnapshot.sources,flowSnapshot:contextSnapshot.flows,
+        agentId:state.projectAgent && state.projectAgent.agentId || '',agentVersion:state.projectAgent && state.projectAgent.version || '',agentName:state.projectAgent && state.projectAgent.name || 'Agent',model:state.currentChatModel
+      };
+      state.currentConversation.messages.push(temporary); setAgentBusy(true); renderMessages({thinking: true});
+      const result = await server('sendChatMessage', state.currentProjectId, state.currentConversationId, text, selection, flowSelection, request.id, state.currentChatModel, contextSnapshot);
       if (request.cancelled) { await syncCurrentConversation(); showToast('Response stopped.'); return; }
       state.currentConversationId = result.conversationId;
       state.currentConversation.messages = state.currentConversation.messages.filter(item => item.messageId !== temporary.messageId);
@@ -1940,10 +1981,9 @@
   function renderSourceChips() {
     const selected = state.documentNodes.filter(node => !node.hiddenInProject && state.selectedSources.has(node.nodeId));
     const flows = state.projectDetails ? (state.projectDetails.flows || []).filter(flow => state.selectedFlows.has(flow.flowId)) : [];
-    const items = selected.map(node => ({tab:'documents', icon:fileTypeIcon(node.mimeType,node.name), name:node.name, typeClass:fileTypeClass(node.mimeType,node.name)})).concat(flows.map(flow => ({tab:'flows',icon:'⇄',name:flow.name,typeClass:'type-flow'})));
+    const items = selected.map(node => ({icon:fileTypeIcon(node.mimeType,node.name), name:node.name, typeClass:fileTypeClass(node.mimeType,node.name)})).concat(flows.map(flow => ({icon:'⇄',name:flow.name,typeClass:'type-flow'})));
     const countLabel = selected.length ? `<span class="source-chip-count">${numberValue(selected.length)} ${selected.length === 1 ? 'source' : 'sources'}${flows.length ? ` · ${numberValue(flows.length)} ${flows.length === 1 ? 'flow' : 'flows'}` : ''}</span>` : flows.length ? `<span class="source-chip-count">${numberValue(flows.length)} ${flows.length === 1 ? 'flow' : 'flows'}</span>` : '';
-    document.getElementById('active-source-chips').innerHTML = items.map(item => `<button class="source-chip ${item.typeClass}" data-chip-tab="${item.tab}" title="Open ${item.tab} panel">${item.icon} ${escapeHtml(item.name)}</button>`).join('') + countLabel;
-    document.querySelectorAll('#active-source-chips [data-chip-tab]').forEach(chip => chip.addEventListener('click', () => showSideTab(chip.dataset.chipTab)));
+    document.getElementById('active-source-chips').innerHTML = items.map(item => `<span class="source-chip ${item.typeClass}" title="${escapeHtml(item.name)}">${item.icon} ${escapeHtml(item.name)}</span>`).join('') + countLabel;
   }
 
   function documentRelationCounts(nodeId) {
@@ -2778,7 +2818,8 @@
     return 'type-generic';
   }
   function messageAgentIdentity_(message = {}) {
-    const messageAgentId = String(message.agentId || '');
+    const conversation = state.currentConversation || {};
+    const messageAgentId = String(message.agentId || conversation.agentId || '');
     if (messageAgentId && state.projectAgent && String(state.projectAgent.agentId || '') === messageAgentId) return state.projectAgent;
     const catalogAgent = messageAgentId ? (state.availableAgents || []).find(agent => String(agent.agentId || '') === messageAgentId) : null;
     return catalogAgent || state.projectAgent || {icon:'✦',name:message.agentName || 'Agent',color:'violet'};

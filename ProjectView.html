@@ -14,9 +14,9 @@
       </div>
     </div>
     <div class="project-actions">
-      <button id="project-agent-button" class="agent-loaded-pill" title="Change loaded agent" aria-haspopup="dialog" aria-controls="change-agent-modal"><span id="project-agent-icon">✦</span><span><b id="project-agent-name">Agent</b><small id="project-agent-version">—</small></span><i class="agent-pill-caret" aria-hidden="true">⌄</i></button>
+      <button id="project-agent-button" class="agent-loaded-pill" title="Change loaded agent" aria-haspopup="dialog" aria-controls="change-agent-modal"><span id="project-agent-icon">✦</span><span class="agent-pill-copy"><small class="agent-pill-label">Active agent</small><b id="project-agent-name">Agent</b><span id="project-agent-version">—</span></span><i class="agent-pill-caret" aria-hidden="true">⌄</i></button>
       <a id="open-project-folder" class="icon-btn action-icon project-header-action project-drive-action hidden" target="_blank" aria-label="Open project folder in Drive" title="Open project folder in Drive"><span>📂</span></a>
-      <button id="share-project-button" class="primary-btn compact-btn owner-only"><span>♙</span> Share</button>
+      <button id="share-project-button" class="icon-btn action-icon project-header-action owner-only" title="Share project" aria-label="Share project"><span>Share</span></button>
       <button id="project-settings-button" class="icon-btn action-icon project-header-action project-settings-action" title="Project settings" aria-label="Project settings"><span>⚙️</span></button>
     </div>
   </header>
@@ -142,7 +142,7 @@
           <button id="send-message" class="send-btn" type="button" aria-label="Send message" title="Send"></button>
         </div>
         <div class="composer-footer">
-          <label class="chat-model-picker" title="Gemini model for this conversation"><span class="model-picker-mark" aria-hidden="true">✦</span><span class="model-picker-label">Model</span><select id="chat-model-select" aria-label="Gemini model for this conversation"></select><i aria-hidden="true">⌄</i></label>
+          <select id="chat-model-select" class="chat-model-select" aria-label="Gemini model for this conversation" title="Gemini model for this conversation"></select>
           <small>Gemini can make mistakes. Check important information.</small>
         </div>
       </div>
