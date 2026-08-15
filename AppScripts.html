@@ -354,7 +354,7 @@
   }
 
   async function openAgent(agentId) {
-    hideWorkspaceViews_(); document.getElementById('agent-editor-view').classList.remove('hidden'); setWorkspaceMode('agents');
+    hideWorkspaceViews_(); document.getElementById('agent-editor-view').classList.remove('hidden'); setWorkspaceMode('agent-editor');
     state.currentAgentId = agentId; state.currentAgentDetails = null;
     document.getElementById('agent-editor-name').textContent = 'Opening agent…';
     try { state.currentAgentDetails = await server('getAgentDetails', agentId); renderAgentEditor(); }
@@ -364,6 +364,10 @@
   function renderAgentEditor() {
     const details = state.currentAgentDetails; if (!details) return;
     const agent = details.agent; const assets = details.assets || {};
+    const agentColor = PROJECT_COLORS[agent.color] || PROJECT_COLORS.violet;
+    const shell = document.getElementById('app-shell');
+    shell.style.setProperty('--agent-route-accent', agentColor.accent);
+    shell.style.setProperty('--agent-route-tint', agentColor.tint);
     setIdentityMark_(document.getElementById('agent-editor-icon'), agent);
     document.getElementById('agent-editor-view').setAttribute('style', projectColorStyle(agent.color));
     document.getElementById('agent-editor-name').textContent = agent.name;
@@ -1147,7 +1151,11 @@
 
   function setWorkspaceMode(mode) {
     const shell = document.getElementById('app-shell');
-    shell.classList.toggle('dashboard-mode', mode !== 'project'); shell.classList.toggle('project-mode', mode === 'project');
+    const route = mode === 'dashboard' ? 'projects' : mode;
+    shell.classList.toggle('dashboard-mode', route !== 'project');
+    shell.classList.toggle('project-mode', route === 'project');
+    ['home-mode','projects-mode','agents-mode','agent-editor-mode'].forEach(className => shell.classList.remove(className));
+    if (['home','projects','agents','agent-editor'].includes(route)) shell.classList.add(`${route}-mode`);
   }
 
   function showSideTab(name, load = true) {
@@ -2891,7 +2899,8 @@
 
   function openModal(id) {
     document.querySelectorAll('.modal').forEach(modal => modal.classList.add('hidden'));
-    setModalTheme_();
+    const catalogIdentity = id === 'project-modal' ? {color:'teal'} : id === 'agent-modal' ? {color:'violet'} : null;
+    setModalTheme_(catalogIdentity);
     const modal = document.getElementById(id); modal.classList.remove('hidden'); document.getElementById('modal-backdrop').classList.remove('hidden');
     requestAnimationFrame(() => modal.classList.add('modal-visible'));
   }
