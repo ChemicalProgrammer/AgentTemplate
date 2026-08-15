@@ -1,21 +1,19 @@
-# Agent Console loader hotfix — 2.0.0-review.5.1
+# Agent Console startup diagnostic hotfix — 2.0.0-review.5.2
 
-Replace only these five Apps Script files:
+Replace only these three Apps Script files:
 
-1. `App.gs`
-2. `ConfigService.gs`
-3. `Index.html`
-4. `AppScripts.html`
-5. `Styles.html`
+1. `Index.html`
+2. `AppScripts.html`
+3. `ConfigService.gs`
 
-Then save the Apps Script project and create a new web app deployment/version. Opening an old deployment URL that is pinned to a previous version will not use the replacement files.
+`AppScripts` must be an **HTML file** named exactly `AppScripts`. Its first line must be `<script>` and its last line must be `</script>`.
 
-## Expected behavior
+Save the Apps Script project and reopen the `/dev` test URL. No deployment deletion is required for `/dev`.
 
-- The lightweight configuration request opens Home first.
-- Agent and Project catalogs synchronize afterward.
-- Counters show `…` and catalog cards show skeleton placeholders while Drive is being scanned.
-- At 18 seconds the loader explains that Drive is taking longer and offers **Try again**.
-- A startup JavaScript or Apps Script error remains visible instead of leaving an infinite spinner.
+## What the loader now proves
 
-No agent, project, conversation, source, template, flow, or generated-document files are modified by this hotfix.
+- **Interface loaded. Checking your workspace…** means `AppScripts.html` loaded and the browser started the client.
+- **The AppScripts.html interface module did not initialize.** means the Apps Script copy is absent, incomplete, saved with the wrong file type/name, or contains a browser parsing error.
+- **The startup request could not be completed.** means the client loaded and the visible detail identifies the server request or authorization failure.
+
+This hotfix does not modify agents, projects, conversations, sources, templates, flows, indexes, or generated documents.

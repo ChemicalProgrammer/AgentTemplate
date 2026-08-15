@@ -1,4 +1,7 @@
 <script>
+  if (window.__BOOT_UI__ && window.__BOOT_UI__.scriptReady) window.__BOOT_UI__.scriptReady();
+  else window.__APP_SCRIPT_READY__ = true;
+
   const PROJECT_EMOJIS = Object.freeze(['✨','🧠','📚','🧪','⚙️','📊','💡','🚀','🌱','🎯','🧭','🧩','🔬','🏗️','📝','💼','🎨','🌎','🤖','🗂️','⚗️','🧬','🧮','📐','🛠️','🏭','🔋','🌡️','💧','🔥','♻️','✅','📈','🔎','🛰️','🛡️','🎓','📋','🔗','🌐']);
   const PROJECT_COLORS = Object.freeze({
     blue:   {label:'Ocean', accent:'#0b57d0', tint:'#e8f0fe', tintStrong:'#d3e3fd'},
@@ -70,7 +73,7 @@
     panelLoading: {chats:false, documents:false, templates:false, flows:false, members:false}
   };
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function initializeClient_() {
     renderEmojiOptions();
     renderColorOptions();
     renderAgentColorOptions();
@@ -79,7 +82,10 @@
     restoreViewerWidth();
     restoreChatPanelState();
     startApp();
-  });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeClient_, {once:true});
+  else setTimeout(initializeClient_, 0);
 
   function server(functionName, ...args) {
     return new Promise((resolve, reject) => {
@@ -92,10 +98,14 @@
 
   function withTimeout_(promise, milliseconds, message) {
     let timer = null;
-    return Promise.race([
+    const result = Promise.race([
       promise,
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message || 'The request took too long.')), milliseconds); })
-    ]).finally(() => { if (timer) clearTimeout(timer); });
+    ]);
+    return result.then(
+      value => { if (timer) clearTimeout(timer); return value; },
+      error => { if (timer) clearTimeout(timer); throw error; }
+    );
   }
 
   async function startApp() {

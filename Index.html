@@ -73,17 +73,36 @@
           if (secondary) detail.textContent = secondary;
         }
         function complete() {
-          clearTimeout(watchdog); loader.classList.add('boot-complete');
+          clearTimeout(watchdog);
+          if (window.__APP_SCRIPT_WATCHDOG__) clearTimeout(window.__APP_SCRIPT_WATCHDOG__);
+          loader.classList.add('boot-complete');
           setTimeout(function () { loader.classList.add('hidden'); }, 260);
         }
         function fail(message, secondary) {
-          clearTimeout(watchdog); loader.classList.remove('hidden','boot-complete'); loader.classList.add('boot-failed');
+          clearTimeout(watchdog);
+          if (window.__APP_SCRIPT_WATCHDOG__) clearTimeout(window.__APP_SCRIPT_WATCHDOG__);
+          loader.classList.remove('hidden','boot-complete'); loader.classList.add('boot-failed');
           title.textContent = 'Agent Console could not start'; status.textContent = message || 'An unexpected startup error occurred.';
           detail.textContent = secondary || 'Retry the page. If the issue continues, review the Apps Script execution log.';
           progress.setAttribute('aria-hidden','true'); retry.classList.remove('hidden');
         }
-        return {startedAt:startedAt,setStatus:setStatus,complete:complete,fail:fail};
+        function scriptReady() {
+          window.__APP_SCRIPT_READY__ = true;
+          if (window.__APP_SCRIPT_WATCHDOG__) clearTimeout(window.__APP_SCRIPT_WATCHDOG__);
+          setStatus('Interface loaded. Checking your workspace…','Your projects are not being modified.');
+        }
+        return {startedAt:startedAt,setStatus:setStatus,complete:complete,fail:fail,scriptReady:scriptReady};
       }());
+      window.__APP_SCRIPT_READY__ = false;
+      window.__APP_SCRIPT_WATCHDOG__ = setTimeout(function () {
+        var loader = document.getElementById('boot-loader');
+        if (!window.__APP_SCRIPT_READY__ && loader && !loader.classList.contains('hidden') && window.__BOOT_UI__) {
+          window.__BOOT_UI__.fail(
+            'The AppScripts.html interface module did not initialize.',
+            'Verify that AppScripts is an HTML file named exactly “AppScripts”, begins with <script>, ends with <\/script>, and was completely saved in Apps Script.'
+          );
+        }
+      }, 5500);
       window.addEventListener('error', function (event) {
         if (window.__BOOT_UI__) window.__BOOT_UI__.fail('The interface script stopped before initialization.', event.message || 'Review the browser console and Apps Script deployment files.');
       });
