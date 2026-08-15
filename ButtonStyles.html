@@ -1,0 +1,503 @@
+<style>
+  /*
+   * Contextual application buttons.
+   * Card controls are intentionally excluded: agent, project and document cards
+   * keep their original styles until those components are redesigned.
+   */
+  :root {
+    --ui-button-fill: linear-gradient(135deg,#0b57d0 0%,color-mix(in srgb,#0b57d0 78%,#fff) 100%);
+    --ui-button-ring: color-mix(in srgb,#0b57d0 26%,transparent);
+  }
+
+  .project-catalog-header {
+    --ui-button-fill: linear-gradient(135deg,var(--catalog-accent,#0f8b67) 0%,color-mix(in srgb,var(--catalog-accent,#0f8b67) 78%,#fff) 100%);
+    --ui-button-ring: color-mix(in srgb,var(--catalog-accent,#0f8b67) 26%,transparent);
+  }
+  .agent-catalog-header {
+    --ui-button-fill: linear-gradient(135deg,var(--catalog-accent,#6546d7) 0%,color-mix(in srgb,var(--catalog-accent,#6546d7) 78%,#fff) 100%);
+    --ui-button-ring: color-mix(in srgb,var(--catalog-accent,#6546d7) 26%,transparent);
+  }
+  .project-view {
+    --ui-button-fill: linear-gradient(135deg,var(--project-accent,#0b57d0) 0%,color-mix(in srgb,var(--project-accent,#0b57d0) 78%,#fff) 100%);
+    --ui-button-ring: color-mix(in srgb,var(--project-accent,#0b57d0) 26%,transparent);
+  }
+  .agent-editor-view {
+    --ui-button-fill: linear-gradient(135deg,var(--project-accent,#7451c8) 0%,color-mix(in srgb,var(--project-accent,#7451c8) 78%,#fff) 100%);
+    --ui-button-ring: color-mix(in srgb,var(--project-accent,#7451c8) 26%,transparent);
+  }
+
+  /* Remove the legacy characters only from application controls. */
+  #settings-button,
+  #projects-back-home,
+  #agents-back-home,
+  #agent-editor-back,
+  #toggle-chat-from-side,
+  #collapse-chat-panel,
+  #send-message,
+  #new-conversation,
+  #sync-source-index,
+  #add-source-link,
+  #add-template-link,
+  #add-flow-link,
+  .file-button,
+  .flow-file-button,
+  #export-document-pdf,
+  #document-viewer-drive-link,
+  #close-document-viewer,
+  .tonal-icon-btn[data-agent-add] {
+    font-size: 0 !important;
+  }
+  #back-dashboard > span,
+  #toggle-project-panel > span,
+  #open-project-folder > span,
+  #project-settings-button > span,
+  #share-project-button > span,
+  #refresh-projects > span:first-child,
+  #create-project-heading > span:first-child,
+  #refresh-agents > span:first-child,
+  #create-agent > span:first-child {
+    display: none !important;
+  }
+  .side-tab > span,
+  .composer-footer .chat-model-picker > i {
+    font-size: 0 !important;
+  }
+
+  /* Material Icons Rounded: a fixed 24 px box keeps every glyph centered. */
+  #settings-button::before,
+  #projects-back-home::before,
+  #agents-back-home::before,
+  #agent-editor-back::before,
+  #back-dashboard::before,
+  #toggle-project-panel::before,
+  #toggle-chat-from-side::before,
+  #collapse-chat-panel::before,
+  #send-message::before,
+  #open-project-folder::before,
+  #project-settings-button::before,
+  #share-project-button::before,
+  #refresh-projects::before,
+  #create-project-heading::before,
+  #refresh-agents::before,
+  #create-agent::before,
+  #new-conversation::before,
+  #sync-source-index::before,
+  #add-source-link::before,
+  #add-template-link::before,
+  #add-flow-link::before,
+  .file-button::before,
+  .flow-file-button::before,
+  #export-document-pdf::before,
+  #document-viewer-drive-link::before,
+  #close-document-viewer::before,
+  #open-agent-folder::before,
+  #clone-agent::before,
+  #save-agent::before,
+  #publish-agent::before,
+  .tonal-icon-btn[data-agent-add]::before,
+  .side-tab > span::before,
+  .composer-footer .chat-model-picker > i::before {
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 24px;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
+    font-family: "Material Icons Round" !important;
+    font-size: 23px;
+    font-style: normal;
+    font-weight: normal;
+    line-height: 24px;
+    letter-spacing: normal;
+    text-align: center;
+    text-transform: none;
+    white-space: nowrap;
+    direction: ltr;
+    transform: none;
+    -webkit-font-feature-settings: "liga";
+    font-feature-settings: "liga";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #settings-button::before,
+  #project-settings-button::before { content: "settings"; }
+  #projects-back-home::before,
+  #agents-back-home::before,
+  #agent-editor-back::before,
+  #back-dashboard::before { content: "arrow_back"; }
+  #toggle-project-panel::before { content: "menu"; }
+  #toggle-chat-from-side::before { content: "keyboard_double_arrow_right"; }
+  #toggle-chat-from-side[aria-pressed="true"]::before,
+  #collapse-chat-panel::before { content: "keyboard_double_arrow_left"; }
+  #send-message::before { content: "send"; }
+  #send-message.is-stop::before { content: "stop"; }
+  #open-project-folder::before,
+  #open-agent-folder::before { content: "folder_open"; }
+  #share-project-button::before { content: "person"; }
+  #refresh-projects::before,
+  #refresh-agents::before { content: "refresh"; }
+  #create-project-heading::before,
+  #create-agent::before,
+  .tonal-icon-btn[data-agent-add]::before { content: "add"; }
+  #new-conversation::before { content: "add_comment"; }
+  #sync-source-index::before { content: "sync"; }
+  #add-source-link::before,
+  #add-template-link::before,
+  #add-flow-link::before { content: "create_new_folder"; }
+  .file-button::before,
+  .flow-file-button::before { content: "file_upload"; }
+  #export-document-pdf::before { content: "picture_as_pdf"; }
+  #document-viewer-drive-link::before { content: "open_in_new"; }
+  #close-document-viewer::before { content: "close"; }
+  #clone-agent::before { content: "content_copy"; }
+  #save-agent::before { content: "save"; }
+  #publish-agent::before { content: "publish"; }
+  .side-tab[data-side-tab="chats"] > span::before { content: "forum"; }
+  .side-tab[data-side-tab="documents"] > span::before { content: "description"; }
+  .side-tab[data-side-tab="templates"] > span::before { content: "dashboard_customize"; }
+  .side-tab[data-side-tab="flows"] > span::before { content: "account_tree"; }
+  .composer-footer .chat-model-picker > i::before { content: "expand_more"; }
+
+  /* Circular navigation and state controls. */
+  #projects-back-home,
+  #agents-back-home,
+  #agent-editor-back,
+  #back-dashboard,
+  #toggle-project-panel,
+  #toggle-chat-from-side,
+  #collapse-chat-panel,
+  #send-message {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    flex: 0 0 44px !important;
+    padding: 0 !important;
+    color: #fff !important;
+    border: 0 !important;
+    border-radius: 50% !important;
+    background: var(--ui-button-fill) !important;
+    box-shadow: none !important;
+  }
+
+  /* Full-size rounded squares. */
+  #settings-button,
+  #open-project-folder,
+  #project-settings-button,
+  #new-conversation,
+  #sync-source-index,
+  #add-source-link,
+  #add-template-link,
+  #add-flow-link,
+  .file-button,
+  .flow-file-button,
+  .tonal-icon-btn[data-agent-add] {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    flex: 0 0 44px !important;
+    padding: 0 !important;
+    color: #fff !important;
+    border: 0 !important;
+    border-radius: 13px !important;
+    background: var(--ui-button-fill) !important;
+    box-shadow: none !important;
+  }
+
+  /* Compact viewer controls remain aligned with the same geometry. */
+  #export-document-pdf,
+  #document-viewer-drive-link,
+  #close-document-viewer {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    flex: 0 0 38px !important;
+    padding: 0 !important;
+    color: #fff !important;
+    border: 0 !important;
+    border-radius: 12px !important;
+    background: var(--ui-button-fill) !important;
+    box-shadow: none !important;
+  }
+  #export-document-pdf::before,
+  #document-viewer-drive-link::before,
+  #close-document-viewer::before {
+    width: 22px;
+    height: 22px;
+    flex-basis: 22px;
+    font-size: 21px;
+    line-height: 22px;
+  }
+
+  /* Labeled actions share the same 44 px height and contextual gradient. */
+  #share-project-button,
+  #refresh-projects,
+  #create-project-heading,
+  #refresh-agents,
+  #create-agent,
+  #open-agent-folder,
+  #clone-agent,
+  #save-agent,
+  #publish-agent {
+    width: auto !important;
+    min-width: 0 !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    padding: 0 18px !important;
+    color: #fff !important;
+    border: 0 !important;
+    border-radius: 22px !important;
+    background: var(--ui-button-fill) !important;
+    box-shadow: none !important;
+    font-size: 14px !important;
+    font-weight: 650 !important;
+    line-height: 1 !important;
+    text-decoration: none !important;
+  }
+
+  /* Tab icons are centered, but the tab itself keeps its original layout. */
+  .side-tab > span {
+    width: 36px !important;
+    height: 36px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border-radius: 11px !important;
+    color: var(--project-accent,#0b57d0) !important;
+    background: color-mix(in srgb,var(--project-accent,#0b57d0) 9%,#fff) !important;
+  }
+  .side-tab.active > span {
+    color: #fff !important;
+    background: var(--ui-button-fill) !important;
+  }
+  .side-tab > span::before {
+    width: 22px;
+    height: 22px;
+    flex-basis: 22px;
+    font-size: 21px;
+    line-height: 22px;
+  }
+
+  /* One restrained interaction language: no scale, shadow or blur. */
+  #settings-button,
+  #projects-back-home,
+  #agents-back-home,
+  #agent-editor-back,
+  #back-dashboard,
+  #toggle-project-panel,
+  #toggle-chat-from-side,
+  #collapse-chat-panel,
+  #send-message,
+  #open-project-folder,
+  #project-settings-button,
+  #share-project-button,
+  #refresh-projects,
+  #create-project-heading,
+  #refresh-agents,
+  #create-agent,
+  #new-conversation,
+  #sync-source-index,
+  #add-source-link,
+  #add-template-link,
+  #add-flow-link,
+  .file-button,
+  .flow-file-button,
+  #export-document-pdf,
+  #document-viewer-drive-link,
+  #close-document-viewer,
+  #open-agent-folder,
+  #clone-agent,
+  #save-agent,
+  #publish-agent,
+  .tonal-icon-btn[data-agent-add] {
+    overflow: hidden;
+    filter: none;
+    transform: none;
+    transition: filter .16s ease,transform .16s ease,opacity .16s ease !important;
+  }
+  #settings-button:hover,
+  #projects-back-home:hover,
+  #agents-back-home:hover,
+  #agent-editor-back:hover,
+  #back-dashboard:hover,
+  #toggle-project-panel:hover,
+  #toggle-chat-from-side:hover,
+  #collapse-chat-panel:hover,
+  #send-message:hover,
+  #open-project-folder:hover,
+  #project-settings-button:hover,
+  #share-project-button:hover,
+  #refresh-projects:hover,
+  #create-project-heading:hover,
+  #refresh-agents:hover,
+  #create-agent:hover,
+  #new-conversation:hover,
+  #sync-source-index:hover,
+  #add-source-link:hover,
+  #add-template-link:hover,
+  #add-flow-link:hover,
+  .file-button:hover,
+  .flow-file-button:hover,
+  #export-document-pdf:hover,
+  #document-viewer-drive-link:hover,
+  #close-document-viewer:hover,
+  #open-agent-folder:hover,
+  #clone-agent:hover,
+  #save-agent:hover,
+  #publish-agent:hover,
+  .tonal-icon-btn[data-agent-add]:hover {
+    color: #fff !important;
+    background: var(--ui-button-fill) !important;
+    box-shadow: none !important;
+    filter: brightness(1.07) !important;
+    transform: translateY(-1px) !important;
+  }
+  #settings-button:active,
+  #projects-back-home:active,
+  #agents-back-home:active,
+  #agent-editor-back:active,
+  #back-dashboard:active,
+  #toggle-project-panel:active,
+  #toggle-chat-from-side:active,
+  #collapse-chat-panel:active,
+  #send-message:active,
+  #open-project-folder:active,
+  #project-settings-button:active,
+  #share-project-button:active,
+  #refresh-projects:active,
+  #create-project-heading:active,
+  #refresh-agents:active,
+  #create-agent:active,
+  #new-conversation:active,
+  #sync-source-index:active,
+  #add-source-link:active,
+  #add-template-link:active,
+  #add-flow-link:active,
+  .file-button:active,
+  .flow-file-button:active,
+  #export-document-pdf:active,
+  #document-viewer-drive-link:active,
+  #close-document-viewer:active,
+  #open-agent-folder:active,
+  #clone-agent:active,
+  #save-agent:active,
+  #publish-agent:active,
+  .tonal-icon-btn[data-agent-add]:active {
+    filter: brightness(.96) !important;
+    transform: none !important;
+  }
+  #settings-button:focus-visible,
+  #projects-back-home:focus-visible,
+  #agents-back-home:focus-visible,
+  #agent-editor-back:focus-visible,
+  #back-dashboard:focus-visible,
+  #toggle-project-panel:focus-visible,
+  #toggle-chat-from-side:focus-visible,
+  #collapse-chat-panel:focus-visible,
+  #send-message:focus-visible,
+  #open-project-folder:focus-visible,
+  #project-settings-button:focus-visible,
+  #share-project-button:focus-visible,
+  #refresh-projects:focus-visible,
+  #create-project-heading:focus-visible,
+  #refresh-agents:focus-visible,
+  #create-agent:focus-visible,
+  #new-conversation:focus-visible,
+  #sync-source-index:focus-visible,
+  #add-source-link:focus-visible,
+  #add-template-link:focus-visible,
+  #add-flow-link:focus-visible,
+  .file-button:focus-visible,
+  .flow-file-button:focus-visible,
+  #export-document-pdf:focus-visible,
+  #document-viewer-drive-link:focus-visible,
+  #close-document-viewer:focus-visible,
+  #open-agent-folder:focus-visible,
+  #clone-agent:focus-visible,
+  #save-agent:focus-visible,
+  #publish-agent:focus-visible,
+  .tonal-icon-btn[data-agent-add]:focus-visible {
+    outline: 3px solid var(--ui-button-ring) !important;
+    outline-offset: 2px !important;
+  }
+  #send-message:disabled,
+  #settings-button:disabled,
+  #project-settings-button:disabled,
+  .tonal-icon-btn:disabled {
+    opacity: .46 !important;
+    filter: saturate(.5) !important;
+    cursor: not-allowed !important;
+  }
+  #send-message.is-stopping { opacity: .7 !important; }
+
+  @media (max-width: 760px) {
+    #settings-button,
+    #projects-back-home,
+    #agents-back-home,
+    #agent-editor-back,
+    #back-dashboard,
+    #toggle-project-panel,
+    #toggle-chat-from-side,
+    #collapse-chat-panel,
+    #send-message,
+    #open-project-folder,
+    #project-settings-button,
+    #new-conversation {
+      width: 40px !important;
+      height: 40px !important;
+      min-width: 40px !important;
+      min-height: 40px !important;
+      flex-basis: 40px !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #settings-button,
+    #projects-back-home,
+    #agents-back-home,
+    #agent-editor-back,
+    #back-dashboard,
+    #toggle-project-panel,
+    #toggle-chat-from-side,
+    #collapse-chat-panel,
+    #send-message,
+    #open-project-folder,
+    #project-settings-button,
+    #share-project-button,
+    #refresh-projects,
+    #create-project-heading,
+    #refresh-agents,
+    #create-agent,
+    #new-conversation,
+    #sync-source-index,
+    #add-source-link,
+    #add-template-link,
+    #add-flow-link,
+    .file-button,
+    .flow-file-button,
+    #export-document-pdf,
+    #document-viewer-drive-link,
+    #close-document-viewer,
+    #open-agent-folder,
+    #clone-agent,
+    #save-agent,
+    #publish-agent,
+    .tonal-icon-btn[data-agent-add] {
+      transition: none !important;
+    }
+  }
+</style>

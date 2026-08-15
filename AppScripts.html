@@ -197,8 +197,7 @@
     document.getElementById('share-project-button').addEventListener('click', openShareModal);
     document.querySelectorAll('[data-side-tab]').forEach(tab => tab.addEventListener('click', () => showSideTab(tab.dataset.sideTab)));
     document.getElementById('new-conversation').addEventListener('click', () => newConversation(false));
-    document.getElementById('send-message').addEventListener('click', sendMessage);
-    document.getElementById('stop-response').addEventListener('click', stopResponse);
+    document.getElementById('send-message').addEventListener('click', handleComposerAction_);
     document.getElementById('chat-input').addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }
     });
@@ -985,7 +984,9 @@
     const chatsReady = !permissions.history || state.panelLoaded.chats;
     const available = Boolean(permissions.edit && permissions.history && documentsReady && chatsReady && !state.busy);
     document.getElementById('chat-input').disabled = !available;
-    document.getElementById('send-message').disabled = !available || !(state.availableModels || []).length;
+    const composerAction = document.getElementById('send-message');
+    const canStop = Boolean(state.activeRequest && !state.activeRequest.cancelled);
+    composerAction.disabled = canStop ? false : !available || !(state.availableModels || []).length;
     document.getElementById('chat-model-select').disabled = !available || !(state.availableModels || []).length;
   }
 
@@ -1344,6 +1345,11 @@
     if (input.value.trim()) await sendMessage();
   }
 
+  function handleComposerAction_() {
+    if (state.activeRequest) { stopResponse(); return; }
+    sendMessage();
+  }
+
   async function sendMessage() {
     if (state.busy) return;
     const input = document.getElementById('chat-input'); const text = input.value.trim(); if (!text) return;
@@ -1403,6 +1409,9 @@
   function stopResponse() {
     const request = state.activeRequest; if (!request || request.cancelled) return;
     request.cancelled = true; renderMessages({thinking: request.phase === 'waiting', stopping: request.phase === 'waiting'});
+    const composerAction = document.getElementById('send-message');
+    composerAction.classList.add('is-stopping'); composerAction.disabled = true;
+    composerAction.setAttribute('aria-label', 'Stopping response'); composerAction.title = 'Stopping response';
     if (request.phase === 'waiting') server('cancelChatRequest', request.id).catch(() => {});
   }
 
@@ -1551,8 +1560,11 @@
   }
 
   function setAgentBusy(busy) {
-    document.getElementById('send-message').classList.toggle('hidden', busy);
-    document.getElementById('stop-response').classList.toggle('hidden', !busy);
+    const composerAction = document.getElementById('send-message');
+    composerAction.classList.toggle('is-stop', busy); composerAction.classList.remove('is-stopping');
+    composerAction.setAttribute('aria-label', busy ? 'Stop response' : 'Send message');
+    composerAction.title = busy ? 'Stop response' : 'Send';
+    if (busy) composerAction.disabled = false;
     document.getElementById('chat-input').disabled = busy;
     document.getElementById('chat-model-select').disabled = busy || !(state.availableModels || []).length;
     if (!busy) updateComposerAvailability_();
@@ -2486,9 +2498,9 @@
     const identity = {icon:document.getElementById('edit-agent-icon').value || '✦',logoUrl:source.logoUrl || ''};
     const color = document.getElementById('edit-agent-color').value || source.color || 'violet';
     const style = projectColorStyle(color);
-    const editorView = document.getElementById('agent-editor-view'); if (editorView) editorView.setAttribute('style', style);
     const preview = document.getElementById('agent-logo-preview');
     preview.setAttribute('style', style); setIdentityMark_(preview, identity);
+    const editorView = document.getElementById('agent-editor-view'); if (editorView) editorView.setAttribute('style', style);
     const builder = document.getElementById('agent-identity-builder'); if (builder) builder.setAttribute('style', style);
     const headerMark = document.getElementById('agent-editor-icon'); if (headerMark) { headerMark.setAttribute('style', style); setIdentityMark_(headerMark, identity); }
   }
