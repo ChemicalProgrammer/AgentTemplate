@@ -20,12 +20,30 @@
     --side-tab-surface: var(--color-blue-gray-100);
     --side-tab-border: var(--color-blue-gray-300);
 
-    /* Gemini-like conversation surfaces: deliberately theme-independent. */
-    --chat-user-surface: #f0f4f9;
-    --chat-assistant-surface: #ffffff;
-    --chat-message-border: #dfe5ec;
+    /* Friendly blue conversation surfaces: deliberately theme-independent. */
+    --chat-user-surface: linear-gradient(145deg,#deedff 0%,#edf5ff 58%,#f7faff 100%);
+    --chat-assistant-surface: linear-gradient(145deg,#f9fcff 0%,#edf5ff 100%);
+    --chat-message-border: #c7d9ed;
     --chat-message-text: #1f1f1f;
-    --chat-source-surface: #f7f9fc;
+    --chat-source-surface: #f3f8fe;
+    --chat-message-shadow: 0 6px 18px rgba(55,94,138,.10);
+
+    /* Generated artifact responses use a stable teal identity. */
+    --artifact-accent: #0f766e;
+    --artifact-accent-light: #2a9d8f;
+    --artifact-surface: #edf8f6;
+    --artifact-border: #bcded9;
+    --artifact-label: #0b665f;
+
+    /* Form controls and scrollbars. */
+    --control-border: #c9d5e2;
+    --control-border-hover: #8ca9c7;
+    --control-focus: #568bc2;
+    --control-surface: #ffffff;
+    --control-surface-soft: #f7faff;
+    --selected-source-scrollbar: #779fc8;
+    --selected-source-scrollbar-track: #e7eff7;
+    --panel-scrollbar-size: 12px;
 
     /*
      * Current typography scale. These values preserve the existing layout.

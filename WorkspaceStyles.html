@@ -1,0 +1,244 @@
+<style>
+  /*
+   * Workspace controls and surfaces.
+   * This file intentionally owns chat, selects, level selection and scrollbars.
+   */
+
+  /* Friendly, theme-independent conversation bubbles. */
+  .message.assistant .message-body {
+    color: var(--chat-message-text,#1f1f1f) !important;
+    border-color: var(--chat-message-border,#c7d9ed) !important;
+    background: var(--chat-assistant-surface,linear-gradient(145deg,#f9fcff,#edf5ff)) !important;
+    box-shadow: var(--chat-message-shadow,0 6px 18px rgba(55,94,138,.10)) !important;
+  }
+  .message.user .message-body {
+    color: var(--chat-message-text,#1f1f1f) !important;
+    border-color: var(--chat-message-border,#c7d9ed) !important;
+    background: var(--chat-user-surface,linear-gradient(145deg,#deedff,#f7faff)) !important;
+    box-shadow: 0 5px 15px rgba(55,94,138,.085) !important;
+  }
+  .message-sources {
+    border-color: var(--chat-message-border,#c7d9ed) !important;
+    background: var(--chat-source-surface,#f3f8fe) !important;
+  }
+
+  /* Generated artifacts have a stable teal identity, independent of project color. */
+  .artifact-event-card {
+    border-color: var(--artifact-border,#bcded9) !important;
+    background: linear-gradient(145deg,var(--artifact-surface,#edf8f6),#fff 82%) !important;
+    box-shadow: 0 6px 17px rgba(15,118,110,.09) !important;
+  }
+  .artifact-event-heading > span {
+    background: linear-gradient(135deg,var(--artifact-accent,#0f766e),var(--artifact-accent-light,#2a9d8f)) !important;
+  }
+  .artifact-event-heading small {
+    color: var(--artifact-label,#0b665f) !important;
+  }
+  .artifact-event-actions button {
+    color: var(--artifact-accent,#0f766e) !important;
+    border-color: var(--artifact-border,#bcded9) !important;
+    background: #fff !important;
+  }
+  .artifact-event-actions button:hover {
+    color: #fff !important;
+    border-color: var(--artifact-accent,#0f766e) !important;
+    background: linear-gradient(135deg,var(--artifact-accent,#0f766e),var(--artifact-accent-light,#2a9d8f)) !important;
+  }
+
+  /* Composer: the action lives beside the input instead of inside it. */
+  .composer-row {
+    width: 100%;
+    max-width: 920px;
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    align-items: center;
+    gap: 10px;
+    margin: 0 auto;
+  }
+  .composer-row .composer {
+    width: 100%;
+    max-width: none;
+    min-height: 54px;
+    align-items: center;
+    margin: 0;
+    padding: 8px 15px;
+    border: 1px solid #cbd9e8;
+    border-radius: 25px;
+    background: linear-gradient(180deg,#fff,#f7faff);
+    box-shadow: 0 4px 15px rgba(55,94,138,.085);
+  }
+  .composer-row .composer:focus-within {
+    border-color: #75a2d0;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(86,139,194,.12),0 7px 19px rgba(55,94,138,.11);
+  }
+  .composer-row .composer textarea {
+    min-height: 36px;
+    padding: 7px 0 5px;
+    color: #263442;
+  }
+  .composer-row .composer textarea::placeholder { color: #738398; }
+  .composer-footer,
+  .source-chips { max-width: 920px; }
+
+  /* Consistent native comboboxes with a Material-style chevron. */
+  select:not([multiple]) {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    padding-right: 42px !important;
+    color: #263442 !important;
+    border-color: var(--control-border,#c9d5e2) !important;
+    border-radius: 14px !important;
+    background-color: var(--control-surface,#fff) !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath fill='%2352657a' d='M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 13px center !important;
+    background-size: 20px 20px !important;
+    box-shadow: 0 2px 7px rgba(55,75,96,.055) !important;
+    font-weight: 600;
+    transition: border-color .18s ease,box-shadow .18s ease,background-color .18s ease;
+    cursor: pointer;
+  }
+  select:not([multiple]):hover {
+    border-color: var(--control-border-hover,#8ca9c7) !important;
+    background-color: var(--control-surface-soft,#f7faff) !important;
+  }
+  select:not([multiple]):focus {
+    border-color: var(--control-focus,#568bc2) !important;
+    background-color: #fff !important;
+    box-shadow: 0 0 0 3px rgba(86,139,194,.13) !important;
+  }
+  select:not([multiple]):disabled {
+    color: #8793a1 !important;
+    background-color: #f1f4f7 !important;
+    opacity: .72;
+    cursor: not-allowed;
+  }
+  .composer-footer > .chat-model-picker {
+    min-width: 270px;
+    grid-template-columns: 27px auto minmax(110px,1fr);
+    gap: 8px;
+    padding: 5px 7px;
+    border-color: #d4dfeb;
+    background: linear-gradient(145deg,#fff,#f5f9fe);
+  }
+  .composer-footer .chat-model-picker select {
+    height: 31px !important;
+    padding: 0 35px 0 10px !important;
+    border: 1px solid #d5e0eb !important;
+    border-radius: 10px !important;
+    background-position: right 8px center !important;
+    background-size: 18px 18px !important;
+    font-size: var(--font-size-10);
+  }
+  .composer-footer .chat-model-picker > i { display: none !important; }
+
+  /* Selected source strip: compact, friendly horizontal scrollbar. */
+  .source-chips {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 8px 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--selected-source-scrollbar,#779fc8) var(--selected-source-scrollbar-track,#e7eff7);
+  }
+  .source-chips::-webkit-scrollbar { height: 7px; }
+  .source-chips::-webkit-scrollbar-track {
+    margin-inline: 8px;
+    border-radius: 7px;
+    background: var(--selected-source-scrollbar-track,#e7eff7);
+  }
+  .source-chips::-webkit-scrollbar-thumb {
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: linear-gradient(90deg,#89add1,var(--selected-source-scrollbar,#779fc8));
+    background-clip: padding-box;
+  }
+  .source-chips::-webkit-scrollbar-thumb:hover { background: #628db8; }
+
+  /* Thicker panel scrollbars with protected space above the rounded bottom edge. */
+  :where(.side-panel-content,.chat-scroll-region,.document-viewer-content,.main-content) {
+    scrollbar-width: auto;
+  }
+  :where(.side-panel-content,.chat-scroll-region,.document-viewer-content,.main-content)::-webkit-scrollbar {
+    width: var(--panel-scrollbar-size,12px);
+    height: var(--panel-scrollbar-size,12px);
+  }
+  :where(.side-panel-content,.chat-scroll-region,.document-viewer-content,.main-content)::-webkit-scrollbar-track {
+    margin-block: 10px 24px;
+  }
+  :where(.side-panel-content,.chat-scroll-region,.document-viewer-content,.main-content)::-webkit-scrollbar-thumb {
+    border-width: 2px;
+    border-radius: 12px;
+  }
+  .side-panel-content {
+    margin-bottom: 12px;
+    padding-bottom: 58px;
+    scroll-padding-block-end: 58px;
+  }
+  .document-viewer-content { scroll-padding-block-end: 38px; }
+  .document-viewer-content:not(.drive-preview) { padding-bottom: 38px; }
+
+  /* Level bar: independent select-all checkbox plus collapse button. */
+  .level-heading {
+    display: grid;
+    grid-template-columns: 44px minmax(0,1fr);
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    cursor: default;
+  }
+  .level-select-all {
+    width: 44px;
+    min-width: 44px;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    border-right: 1px solid color-mix(in srgb,var(--level-accent) 15%,var(--line));
+    border-radius: 16px 0 0 16px;
+    background: color-mix(in srgb,var(--level-tint) 72%,#fff);
+    cursor: pointer;
+  }
+  .level-select-all:hover { background: color-mix(in srgb,var(--level-tint) 88%,#fff); }
+  .level-select-all input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--level-accent);
+    cursor: pointer;
+  }
+  .level-select-all input:focus-visible {
+    outline: 3px solid color-mix(in srgb,var(--level-accent) 22%,transparent);
+    outline-offset: 2px;
+  }
+  .level-select-all:has(input:disabled) { opacity: .58;cursor: default; }
+  .level-select-all input:disabled { cursor: default; }
+  .level-heading-toggle {
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 13px;
+    border: 0;
+    border-radius: 0 16px 16px 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .level-heading-toggle:hover { background: rgba(255,255,255,.36); }
+  button.level-heading-toggle:active:not(:disabled) { transform: none !important; }
+  .level-heading-toggle:focus-visible {
+    outline: 3px solid color-mix(in srgb,var(--level-accent) 20%,transparent);
+    outline-offset: -4px;
+  }
+
+  @media (max-width: 760px) {
+    .composer-row { grid-template-columns: minmax(0,1fr) auto;gap: 8px; }
+    .composer-row .composer { min-height: 48px;padding: 6px 11px;border-radius: 20px; }
+    .composer-footer > .chat-model-picker { min-width: 0; }
+  }
+</style>

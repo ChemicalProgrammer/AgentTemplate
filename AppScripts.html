@@ -1598,16 +1598,27 @@
     const levels = [...new Set(nodes.map(node => Number(node.level || 0)))].sort((a,b) => a-b);
     container.innerHTML = levels.map(level => {
       const items = nodes.filter(node => Number(node.level || 0) === level);
+      const levelDocuments = items.filter(node => node.kind !== 'pending-upload');
+      const selectedCount = levelDocuments.filter(node => state.selectedSources.has(node.nodeId)).length;
+      const allSelected = levelDocuments.length > 0 && selectedCount === levelDocuments.length;
+      const partiallySelected = selectedCount > 0 && !allSelected;
+      const canToggleSelection = levelDocuments.some(node => !node.locked);
       const collapsed = state.collapsedDocumentLevels.has(level);
       const levelLabel = level === -1 ? `Agent knowledge · ${escapeHtml((state.projectAgent || {}).name || 'Loaded agent')}` : level === 0 ? 'Project sources' : `Generated · Level ${level}`;
       const levelDescription = level === -1 ? 'Inherited from the loaded agent' : level === 0 ? 'Original context and root files' : 'Derived from parent documents';
       const levelKey = String(level).replace('-', 'negative-');
       const contentId = `document-level-content-${levelKey}`;
       return `<section class="document-level ${level === -1 ? 'agent-knowledge-level' : ''} ${collapsed ? 'collapsed' : ''}" data-level="${level}">
-        <button type="button" class="level-heading" data-level-collapse="${level}" aria-expanded="${String(!collapsed)}" aria-controls="${contentId}" title="${collapsed ? 'Expand level' : 'Collapse level'}">
-          <span class="level-copy"><strong>${levelLabel}</strong><small>${levelDescription}</small></span>
-          <span class="level-count"><b>${items.length}</b><small>${items.length === 1 ? 'item' : 'items'}</small></span>
-        </button>
+        <div class="level-heading">
+          <label class="level-select-all" title="Select or clear this level. Mandatory sources stay selected.">
+            <input type="checkbox" data-level-select-all="${level}" data-indeterminate="${String(partiallySelected)}" aria-label="Select all documents in ${levelLabel}" ${allSelected ? 'checked' : ''} ${canToggleSelection ? '' : 'disabled'}>
+            <span aria-hidden="true"></span>
+          </label>
+          <button type="button" class="level-heading-toggle" data-level-collapse="${level}" aria-expanded="${String(!collapsed)}" aria-controls="${contentId}" title="${collapsed ? 'Expand level' : 'Collapse level'}">
+            <span class="level-copy"><strong>${levelLabel}</strong><small>${levelDescription}</small></span>
+            <span class="level-count"><b>${items.length}</b><small>${items.length === 1 ? 'item' : 'items'}</small></span>
+          </button>
+        </div>
         <div id="${contentId}" class="level-content" aria-hidden="${String(collapsed)}">
           <div class="level-content-inner">
             <div class="level-track" data-level-track="${level}">${items.map(renderDocumentCard).join('')}</div>
@@ -1619,6 +1630,11 @@
     document.getElementById('document-count-label').textContent = `${persistedNodes.length} ${persistedNodes.length === 1 ? 'item' : 'items'}${pendingCount ? ` · ${pendingCount} uploading` : ''}`;
     document.getElementById('empty-documents').classList.toggle('hidden', nodes.length > 0);
     container.querySelectorAll('[data-level-collapse]').forEach(button => button.addEventListener('click', () => toggleDocumentLevelCollapse_(Number(button.dataset.levelCollapse))));
+    container.querySelectorAll('[data-level-select-all]').forEach(input => {
+      input.indeterminate = input.dataset.indeterminate === 'true';
+      input.setAttribute('aria-checked', input.indeterminate ? 'mixed' : String(input.checked));
+      input.addEventListener('change', () => toggleDocumentLevelSelection_(Number(input.dataset.levelSelectAll), input.checked));
+    });
     container.querySelectorAll('[data-document-select]').forEach(input => input.addEventListener('change', () => toggleDocumentSelection(input.dataset.documentSelect, input.checked)));
     container.querySelectorAll('[data-document-menu]').forEach(button => button.addEventListener('click', event => toggleDocumentMenu(event, button)));
     container.querySelectorAll('[data-edit-document-note]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openDocumentNoteModal(button.dataset.editDocumentNote); }));
@@ -1696,6 +1712,32 @@
   function toggleDocumentSelection(nodeId, checked) {
     const node = state.documentNodes.find(item => item.nodeId === nodeId); if (node && node.locked) return;
     checked ? state.selectedSources.add(nodeId) : state.selectedSources.delete(nodeId); rememberCurrentSelection(); updateDocumentSelectionUi();
+  }
+
+  function documentsForLevel_(level) {
+    return state.documentNodes.filter(node => !node.hiddenInProject && Number(node.level || 0) === level);
+  }
+
+  function syncDocumentLevelSelectionControls_() {
+    document.querySelectorAll('[data-level-select-all]').forEach(input => {
+      const documents = documentsForLevel_(Number(input.dataset.levelSelectAll));
+      const selectedCount = documents.filter(node => state.selectedSources.has(node.nodeId)).length;
+      const editableDocuments = documents.filter(node => !node.locked);
+      input.checked = documents.length > 0 && selectedCount === documents.length;
+      input.indeterminate = selectedCount > 0 && selectedCount < documents.length;
+      input.disabled = editableDocuments.length === 0;
+      input.setAttribute('aria-checked', input.indeterminate ? 'mixed' : String(input.checked));
+    });
+  }
+
+  function toggleDocumentLevelSelection_(level, checked) {
+    documentsForLevel_(level).filter(node => !node.locked).forEach(node => {
+      if (checked) state.selectedSources.add(node.nodeId);
+      else state.selectedSources.delete(node.nodeId);
+    });
+    state.documentNodes.filter(node => node.locked).forEach(node => state.selectedSources.add(node.nodeId));
+    rememberCurrentSelection();
+    updateDocumentSelectionUi();
   }
 
   function documentLevelStorageKey_(projectId) {
@@ -1883,6 +1925,7 @@
   function updateDocumentSelectionUi() {
     state.documentNodes.filter(node => node.locked).forEach(node => state.selectedSources.add(node.nodeId));
     document.querySelectorAll('[data-document-select]').forEach(input => { input.checked = state.selectedSources.has(input.dataset.documentSelect); });
+    syncDocumentLevelSelectionControls_();
     renderSourceChips();
   }
 
