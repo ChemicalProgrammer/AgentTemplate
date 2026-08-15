@@ -1,5 +1,10 @@
 <script>
-  const PROJECT_EMOJIS = Object.freeze(['✨','🧠','📚','🧪','⚙️','📊','💡','🚀','🌱','🎯','🧭','🧩','🔬','🏗️','📝','💼','🎨','🌎','🤖','🗂️','⚗️','🧬','🧮','📐','🛠️','🏭','🔋','🌡️','💧','🔥','♻️','✅','📈','🔎','🛰️','🛡️','🎓','📋','🔗','🌐']);
+  const PROJECT_EMOJIS = Object.freeze([
+    '✨','🧠','📚','🧪','⚙️','📊','💡','🚀','🌱','🎯','🧭','🧩','🔬','🏗️','📝','💼','🎨','🌎','🤖','🗂️',
+    '⚗️','🧬','🧮','📐','🛠️','🏭','🔋','🌡️','💧','🔥','♻️','✅','📈','🔎','🛰️','🛡️','🎓','📋','🔗','🌐',
+    '📌','📎','🗃️','📂','🗄️','📓','📔','📒','🗒️','🗺️','🧰','🧱','🧲','🔧','🔩','🪛','🪜','🪄','🔭','🧯',
+    '🧹','🧵','🪡','⚡','🌟','☀️','🌙','🌈','🌊','⛰️','🌲','🍃','🪴','🏆','🏁','🛎️','📣','💬','🧑‍💻','🧑‍🔬'
+  ]);
   const PROJECT_COLORS = Object.freeze({
     blue:   {label:'Ocean', accent:'#0b57d0', tint:'#e8f0fe', tintStrong:'#d3e3fd'},
     violet: {label:'Violet', accent:'#7451c8', tint:'#f0eafd', tintStrong:'#e4d7fb'},
@@ -14,7 +19,21 @@
     lime:   {label:'Lime', accent:'#587d13', tint:'#eff7df', tintStrong:'#dcedb7'},
     orange: {label:'Orange', accent:'#b84d00', tint:'#fff0e3', tintStrong:'#ffd9ba'},
     plum:   {label:'Plum', accent:'#7c3d82', tint:'#f6e9f7', tintStrong:'#ebd1ee'},
-    graphite:{label:'Graphite', accent:'#3f4752', tint:'#e9edf1', tintStrong:'#d2d9e0'}
+    graphite:{label:'Graphite', accent:'#3f4752', tint:'#e9edf1', tintStrong:'#d2d9e0'},
+    azure:  {label:'Azure', accent:'#1261a0', tint:'#e6f1fa', tintStrong:'#cce3f4'},
+    sky:    {label:'Sky', accent:'#087ea4', tint:'#e4f4f9', tintStrong:'#c8e9f2'},
+    mint:   {label:'Mint', accent:'#18794e', tint:'#e7f5ee', tintStrong:'#ccebdc'},
+    jade:   {label:'Jade', accent:'#00866a', tint:'#e2f5f0', tintStrong:'#c1eade'},
+    moss:   {label:'Moss', accent:'#4d6b2f', tint:'#eef3e6', tintStrong:'#dce7cd'},
+    olive:  {label:'Olive', accent:'#6b6f1f', tint:'#f3f4df', tintStrong:'#e5e7ba'},
+    gold:   {label:'Gold', accent:'#8a6500', tint:'#faf3da', tintStrong:'#f0e2ac'},
+    peach:  {label:'Peach', accent:'#b95c35', tint:'#fceee8', tintStrong:'#f6d9cc'},
+    terracotta:{label:'Terracotta', accent:'#a0442f', tint:'#f8ebe7', tintStrong:'#efd3cb'},
+    ruby:   {label:'Ruby', accent:'#a52a45', tint:'#f9e7eb', tintStrong:'#f2ccd5'},
+    magenta:{label:'Magenta', accent:'#9b2c83', tint:'#f8e7f4', tintStrong:'#efcce7'},
+    periwinkle:{label:'Periwinkle', accent:'#5b5fc7', tint:'#ececfa', tintStrong:'#d9daf5'},
+    steel:  {label:'Steel', accent:'#425b76', tint:'#eaf0f5', tintStrong:'#d4e0ea'},
+    sand:   {label:'Sand', accent:'#766747', tint:'#f4f0e7', tintStrong:'#e7decb'}
   });
 
   const state = {
@@ -1047,11 +1066,9 @@
     document.getElementById('chat-conversation-title').textContent = conversationTitle;
     document.getElementById('chat-context-agent-name').textContent = agent.name || 'Agent';
     document.getElementById('chat-context-agent-version').textContent = agent.version ? `v${agent.version}` : '—';
-    const identityStyle = projectColorStyle(agent.color || 'violet');
     ['chat-agent-mark','chat-empty-agent-mark'].forEach(id => {
       const mark = document.getElementById(id);
       if (!mark) return;
-      mark.setAttribute('style', identityStyle);
       setIdentityMark_(mark, agent);
     });
   }
@@ -2631,6 +2648,7 @@
   function applyProjectColor(colorKey) {
     const color = PROJECT_COLORS[colorKey] || PROJECT_COLORS.blue; const view = document.getElementById('project-view');
     view.style.setProperty('--project-accent', color.accent); view.style.setProperty('--project-tint', color.tint); view.style.setProperty('--project-tint-strong', color.tintStrong);
+    if (state.currentProjectId) setModalTheme_(state.projectDetails && state.projectDetails.project || {color:colorKey});
   }
 
   function startPanelResize(event) {
@@ -2750,8 +2768,26 @@
 
   function openModal(id) {
     document.querySelectorAll('.modal').forEach(modal => modal.classList.add('hidden'));
+    setModalTheme_();
     const modal = document.getElementById(id); modal.classList.remove('hidden'); document.getElementById('modal-backdrop').classList.remove('hidden');
     requestAnimationFrame(() => modal.classList.add('modal-visible'));
+  }
+
+  function setModalTheme_(identityOverride) {
+    const projectView = document.getElementById('project-view');
+    const agentView = document.getElementById('agent-editor-view');
+    const identity = identityOverride ||
+      (projectView && !projectView.classList.contains('hidden') && state.projectDetails ? state.projectDetails.project : null) ||
+      (agentView && !agentView.classList.contains('hidden') && state.currentAgentDetails ? state.currentAgentDetails.agent : null) ||
+      {color:'blue'};
+    const color = PROJECT_COLORS[identity.color] || PROJECT_COLORS.blue;
+    const backdrop = document.getElementById('modal-backdrop');
+    if (!backdrop) return;
+    backdrop.style.setProperty('--modal-accent', color.accent);
+    backdrop.style.setProperty('--modal-tint', color.tint);
+    backdrop.style.setProperty('--modal-tint-strong', color.tintStrong);
+    backdrop.style.setProperty('--ui-button-fill', `linear-gradient(135deg,${color.accent} 0%,color-mix(in srgb,${color.accent} 78%,#fff) 100%)`);
+    backdrop.style.setProperty('--ui-button-ring', `color-mix(in srgb,${color.accent} 26%,transparent)`);
   }
 
   function closeModals() {

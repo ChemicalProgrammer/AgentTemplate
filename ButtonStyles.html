@@ -578,6 +578,73 @@
     }
   }
 
+  /* Secondary-window actions share the same flat geometry and contextual tint. */
+  .modal .primary-btn,
+  .modal .secondary-btn,
+  .modal .danger-filled-btn {
+    min-height:42px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    padding:0 18px;
+    border-radius:21px;
+    box-shadow:none;
+    transform:none;
+    font-weight:650;
+  }
+  .modal .primary-btn {
+    color:#fff;
+    border:0;
+    background:var(--ui-button-fill);
+  }
+  .modal .primary-btn:hover { filter:brightness(1.03);box-shadow:0 0 0 3px var(--ui-button-ring);transform:none; }
+  .modal .secondary-btn {
+    color:var(--modal-accent,#0b57d0);
+    border:1px solid color-mix(in srgb,var(--modal-accent,#0b57d0) 28%,#cbd5e1);
+    background:color-mix(in srgb,var(--modal-tint,#e8f0fe) 44%,#fff);
+  }
+  .modal .secondary-btn:hover {
+    color:var(--modal-accent,#0b57d0);
+    border-color:color-mix(in srgb,var(--modal-accent,#0b57d0) 48%,#cbd5e1);
+    background:color-mix(in srgb,var(--modal-tint,#e8f0fe) 78%,#fff);
+  }
+  .modal-close {
+    width:38px !important;
+    height:38px !important;
+    min-width:38px !important;
+    min-height:38px !important;
+    display:grid !important;
+    place-items:center !important;
+    padding:0 !important;
+    color:#fff !important;
+    border:0 !important;
+    border-radius:12px !important;
+    background:var(--ui-button-fill) !important;
+    box-shadow:none !important;
+    font-size:0 !important;
+    line-height:0 !important;
+  }
+  .modal-close::before {
+    content:"close";
+    width:24px;
+    height:24px;
+    display:grid;
+    place-items:center;
+    font-family:"Material Icons Round" !important;
+    font-size:22px;
+    font-style:normal;
+    font-weight:normal;
+    line-height:24px;
+    letter-spacing:normal;
+    text-transform:none;
+    white-space:nowrap;
+    -webkit-font-feature-settings:"liga";
+    font-feature-settings:"liga";
+    -webkit-font-smoothing:antialiased;
+  }
+  .modal-close:hover { box-shadow:0 0 0 3px var(--ui-button-ring) !important;filter:brightness(1.03); }
+
   @media (prefers-reduced-motion: reduce) {
     #settings-button,
     #projects-back-home,

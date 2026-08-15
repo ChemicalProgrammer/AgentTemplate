@@ -1,7 +1,15 @@
 var PROJECT_MANIFEST_FILE = 'Project Manifest.json';
 var PROJECT_CONTROL_FILE = 'Project Control';
-var PROJECT_EMOJIS = ['✨', '🧠', '📚', '🧪', '⚙️', '📊', '💡', '🚀', '🌱', '🎯', '🧭', '🧩', '🔬', '🏗️', '📝', '💼', '🎨', '🌎', '🤖', '🗂️', '⚗️', '🧬', '🧮', '📐', '🛠️', '🏭', '🔋', '🌡️', '💧', '🔥', '♻️', '✅', '📈', '🔎', '🛰️', '🛡️', '🎓', '📋', '🔗', '🌐'];
-var PROJECT_COLORS = ['blue', 'violet', 'coral', 'amber', 'green', 'teal', 'rose', 'slate', 'indigo', 'cyan', 'lime', 'orange', 'plum', 'graphite'];
+var PROJECT_EMOJIS = [
+  '✨', '🧠', '📚', '🧪', '⚙️', '📊', '💡', '🚀', '🌱', '🎯', '🧭', '🧩', '🔬', '🏗️', '📝', '💼', '🎨', '🌎', '🤖', '🗂️',
+  '⚗️', '🧬', '🧮', '📐', '🛠️', '🏭', '🔋', '🌡️', '💧', '🔥', '♻️', '✅', '📈', '🔎', '🛰️', '🛡️', '🎓', '📋', '🔗', '🌐',
+  '📌', '📎', '🗃️', '📂', '🗄️', '📓', '📔', '📒', '🗒️', '🗺️', '🧰', '🧱', '🧲', '🔧', '🔩', '🪛', '🪜', '🪄', '🔭', '🧯',
+  '🧹', '🧵', '🪡', '⚡', '🌟', '☀️', '🌙', '🌈', '🌊', '⛰️', '🌲', '🍃', '🪴', '🏆', '🏁', '🛎️', '📣', '💬', '🧑‍💻', '🧑‍🔬'
+];
+var PROJECT_COLORS = [
+  'blue', 'violet', 'coral', 'amber', 'green', 'teal', 'rose', 'slate', 'indigo', 'cyan', 'lime', 'orange', 'plum', 'graphite',
+  'azure', 'sky', 'mint', 'jade', 'moss', 'olive', 'gold', 'peach', 'terracotta', 'ruby', 'magenta', 'periwinkle', 'steel', 'sand'
+];
 
 function listProjects() {
   return listProjectsFromManifests_(discoverProjects_(false));
