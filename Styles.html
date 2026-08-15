@@ -30,12 +30,30 @@
   body { margin: 0; color: var(--ink); background: var(--page); font:var(--type-body)/var(--line-height-body) var(--font-family-body); overflow: hidden; }
   button, input, textarea, select { font: inherit; }
   h1, h2, h3, h4, h5, h6,
-  strong, b,
   .brand {
     font-family: var(--font-family-display);
     font-weight: var(--font-weight-bold);
   }
   h1, h2, h3, h4, h5, h6 { line-height: var(--line-height-tight); }
+
+  /* Distinctive display type for card names and workspace header titles. */
+  .console-path-card .path-copy strong,
+  .entity-card-copy h3,
+  .agent-resource-item .resource-copy strong,
+  .document-card-copy strong,
+  .asset-card strong,
+  .conversation-open strong,
+  .artifact-event-heading strong,
+  .release-row > strong,
+  .project-title-wrap h1,
+  .side-panel-heading strong,
+  .chat-context-copy strong,
+  .document-viewer-header strong,
+  .agent-editor-identity h1,
+  .catalog-title-block h1 {
+    font-family: var(--font-family-display);
+    font-weight: var(--font-weight-bold);
+  }
   .chat-messages,
   .message-body,
   .composer textarea,
@@ -483,7 +501,8 @@
   .console-home-view { display: grid; align-content: center; gap: 32px; min-height: 100%; background: radial-gradient(circle at 12% 5%,rgba(211,227,253,.85),transparent 32%),radial-gradient(circle at 90% 12%,rgba(237,219,255,.7),transparent 27%),linear-gradient(145deg,#f8fafe,#f5f2fb); }
   .console-hero { max-width: 800px; margin: 0 auto; text-align: center; }
   .console-brandmark { width: 64px; height: 64px; margin: 0 auto 18px; border-radius: 21px; font-size: var(--font-size-32); }
-  .console-hero h1 { margin: 5px 0 10px; font-size: clamp(var(--font-size-34),5vw,var(--font-size-58)); line-height: 1.08; letter-spacing: -.035em; background: linear-gradient(90deg,#185abc,#6546d7 55%,#a142f4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .console-hero .app-title { margin: 12px 0 7px; color: #23264a; font-family: var(--font-family-display); font-size: var(--type-app-title); font-weight: var(--font-weight-bold); line-height: .98; letter-spacing: -.055em; text-transform: none; }
+  .console-hero h1 { margin: 5px 0 14px; font-size: var(--type-app-tagline); line-height: 1.08; letter-spacing: -.045em; background: linear-gradient(90deg,#185abc,#6546d7 55%,#a142f4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
   .console-hero > p:last-child { max-width: 680px; margin: 0 auto; color: var(--muted); font-size: var(--font-size-16); }
   .console-paths { width: min(980px,100%); display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; margin: 0 auto; }
   .console-path-card { position: relative; min-height: 210px; display: grid; grid-template: auto 1fr auto / auto 1fr auto; gap: 15px; overflow: hidden; padding: 25px; color: var(--ink); border: 1px solid rgba(255,255,255,.75); border-radius: 24px; background: rgba(255,255,255,.86); box-shadow: 0 8px 28px rgba(60,64,67,.09); text-align: left; transition: transform .2s,box-shadow .2s,border-color .2s; }
