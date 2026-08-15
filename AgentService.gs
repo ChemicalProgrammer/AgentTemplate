@@ -708,6 +708,23 @@ function publicAgentRelease_(release) {
   return {agentId:release.agentId, name:release.agentName, version:release.version, icon:release.icon || '✦', color:release.color || 'violet', logoPath:release.logoPath || '', logoUrl:agentLogoUrl_(release.logoDriveId), showMandatoryKnowledgeInProjects:release.showMandatoryKnowledgeInProjects !== false, sourceCount:(release.knowledgeSources || []).length, workflowCount:(release.workflows || []).length, templateCount:(release.templates || []).length, releasedAt:release.releasedAt};
 }
 
+/**
+ * A project keeps the selected release for instructions and knowledge, while
+ * the agent's visible identity remains live. This prevents an older release
+ * color or icon from overwriting the current agent branding after bootstrap.
+ */
+function publicProjectAgent_(resolved) {
+  if (!resolved || !resolved.release) return null;
+  var output = publicAgentRelease_(resolved.release);
+  var agent = resolved.agent || {};
+  output.name = String(agent.name || output.name || 'Agent');
+  output.icon = normalizeAgentIcon_(agent.icon || output.icon || '✦');
+  output.color = normalizeProjectColor_(agent.color || output.color || 'violet');
+  output.logoPath = String(agent.logoPath || '');
+  output.logoUrl = agentLogoUrl_(String(agent.logoDriveId || ''));
+  return output;
+}
+
 function agentRuntimeId_(agentId, version) { return 'agent_' + String(agentId).replace(/[^A-Za-z0-9_-]/g, '') + '_' + String(version).replace(/[^A-Za-z0-9_-]/g, '_'); }
 
 function agentRuntimeProject_(agent, release) {

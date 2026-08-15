@@ -79,6 +79,7 @@
     documentPreviewMode: 'preview',
     viewerCloseTimer: null,
     chatCollapsed: false,
+    sideCollapsed: false,
     pendingUploads: new Map(),
     sourceIndexTimers: new Map(),
     activeIndexSources: new Set(),
@@ -209,8 +210,8 @@
     document.getElementById('project-agent-button').addEventListener('click', openChangeAgentModal);
     document.getElementById('change-agent-form').addEventListener('submit', submitChangeProjectAgent);
     document.getElementById('back-dashboard').addEventListener('click', showDashboard);
-    document.getElementById('toggle-chat-from-side').addEventListener('click', toggleChatPanel);
-    document.getElementById('collapse-chat-panel').addEventListener('click', () => toggleChatPanel(true));
+    document.getElementById('toggle-chat-from-side').addEventListener('click', handleSidePanelVisibility_);
+    document.getElementById('collapse-chat-panel').addEventListener('click', handleChatPanelVisibility_);
     document.getElementById('project-header-icon').addEventListener('click', openProjectEmojiPicker);
     document.getElementById('share-project-button').addEventListener('click', openShareModal);
     document.querySelectorAll('[data-side-tab]').forEach(tab => tab.addEventListener('click', () => showSideTab(tab.dataset.sideTab)));
@@ -270,7 +271,11 @@
     });
     window.addEventListener('resize', () => {
       const workspace = document.getElementById('project-workspace');
-      if (window.innerWidth <= 760 && workspace.classList.contains('chat-collapsed')) setChatPanelCollapsed_(false, false);
+      if (window.innerWidth <= 760 && (workspace.classList.contains('chat-collapsed') || workspace.classList.contains('side-collapsed'))) {
+        setWorkspacePanelState_({sideCollapsed:false, chatCollapsed:false}, false);
+      } else {
+        syncWorkspacePanelButtons_();
+      }
       if (workspace.classList.contains('viewer-open') && window.innerWidth > 760) setViewerWidth(document.getElementById('document-viewer').getBoundingClientRect().width);
       syncProjectDescriptionTooltip_();
     });
@@ -509,6 +514,14 @@
   }
 
   function publishedAgents_() { return state.agents.filter(agent => Boolean(agent.publishedVersion)); }
+
+  function projectAgentFromCatalog_(project = {}, agents = publishedAgents_()) {
+    const agentId = String(project.agentId || '');
+    if (!agentId) return null;
+    const agent = (agents || []).find(item => String(item.agentId || '') === agentId);
+    if (!agent) return null;
+    return Object.assign({}, agent, {version:project.agentVersion || agent.publishedVersion || ''});
+  }
 
   function publishedAgentOptions_(agents = publishedAgents_()) {
     return agents.flatMap(agent => (agent.versions && agent.versions.length ? agent.versions : [{version:agent.publishedVersion}]).map(release => ({agentId:agent.agentId,version:release.version,name:agent.name,icon:agent.icon,isCurrent:release.version===agent.publishedVersion})));
@@ -788,6 +801,7 @@
     const loadToken = ++state.projectLoadToken;
     const cachedProject = state.projects.find(item => item.projectId === projectId) || {projectId, title:'Project', description:'', icon:'✨', color:'blue', role:'', scope:''};
     document.getElementById('project-side-panel').classList.remove('mobile-open');
+    syncWorkspacePanelButtons_();
     document.getElementById('dashboard-view').classList.add('hidden');
     const projectView = document.getElementById('project-view');
     projectView.classList.remove('hidden'); projectView.classList.add('view-entering');
@@ -798,7 +812,8 @@
     closeDocumentViewer(true);
     state.documentNodes = []; state.conversationSelections = new Map(); state.flowSelections = new Map();
     state.selectedSources = new Set(); state.selectedFlows = new Set(); state.selectedTemplateId = '';
-    state.projectAgent = null; state.availableAgents = publishedAgents_();
+    state.availableAgents = publishedAgents_();
+    state.projectAgent = projectAgentFromCatalog_(cachedProject, state.availableAgents);
     state.panelLoaded = {chats:false, documents:false, templates:false, flows:false, members:false};
     state.panelLoading = {chats:false, documents:false, templates:false, flows:false, members:false};
     state.projectDetails = {
@@ -1042,7 +1057,7 @@
     statusChip.classList.add(projectStatus);
     document.getElementById('project-header-icon').textContent = project.icon || '✨';
     document.getElementById('project-header-icon').disabled = !permissions.edit || !permissions.project;
-    const agent = state.projectAgent || {name:project.agentName || 'Agent unavailable',version:project.agentVersion || '',icon:project.agentIcon || '✦',logoUrl:project.agentLogoUrl || ''};
+    const agent = state.projectAgent || projectAgentFromCatalog_(project, state.availableAgents) || {name:project.agentName || 'Agent unavailable',version:project.agentVersion || '',icon:project.agentIcon || '✦',logoUrl:project.agentLogoUrl || '',color:'violet'};
     setIdentityMark_(document.getElementById('project-agent-icon'), agent);
     document.getElementById('project-agent-name').textContent = agent.name || 'Agent unavailable';
     document.getElementById('project-agent-version').textContent = agent.version ? `Version ${agent.version}` : 'Version unavailable';
@@ -2734,7 +2749,8 @@
   function setPanelWidth(width) {
     const workspace = document.getElementById('project-workspace');
     const viewerWidth = workspace.classList.contains('viewer-open') ? document.getElementById('document-viewer').getBoundingClientRect().width : 0;
-    const reserved = 300 + viewerWidth + (viewerWidth ? 20 : 10) + 28;
+    const chatWidth = workspace.classList.contains('chat-collapsed') ? 0 : 300;
+    const reserved = chatWidth + viewerWidth + (viewerWidth ? 20 : 10) + 28;
     const max = Math.max(260, workspace.getBoundingClientRect().width - reserved);
     const value = Math.max(260, Math.min(max, Number(width) || 338));
     workspace.style.setProperty('--project-panel-width', `${Math.round(value)}px`);
@@ -2765,8 +2781,10 @@
   function setViewerWidth(width) {
     const workspace = document.getElementById('project-workspace');
     const chatCollapsed = workspace.classList.contains('chat-collapsed');
-    const sideWidth = chatCollapsed ? 260 : document.getElementById('project-side-panel').getBoundingClientRect().width || 338;
-    const reserved = sideWidth + (chatCollapsed ? 0 : 300) + 20 + 28;
+    const sideCollapsed = workspace.classList.contains('side-collapsed');
+    const sideWidth = sideCollapsed ? 0 : (document.getElementById('project-side-panel').getBoundingClientRect().width || (chatCollapsed ? 260 : 338));
+    const chatWidth = chatCollapsed ? 0 : 300;
+    const reserved = sideWidth + chatWidth + 20 + 28;
     const max = Math.max(280, workspace.getBoundingClientRect().width - reserved);
     const value = Math.max(280, Math.min(max, Number(width) || 480));
     workspace.style.setProperty('--viewer-panel-width', `${Math.round(value)}px`);
@@ -2777,40 +2795,80 @@
 
   function restoreViewerWidth() { try { const value = parseInt(localStorage.getItem('gpa.documentViewerWidth'), 10); if (Number.isFinite(value)) setViewerWidth(value); } catch (_) {} }
 
-  function toggleChatPanel(forceCollapse) {
+  function handleSidePanelVisibility_() {
+    const sidePanel = document.getElementById('project-side-panel');
     if (window.innerWidth <= 760) {
-      document.getElementById('project-side-panel').classList.toggle('mobile-open');
+      sidePanel.classList.remove('mobile-open');
+      syncWorkspacePanelButtons_();
       return;
     }
-    const collapse = typeof forceCollapse === 'boolean' ? forceCollapse : !state.chatCollapsed;
-    setChatPanelCollapsed_(collapse, true);
+    if (state.chatCollapsed) setWorkspacePanelState_({sideCollapsed:false, chatCollapsed:false}, true);
+    else setWorkspacePanelState_({sideCollapsed:true, chatCollapsed:false}, true);
   }
 
-  function setChatPanelCollapsed_(collapsed, persist) {
+  function handleChatPanelVisibility_() {
+    const sidePanel = document.getElementById('project-side-panel');
+    if (window.innerWidth <= 760) {
+      sidePanel.classList.add('mobile-open');
+      syncWorkspacePanelButtons_();
+      return;
+    }
+    if (state.sideCollapsed) setWorkspacePanelState_({sideCollapsed:false, chatCollapsed:false}, true);
+    else setWorkspacePanelState_({sideCollapsed:false, chatCollapsed:true}, true);
+  }
+
+  function setWorkspacePanelState_(nextState, persist) {
     const workspace = document.getElementById('project-workspace');
     if (!workspace) return;
-    state.chatCollapsed = Boolean(collapsed);
+    let sideCollapsed = Boolean(nextState && nextState.sideCollapsed);
+    let chatCollapsed = Boolean(nextState && nextState.chatCollapsed);
+    if (sideCollapsed && chatCollapsed) sideCollapsed = false;
+    state.sideCollapsed = sideCollapsed;
+    state.chatCollapsed = chatCollapsed;
+    workspace.classList.toggle('side-collapsed', state.sideCollapsed);
     workspace.classList.toggle('chat-collapsed', state.chatCollapsed);
+    document.getElementById('project-side-panel').setAttribute('aria-hidden', String(state.sideCollapsed));
     document.getElementById('chat-panel').setAttribute('aria-hidden', String(state.chatCollapsed));
-    const sideButton = document.getElementById('toggle-chat-from-side');
-    if (sideButton) {
-      sideButton.classList.toggle('is-chat-collapsed', state.chatCollapsed);
-      sideButton.title = state.chatCollapsed ? 'Restore chat panel' : 'Collapse chat and expand this panel';
-      sideButton.setAttribute('aria-label', sideButton.title);
-      sideButton.setAttribute('aria-pressed', String(state.chatCollapsed));
-    }
-    const collapseButton = document.getElementById('collapse-chat-panel');
-    if (collapseButton) collapseButton.disabled = state.chatCollapsed;
+    syncWorkspacePanelButtons_();
     if (workspace.classList.contains('viewer-open') && window.innerWidth > 760) {
       requestAnimationFrame(() => setViewerWidth(parseInt(getComputedStyle(workspace).getPropertyValue('--viewer-panel-width'), 10) || 480));
     }
-    if (persist) try { localStorage.setItem('gpa.chatPanelCollapsed', state.chatCollapsed ? '1' : '0'); } catch (_) {}
+    if (persist) try {
+      localStorage.setItem('gpa.sidePanelCollapsed', state.sideCollapsed ? '1' : '0');
+      localStorage.setItem('gpa.chatPanelCollapsed', state.chatCollapsed ? '1' : '0');
+    } catch (_) {}
+  }
+
+  function syncWorkspacePanelButtons_() {
+    const sideButton = document.getElementById('toggle-chat-from-side');
+    const collapseButton = document.getElementById('collapse-chat-panel');
+    const sidePanel = document.getElementById('project-side-panel');
+    const mobile = window.innerWidth <= 760;
+    if (sideButton) {
+      const opensChat = !mobile && state.chatCollapsed;
+      sideButton.classList.toggle('is-open-other-panel', opensChat);
+      sideButton.title = opensChat ? 'Open chat panel' : 'Close project panel';
+      sideButton.setAttribute('aria-label', sideButton.title);
+      sideButton.setAttribute('aria-expanded', opensChat ? 'false' : String(!state.sideCollapsed));
+    }
+    if (collapseButton) {
+      const opensSide = mobile ? !sidePanel.classList.contains('mobile-open') : state.sideCollapsed;
+      collapseButton.classList.toggle('is-open-other-panel', opensSide);
+      collapseButton.title = opensSide ? 'Open project panel' : 'Close chat panel';
+      collapseButton.setAttribute('aria-label', collapseButton.title);
+      collapseButton.setAttribute('aria-expanded', opensSide ? 'false' : String(!state.chatCollapsed));
+    }
   }
 
   function restoreChatPanelState() {
-    let collapsed = false;
-    try { collapsed = localStorage.getItem('gpa.chatPanelCollapsed') === '1'; } catch (_) {}
-    setChatPanelCollapsed_(collapsed && window.innerWidth > 760, false);
+    let sideCollapsed = false;
+    let chatCollapsed = false;
+    try {
+      sideCollapsed = localStorage.getItem('gpa.sidePanelCollapsed') === '1';
+      chatCollapsed = localStorage.getItem('gpa.chatPanelCollapsed') === '1';
+    } catch (_) {}
+    if (window.innerWidth <= 760) { sideCollapsed = false; chatCollapsed = false; }
+    setWorkspacePanelState_({sideCollapsed, chatCollapsed}, false);
   }
 
   function askConfirmation({title, message, action, tone = 'danger'}) {

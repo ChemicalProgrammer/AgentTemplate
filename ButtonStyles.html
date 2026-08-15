@@ -127,9 +127,10 @@
   #agents-back-home::before,
   #agent-editor-back::before,
   #back-dashboard::before { content: "arrow_back"; }
-  #toggle-chat-from-side::before { content: "keyboard_double_arrow_right"; }
-  #toggle-chat-from-side.is-chat-collapsed::before,
-  #collapse-chat-panel::before { content: "keyboard_double_arrow_left"; }
+  #toggle-chat-from-side::before,
+  #collapse-chat-panel::before { content: "close"; }
+  #toggle-chat-from-side.is-open-other-panel::before { content: "keyboard_double_arrow_right"; }
+  #collapse-chat-panel.is-open-other-panel::before { content: "keyboard_double_arrow_left"; }
   #send-message::before { content: "send"; }
   #send-message.is-stop::before { content: "stop"; }
   #open-project-folder::before,
@@ -224,8 +225,6 @@
   #agents-back-home,
   #agent-editor-back,
   #back-dashboard,
-  #toggle-chat-from-side,
-  #collapse-chat-panel,
   #send-message {
     width: 44px !important;
     height: 44px !important;
@@ -238,6 +237,24 @@
     color: #fff !important;
     border: 0 !important;
     border-radius: 50% !important;
+    background: var(--ui-button-fill) !important;
+    box-shadow: none !important;
+  }
+
+  /* Panel visibility uses compact rounded squares: X closes, chevrons restore. */
+  #toggle-chat-from-side,
+  #collapse-chat-panel {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    flex: 0 0 38px !important;
+    padding: 0 !important;
+    color: #fff !important;
+    border: 0 !important;
+    border-radius: 12px !important;
     background: var(--ui-button-fill) !important;
     box-shadow: none !important;
   }

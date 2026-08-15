@@ -88,7 +88,7 @@ function getProjectShell(projectId) {
   return {
     project: publicProject_(access.project, access.member, getFavoriteIds_().indexOf(projectId) !== -1),
     permissions: access.allowed,
-    agent: agentRelease ? publicAgentRelease_(agentRelease.release) : null,
+    agent: publicProjectAgent_(agentRelease),
     availableAgents: listAgents().filter(function(agent) { return Boolean(agent.publishedVersion); })
   };
 }
@@ -226,14 +226,15 @@ function changeProjectAgent(projectId, agentId, version) {
   var agent = getAgentFromRoot_(String(agentId || ''));
   if (!agent || !agent.publishedVersion) throw new Error('Choose a published agent.');
   version = String(version || agent.publishedVersion);
-  if (!getAgentRelease_(agent.agentId, version)) throw new Error('The selected agent version is not available.');
+  var resolvedAgent = getAgentRelease_(agent.agentId, version);
+  if (!resolvedAgent) throw new Error('The selected agent version is not available.');
   access.project.agentId = agent.agentId;
   access.project.agentVersion = version;
   access.project.updatedAt = nowIso_();
   persistProjectManifest_(access.project);
   syncProjectControl_(access.project, false);
   var conversation = createConversation(projectId, 'New chat — ' + agent.name);
-  return {project:publicProject_(access.project, access.member, getFavoriteIds_().indexOf(projectId)!==-1),agent:publicAgentRelease_(getAgentRelease_(agent.agentId,version).release),conversation:conversation};
+  return {project:publicProject_(access.project, access.member, getFavoriteIds_().indexOf(projectId)!==-1),agent:publicProjectAgent_(resolvedAgent),conversation:conversation};
 }
 
 function syncProjectKnowledgeIndexes(projectId) {

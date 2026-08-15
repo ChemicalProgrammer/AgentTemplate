@@ -408,6 +408,37 @@
     line-height:1.28;
   }
 
+  /* Desktop workspace states always keep at least one working panel visible. */
+  @media (min-width: 761px) {
+    .project-side-panel {
+      opacity:1;
+      transform:none;
+      transition:opacity .2s var(--motion-standard),transform .24s var(--motion-standard),visibility 0s linear 0s;
+    }
+    .project-workspace.side-collapsed {
+      grid-template-columns:0 0 minmax(300px,1fr) 0 0;
+    }
+    .project-workspace.side-collapsed.viewer-open {
+      grid-template-columns:0 0 minmax(300px,1fr) 10px var(--viewer-panel-width);
+    }
+    .project-workspace.side-collapsed #project-panel-grip,
+    .project-workspace.chat-collapsed #project-panel-grip {
+      width:0;
+      opacity:0;
+      pointer-events:none;
+    }
+    .project-workspace.side-collapsed .project-side-panel {
+      visibility:hidden;
+      opacity:0;
+      transform:translateX(-10px) scale(.992);
+      pointer-events:none;
+      transition:opacity .16s var(--motion-standard),transform .2s var(--motion-standard),visibility 0s linear .22s;
+    }
+  }
+  .panel-visibility-btn.is-open-other-panel {
+    background:linear-gradient(135deg,color-mix(in srgb,var(--project-accent) 88%,#fff),color-mix(in srgb,var(--project-accent) 68%,#fff)) !important;
+  }
+
   @media (max-width: 760px) {
     .composer-row { grid-template-columns: minmax(0,1fr) auto;gap: 8px; }
     .composer-row .composer { min-height: 48px;padding: 6px 11px;border-radius: 20px; }
