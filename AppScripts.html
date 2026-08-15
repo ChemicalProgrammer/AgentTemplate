@@ -2486,6 +2486,7 @@
     const identity = {icon:document.getElementById('edit-agent-icon').value || '✦',logoUrl:source.logoUrl || ''};
     const color = document.getElementById('edit-agent-color').value || source.color || 'violet';
     const style = projectColorStyle(color);
+    const editorView = document.getElementById('agent-editor-view'); if (editorView) editorView.setAttribute('style', style);
     const preview = document.getElementById('agent-logo-preview');
     preview.setAttribute('style', style); setIdentityMark_(preview, identity);
     const builder = document.getElementById('agent-identity-builder'); if (builder) builder.setAttribute('style', style);
