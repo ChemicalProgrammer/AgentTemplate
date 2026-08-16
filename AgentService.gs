@@ -22,6 +22,7 @@ function ensureConsoleStructure_(root, forceMigration) {
   var agentsFolder = ensureFolder_(root, APP.AGENTS_FOLDER);
   var projectsFolder = ensureFolder_(root, APP.PROJECTS_FOLDER);
   var systemFolder = ensureFolder_(root, APP.SYSTEM_FOLDER);
+  var fontsFolder = ensureFolder_(systemFolder, APP.FONTS_FOLDER);
   var props = PropertiesService.getScriptProperties();
   var migrated = props.getProperty(APP.PROP_CONSOLE_MIGRATION) === '1';
   if (forceMigration || !migrated) {
@@ -38,7 +39,7 @@ function ensureConsoleStructure_(root, forceMigration) {
     invalidateProjectCaches_('');
   }
   ensureGeneralAgent_(agentsFolder);
-  return {rootId: root.getId(), agentsFolderId: agentsFolder.getId(), projectsFolderId: projectsFolder.getId(), systemFolderId: systemFolder.getId()};
+  return {rootId: root.getId(), agentsFolderId: agentsFolder.getId(), projectsFolderId: projectsFolder.getId(), systemFolderId: systemFolder.getId(), fontsFolderId: fontsFolder.getId()};
 }
 
 function ensureGeneralAgent_(agentsFolder) {

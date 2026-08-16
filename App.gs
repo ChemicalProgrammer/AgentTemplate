@@ -1,8 +1,9 @@
 /** Entry point and browser-facing façade for the Agent Console web app. */
 
 function doGet() {
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate()
+  var template = HtmlService.createTemplateFromFile('Index');
+  template.localFontCss = getLocalFontCss_();
+  return template.evaluate()
     .setTitle('Agent Console')
     .setFaviconUrl('https://www.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);

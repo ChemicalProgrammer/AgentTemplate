@@ -1,10 +1,11 @@
 var APP = Object.freeze({
   NAME: 'Agent Console',
-  VERSION: '2.0.0-review.4-hotfix.8-safe',
+  VERSION: '2.0.0-review.4-hotfix.8',
   ROOT_NAME: 'Agent Console',
   AGENTS_FOLDER: 'Agents',
   PROJECTS_FOLDER: 'Projects',
   SYSTEM_FOLDER: '_System',
+  FONTS_FOLDER: 'Fonts',
   PROP_CONSOLE_MIGRATION: 'CONSOLE_STRUCTURE_V170',
   PROP_ROOT_ID: 'ROOT_FOLDER_ID',
   PROP_ROOT_NAME: 'ROOT_FOLDER_NAME',
