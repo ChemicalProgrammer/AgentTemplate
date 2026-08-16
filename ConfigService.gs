@@ -1,6 +1,6 @@
 var APP = Object.freeze({
   NAME: 'Agent Console',
-  VERSION: '2.0.0-review.4-hotfix.8',
+  VERSION: '2.0.0-review.4-hotfix.9',
   ROOT_NAME: 'Agent Console',
   AGENTS_FOLDER: 'Agents',
   PROJECTS_FOLDER: 'Projects',
@@ -133,11 +133,13 @@ function saveUserGeminiSettings(settings) {
   assertOrganizationMember_();
   settings = settings || {};
   var userProps = PropertiesService.getUserProperties();
-  var apiKey = String(settings.apiKey || userProps.getProperty(APP.USER_API_KEY) || '').trim();
+  var previousApiKey = String(userProps.getProperty(APP.USER_API_KEY) || '').trim();
+  var apiKey = String(settings.apiKey || previousApiKey || '').trim();
   var model = normalizeModel_(settings.model || APP.DEFAULT_MODEL);
   if (!apiKey) throw new Error('Enter a Gemini API key.');
 
   var validation = testGeminiKey_(apiKey, model);
+  if (previousApiKey && previousApiKey !== apiKey) clearAllFileSearchStateForCurrentUser_();
   PropertiesService.getUserProperties().setProperties({
     GEMINI_API_KEY: apiKey,
     GEMINI_MODEL: validation.model || model

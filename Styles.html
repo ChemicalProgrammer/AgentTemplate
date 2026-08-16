@@ -807,4 +807,8 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   }
+
+  /* Hotfix 9: leave a dedicated column for the per-release index repair action. */
+  .release-row{grid-template-columns:auto minmax(0,1fr) repeat(3,auto) auto}
+  @media(max-width:650px){.release-row{grid-template-columns:auto minmax(0,1fr) auto}}
 </style>

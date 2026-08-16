@@ -405,8 +405,28 @@
     renderAgentResourceList_('agent-example-list', assets.examples, 'EX', agent.canEdit);
     renderAgentResourceList_('agent-evaluation-list', assets.evaluations, 'TEST', agent.canEdit);
     const releases = details.versions || [];
-    document.getElementById('agent-release-list').innerHTML = releases.length ? releases.map(release => `<article class="release-row"><span class="version-pill">v${escapeHtml(release.version)}</span><span><strong>${escapeHtml(agent.name)}</strong><small>Published ${formatDate(release.releasedAt)} by ${escapeHtml(shortEmail(release.releasedBy || agent.owner))}</small></span><span class="release-metric"><b>${numberValue(release.sourceCount)}</b>sources</span><span class="release-metric"><b>${numberValue(release.workflowCount)}</b>flows</span><span class="release-metric"><b>${numberValue(release.templateCount)}</b>templates</span></article>`).join('') : '<div class="resource-empty">No published versions yet.</div>';
+    document.getElementById('agent-release-list').innerHTML = releases.length ? releases.map(release => `<article class="release-row"><span class="version-pill">v${escapeHtml(release.version)}</span><span><strong>${escapeHtml(agent.name)}</strong><small>Published ${formatDate(release.releasedAt)} by ${escapeHtml(shortEmail(release.releasedBy || agent.owner))}</small></span><span class="release-metric"><b>${numberValue(release.sourceCount)}</b>sources</span><span class="release-metric"><b>${numberValue(release.workflowCount)}</b>flows</span><span class="release-metric"><b>${numberValue(release.templateCount)}</b>templates</span><button type="button" class="tonal-icon-btn" data-repair-agent-index="${escapeHtml(release.version)}" aria-label="Repair knowledge index for version ${escapeHtml(release.version)}" title="Repair knowledge index for this version"><span class="material-symbols-rounded">sync</span></button></article>`).join('') : '<div class="resource-empty">No published versions yet.</div>';
     document.querySelectorAll('[data-remove-agent-asset]').forEach(button => button.addEventListener('click', () => removeAgentAsset(button.dataset.removeAgentAsset, button)));
+    document.querySelectorAll('[data-repair-agent-index]').forEach(button => button.addEventListener('click', () => repairAgentKnowledgeIndex_(button.dataset.repairAgentIndex, button)));
+  }
+
+  async function repairAgentKnowledgeIndex_(version, button) {
+    if (!state.currentAgentId || !version) return;
+    setBusy(button, true);
+    try {
+      let result = null;
+      for (let pass = 0; pass < 24; pass++) {
+        result = await server('syncAgentKnowledgeIndex', state.currentAgentId, version);
+        const sources = result.sources || [];
+        const active = sources.some(source => ['uploading','indexing'].includes(source.indexStatus));
+        if (!active && !Number(result.remaining || 0)) break;
+        if (!active && !Number(result.processed || 0)) break;
+        await delay(500);
+      }
+      const failed = (result && result.sources || []).filter(source => source.indexStatus === 'failed').length;
+      showToast(failed ? `${failed} knowledge source${failed === 1 ? '' : 's'} still failed. Try the source directly from a project to see its current error.` : `Agent knowledge v${version} is indexed with your active Gemini key.`, Boolean(failed));
+    } catch (error) { showToast(error.message, true); }
+    finally { setBusy(button, false); }
   }
 
   function renderAgentResourceList_(id, items = [], icon, canEdit) {
@@ -1794,6 +1814,7 @@
     container.querySelectorAll('[data-edit-document-note]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openDocumentNoteModal(button.dataset.editDocumentNote); }));
     container.querySelectorAll('[data-index-source]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); indexSingleSource(button.dataset.indexSource, button); }));
     container.querySelectorAll('[data-check-index]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); showIndexDiagnostic(button.dataset.checkIndex, button); }));
+    container.querySelectorAll('[data-repair-agent-source]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); repairProjectAgentSource_(button.dataset.repairAgentSource, button); }));
     container.querySelectorAll('[data-generate-report]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); generateReport(button.dataset.generateReport, button); }));
     container.querySelectorAll('[data-delete-document]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); deleteDocumentNode(button.dataset.deleteDocument, button); }));
     container.querySelectorAll('.document-card').forEach(card => {
@@ -1844,7 +1865,7 @@
       </div>
       <div class="document-card-footer">
         <span class="origin-badge ${originClass}">${escapeHtml(originLabel)}${agentKnowledge ? ` · v${escapeHtml(node.agentVersion || '')}` : ''}</span>
-        ${pendingUpload ? `<span class="index-status ${escapeHtml(node.indexStatus || 'drive_uploading')}"><i></i>${escapeHtml(indexLabel + progressLabel)}</span>` : node.kind === 'source' ? `<button type="button" class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" data-check-index="${escapeHtml(node.sourceId)}" title="Check index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</button>` : agentKnowledge ? `<span class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" title="Agent knowledge index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</span>` : ''}
+        ${pendingUpload ? `<span class="index-status ${escapeHtml(node.indexStatus || 'drive_uploading')}"><i></i>${escapeHtml(indexLabel + progressLabel)}</span>` : node.kind === 'source' ? `<button type="button" class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" data-check-index="${escapeHtml(node.sourceId)}" title="Check index status"><i></i>${escapeHtml(indexLabel + progressLabel)}</button>` : agentKnowledge ? `<button type="button" class="index-status ${escapeHtml(node.indexStatus || 'not_indexed')}" data-repair-agent-source="${escapeHtml(node.sourceId)}" title="Index or repair this inherited agent source"><i></i>${escapeHtml(indexLabel + progressLabel)}</button>` : ''}
         <span class="relation-summary">${pendingUpload ? 'Preparing' : agentKnowledge ? 'Inherited' : relation.parents ? `↑ ${relation.parents}` : 'Root'}${relation.children ? ` · ↓ ${relation.children}` : ''}</span>
       </div>
       ${documentProgressMarkup_(node)}
@@ -2225,7 +2246,7 @@
       const failed = sources.filter(item => item.indexStatus === 'failed').length;
       const unknown = sources.filter(item => item.indexStatus === 'unknown').length;
       const processed = Number((result.project || {}).processed || 0) + Number((result.agent || {}).processed || 0);
-      showToast(failed ? `Index sync completed with ${failed} failed source(s). Project sources show diagnostics; agent knowledge can be repaired from Agents.` : unknown ? `${unknown} source status could not be verified; this does not prove indexing failed.` : result.remaining ? `${processed} source(s) processed; ${result.remaining} remain. Run Sync index again.` : 'Agent knowledge and project sources are indexed.');
+      showToast(failed ? `Index sync completed with ${failed} failed source(s). Click any red status to repair that source with your active Gemini key.` : unknown ? `${unknown} source status could not be verified; this does not prove indexing failed.` : result.remaining ? `${processed} source(s) processed; ${result.remaining} remain. Run Sync index again.` : 'Agent knowledge and project sources are indexed.');
     } catch (error) { showToast(error.message, true); }
     finally { setBusy(button, false); }
   }
@@ -2261,6 +2282,16 @@
     }
     if (result.indexStatus === 'indexing') scheduleSourceIndexPoll_(node.nodeId);
     return result;
+  }
+
+  async function repairProjectAgentSource_(sourceId, button) {
+    setBusy(button, true);
+    try {
+      const result = await continueSingleSourceIndex(sourceId, true);
+      await refreshDocumentGraph();
+      showToast(result.indexStatus === 'failed' ? 'The repair failed again. The card now shows the current Gemini error.' : result.indexStatus === 'ready' ? 'Agent knowledge index repaired.' : 'A clean index was created with your active Gemini key. Processing continues.');
+    } catch (error) { await refreshDocumentGraph(); showToast(error.message, true); }
+    finally { setBusy(button, false); }
   }
 
   function addSourceNodesLocally_(sources) {

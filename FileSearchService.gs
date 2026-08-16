@@ -74,9 +74,16 @@ function indexSourceForCurrentUser_(project, source, force) {
     var cleanupConfig = getUserGeminiConfig_();
     var cleanupStore = current.storeName ? {storeName: current.storeName} : getFileSearchStoreState_(project.projectId, true);
     if (cleanupStore && cleanupStore.storeName) {
-      var deletedNames = deleteFileSearchDocumentsForSource_(cleanupStore.storeName, source, cleanupConfig.apiKey);
-      if (current.documentName && deletedNames.indexOf(current.documentName) === -1) {
-        deleteFileSearchDocumentByName_(current.documentName, cleanupConfig.apiKey);
+      try {
+        var deletedNames = deleteFileSearchDocumentsForSource_(cleanupStore.storeName, source, cleanupConfig.apiKey);
+        if (current.documentName && deletedNames.indexOf(current.documentName) === -1) {
+          deleteFileSearchDocumentByName_(current.documentName, cleanupConfig.apiKey);
+        }
+      } catch (cleanupError) {
+        if (!isFileSearchStoreAccessError_(cleanupError)) throw cleanupError;
+        console.warn('The previous File Search store is unavailable to the active API key. A new per-key store will be created.');
+        clearFileSearchRuntimeStateForCurrentUser_(project.projectId);
+        current = {status: 'not_indexed', stage: 'api_key_changed'};
       }
     }
   }
@@ -137,6 +144,10 @@ function ensureFileSearchStoreUnlocked_(project, config) {
       }
     } catch (storeCheckError) {
       console.warn('The previous File Search store could not be reused: ' + readableErrorMessage_(storeCheckError));
+      if (isFileSearchStoreAccessError_(storeCheckError)) {
+        clearFileSearchRuntimeStateForCurrentUser_(project.projectId);
+        existing = null;
+      }
     }
   }
   var response = fileSearchFetchJson_(FILE_SEARCH_API_ROOT + 'fileSearchStores', {
@@ -620,6 +631,32 @@ function saveFileSearchSourceState_(projectId, sourceId, changes) {
 
 function fileSearchSourcePropertyKey_(projectId, sourceId) {
   return APP.USER_FILE_SEARCH_SOURCE_PREFIX + projectId + '_' + sourceId;
+}
+
+function isFileSearchStoreAccessError_(error) {
+  return /(?:\b403\b|\b404\b|PERMISSION_DENIED|permission to access|do not have permission|not found)/i.test(readableErrorMessage_(error));
+}
+
+/** Clears only the current user's local pointers; Drive files and other users are untouched. */
+function clearFileSearchRuntimeStateForCurrentUser_(projectId) {
+  projectId = String(projectId || '');
+  if (!projectId) return;
+  var props = PropertiesService.getUserProperties();
+  var sourcePrefix = APP.USER_FILE_SEARCH_SOURCE_PREFIX + projectId + '_';
+  Object.keys(props.getProperties()).forEach(function(key) {
+    if (key.indexOf(sourcePrefix) === 0) props.deleteProperty(key);
+  });
+  props.deleteProperty(APP.USER_FILE_SEARCH_STORE_PREFIX + projectId);
+}
+
+/** A Gemini API key owns its own File Search stores, so key changes start cleanly. */
+function clearAllFileSearchStateForCurrentUser_() {
+  var props = PropertiesService.getUserProperties();
+  Object.keys(props.getProperties()).forEach(function(key) {
+    if (key.indexOf(APP.USER_FILE_SEARCH_STORE_PREFIX) === 0 || key.indexOf(APP.USER_FILE_SEARCH_SOURCE_PREFIX) === 0) {
+      props.deleteProperty(key);
+    }
+  });
 }
 
 function applyFileSearchStateToSource_(project, source) {
