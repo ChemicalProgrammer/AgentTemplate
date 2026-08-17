@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('Styles'); ?>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><div class="brandmark">✦</div><div>
+      <div class="title">Docs Assistant</div>
+      <div class="subtitle">Format · Structure · Write with Gemini</div>
+    </div></div>
+    <button class="icon" onclick="openSettings()" title="Settings">⚙</button>
+  </header>
+
+  <div class="tabs">
+    <button id="tabFormat" class="tab active" onclick="showTab('format')">✎ Formatting</button>
+    <button id="tabGemini" class="tab" onclick="showTab('gemini')">✦ Gemini</button>
+  </div>
+
+  <main>
+    <section id="formatPanel">
+      <div class="context" id="selectionContext">Checking selection…</div>
+
+      <div class="group smartFormatGroup">
+        <label>SMART FORMAT</label>
+        <button class="wide btn-fullformat" onclick="fullSmartFormat(event)">✦ Format complete selection</button>
+        <div class="smartHint">Uses local rules for obvious structure and Gemini only for ambiguous paragraphs. Applies Normal text, headings, lists, captions and notes. Actual table objects are skipped.</div>
+      </div>
+
+      <div class="group">
+        <label>TEXT STYLE</label>
+        <button class="wide btn-style" onclick="styleText('NORMAL',event)">Normal text</button>
+        <div class="grid2">
+          <button class="btn-style" onclick="styleText('H1',event)">Heading 1</button><button class="btn-style" onclick="styleText('H2',event)">Heading 2</button>
+          <button class="btn-style" onclick="styleText('H3',event)">Heading 3</button><button class="btn-style" onclick="styleText('H4',event)">Heading 4</button>
+          <button class="btn-style" onclick="styleText('H5',event)">Heading 5</button><button class="btn-style" onclick="styleText('H6',event)">Heading 6</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <label>LISTS</label>
+        <div class="grid4">
+          <button class="btn-list" onclick="list('BULLET',event)">•</button>
+          <button class="btn-list" onclick="list('NUMBER',event)">1.</button>
+          <button class="btn-list" onclick="list('LETTER',event)">a)</button>
+          <button class="btn-list" onclick="list('ROMAN',event)">i.</button>
+        </div>
+        <label class="check"><input id="continueNumbering" type="checkbox"> Continue previous numbering</label>
+        <div class="smartHint listHint">Continue reads the nearest previous matching item. Letters use a), b), c); numbers use 1., 2., 3. List formatting is isolated so nearby heading numbering is not modified.</div>
+      </div>
+
+      <div class="group">
+        <label>PARAGRAPH</label>
+        <div class="grid2">
+          <button class="btn-space" onclick="spacing(6,6,1,event)">Space 6 / 6</button>
+          <button class="btn-space" onclick="spacing(0,0,1.5,event)">Line 1.5</button>
+          <button class="btn-space" onclick="spacing(0,0,2,event)">Double space</button>
+          <button class="btn-space" onclick="keepNext(event)">Keep with next</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <label>TABLE</label>
+        <button class="wide btn-table" onclick="formatTable(event)">▦ Format selected table</button>
+        <div class="smartHint">Formats the table containing the cursor or selection. The first row is treated as the header.</div>
+      </div>
+
+      <div class="group">
+        <label>CAPTIONS & NOTES</label>
+        <div class="grid3 captionActions">
+          <button class="btn-figure" onclick="formatCaption('figure',event)">Figure</button>
+          <button class="btn-tablecaption" onclick="formatCaption('table',event)">Table</button>
+          <button class="btn-note" onclick="formatNote(event)">Note</button>
+        </div>
+        <div class="smartHint">Figure/Table use actual document objects for the consecutive number. Note has no counter.</div>
+
+        <div class="counterPanel">
+          <div class="counterTitle">CAPTION NUMBERING</div>
+
+          <div class="counterItem">
+            <div class="counterTop">
+              <span>Tables</span>
+              <span id="tableCounterState" class="counterState">Document start · 1</span>
+            </div>
+            <div class="counterControls">
+              <input id="tableCounterStart" class="counterNumber" type="number" min="1" step="1" value="1" aria-label="Table start number">
+              <button class="counterSet btn-tablecaption" onclick="setCaptionAnchor('table',event)">Set here</button>
+              <button class="counterClear" onclick="clearCaptionAnchor('table',event)">Clear</button>
+            </div>
+          </div>
+
+          <div class="counterItem">
+            <div class="counterTop">
+              <span>Figures</span>
+              <span id="figureCounterState" class="counterState">Document start · 1</span>
+            </div>
+            <div class="counterControls">
+              <input id="figureCounterStart" class="counterNumber" type="number" min="1" step="1" value="1" aria-label="Figure start number">
+              <button class="counterSet btn-figure" onclick="setCaptionAnchor('figure',event)">Set here</button>
+              <button class="counterClear" onclick="clearCaptionAnchor('figure',event)">Clear</button>
+            </div>
+          </div>
+
+          <button class="wide btn-renumber" onclick="renumberCaptions(event)">↻ Renumber captions</button>
+          <div class="smartHint counterHint">Place the cursor near the first real table/figure to count, choose its starting number, then Set here. Clear returns to counting from the document start.</div>
+        </div>
+      </div>
+
+      <div class="group">
+        <label>BREAKS</label>
+        <select id="breakKind">
+          <option value="PAGE">Page break</option>
+          <option value="SECTION_NEXT">Section break — next page</option>
+          <option value="SECTION_CONTINUOUS">Section break — continuous</option>
+        </select>
+        <button class="wide btn-break" onclick="addBreak(event)">Insert break</button>
+      </div>
+    </section>
+
+    <section id="geminiPanel" class="hidden">
+      <div class="context" id="geminiContext">Checking document context…</div>
+
+      <div class="group">
+        <label>GEMINI ASSISTANT</label>
+        <textarea id="rawText" placeholder="Paste text here, or leave empty to use the selected text…"></textarea>
+        <button class="wide btn-smart" onclick="smartApply(event)">✦ Smart Insert / Replace</button>
+        <div class="smartHint">Automatically detects headings, normal text, lists and tables, then inserts at the cursor or replaces the current selection.</div>
+        <textarea id="instruction" class="smallarea" placeholder="Custom instruction…"></textarea>
+        <button class="wide btn-gemini" onclick="askGemini(event)">✨ Ask Gemini</button>
+      </div>
+
+      <div class="group">
+        <label>QUICK ACTIONS</label>
+        <div class="grid2">
+          <button class="btn-translate" onclick="quick('TRANSLATE_EN',event)">Translate EN</button>
+          <button class="btn-translate" onclick="quick('TRANSLATE_ES',event)">Translate ES</button>
+          <button class="btn-summary" onclick="quick('SUMMARIZE_50',event)">Summarize 50%</button>
+          <button class="btn-summary" onclick="quick('SUMMARIZE_75',event)">Summarize 75%</button>
+          <button class="btn-expand" onclick="quick('EXPAND_125',event)">Expand 125%</button>
+          <button class="btn-expand" onclick="quick('EXPAND_150',event)">Expand 150%</button>
+          <button class="btn-technical" onclick="quick('TECHNICAL',event)">Make technical</button>
+          <button class="btn-technical" onclick="quick('CONCISE',event)">Make concise</button>
+        </div>
+      </div>
+
+      <div id="resultBox" class="group hidden">
+        <label>PREVIEW</label>
+        <textarea id="result" class="result"></textarea>
+        <div class="grid2">
+          <button id="replaceBtn" class="btn-apply" onclick="applyResult('REPLACE',event)">Replace selection</button>
+          <button onclick="applyResult('INSERT',event)">Insert at cursor</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="status"></div>
+  </main>
+</div>
+
+<?!= include('Scripts'); ?>
+</body>
+</html>
