@@ -1,0 +1,22 @@
+{
+  "response_type": "artifact",
+  "event_label": "Decision dashboard ready",
+  "artifact": {
+    "title": "Agent Platform Decision",
+    "artifact_type": "decision_dashboard",
+    "format": "json",
+    "status": "complete",
+    "presentation": {
+      "template_id": "COPY_THE_REGISTERED_TEMPLATE_ID_HERE",
+      "template_name": "JSON_TEMPLATE_EXAMPLE.html"
+    },
+    "content": {
+      "project": {
+        "name": "Custom Console vs. Gemini Gems"
+      },
+      "summary": "The structured data remains reusable independently from its visual presentation.",
+      "recommendation": "Proceed with a controlled pilot and predefined success criteria."
+    }
+  },
+  "next_actions": []
+}

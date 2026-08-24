@@ -562,7 +562,7 @@ function validateAgentDraft_(agent, assets) {
   var errors = []; var warnings = [];
   if (!readAgentInstructions_(agent).trim()) errors.push('System Instructions.md is empty.');
   (assets.workflows || []).forEach(function(asset){if(!/\.md$/i.test(asset.name))errors.push('Workflow must use .md: '+asset.name);});
-  (assets.templates || []).forEach(function(asset){if(TEMPLATE_MIME_TYPES.indexOf(asset.mimeType)===-1)errors.push('Template must be Google Docs, Sheets, or Slides: '+asset.name);});
+  (assets.templates || []).forEach(function(asset){if(TEMPLATE_MIME_TYPES.indexOf(asset.mimeType)===-1&&!isHtmlPresentationTemplate_(asset))errors.push('Template must be Google Docs, Sheets, Slides, or HTML: '+asset.name);});
   (assets.mandatoryKnowledge || []).concat(assets.optionalKnowledge || []).forEach(function(asset){if(Number(asset.size||0)>APP.MAX_FILE_SEARCH_BYTES)errors.push('Knowledge source exceeds 100 MB: '+asset.name);});
   if (!(assets.mandatoryKnowledge || []).length && !(assets.optionalKnowledge || []).length) warnings.push('This agent has no knowledge sources and will rely on project context.');
   if (!(assets.evaluations || []).length) warnings.push('No evaluation cases are defined.');
@@ -596,7 +596,7 @@ function resolveAgentAssetTarget_(agent, assetType, knowledgeMode) {
 
 function validateAgentAssetFile_(assetType, file) {
   if (assetType === 'workflow' && !/\.md$/i.test(file.getName())) throw new Error('Agent workflows must be Markdown .md files.');
-  if (assetType === 'template' && TEMPLATE_MIME_TYPES.indexOf(file.getMimeType()) === -1) throw new Error('Agent templates must be Google Docs, Sheets, or Slides files.');
+  if (assetType === 'template' && TEMPLATE_MIME_TYPES.indexOf(file.getMimeType()) === -1 && !isHtmlPresentationTemplate_({mimeType:file.getMimeType(),name:file.getName()})) throw new Error('Agent templates must be Google Docs, Sheets, Slides, or HTML files.');
 }
 
 function buildAvailableFolderName_(parent, preferred) {

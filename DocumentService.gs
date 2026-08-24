@@ -59,8 +59,12 @@ function listProjectDocuments(projectId) {
         selectedByDefault: false,
           sourceConversation: document.sourceConversation || '',
           artifactType: document.artifactType || '',
+          artifactFormat: document.artifactFormat || '',
           artifactStatus: document.artifactStatus || '',
           artifactVersion: Number(document.artifactVersion || 0),
+          presentationTemplateId: document.presentationTemplateId || '',
+          presentationTemplateName: document.presentationTemplateName || '',
+          presentationTemplateOrigin: document.presentationTemplateOrigin || '',
           workflowId: document.workflowId || '',
           url: document.url
       });
@@ -101,8 +105,12 @@ function listGeneratedDocumentsForProject_(project, includePdfs, allowRepair) {
       createdBy: record.createdBy || '',
       sourceConversation: record.sourceConversation || '',
       artifactType: record.artifactType || '',
+      artifactFormat: record.artifactFormat || '',
       artifactStatus: record.artifactStatus || '',
       artifactVersion: Number(record.artifactVersion || 0),
+      presentationTemplateId: record.presentationTemplateId || '',
+      presentationTemplateName: record.presentationTemplateName || '',
+      presentationTemplateOrigin: record.presentationTemplateOrigin || '',
       workflowId: record.workflowId || ''
     };
   }).sort(function(a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
@@ -155,6 +163,14 @@ function createDocumentFromText(projectId, title, content, parentIds) {
   return publicGeneratedFile_(file, 'generated', normalizedParents, 'manual');
 }
 
+function createAgentArtifact_(project, accessEmail, conversation, artifact, model) {
+  artifact = artifact || {};
+  var format = String(artifact.format || 'markdown').trim().toLowerCase();
+  return format === 'json'
+    ? createJsonArtifact_(project, accessEmail, conversation, artifact, model)
+    : createMarkdownArtifact_(project, accessEmail, conversation, artifact, model);
+}
+
 function createMarkdownArtifact_(project, accessEmail, conversation, artifact, model) {
   artifact = artifact || {};
   var content = sanitizeText_(artifact.content, 300000).trim();
@@ -183,10 +199,60 @@ function createMarkdownArtifact_(project, accessEmail, conversation, artifact, m
     sourceConversation: conversation.conversationId,
     note: sanitizeText_(artifact.note || '', 1200).trim(),
     artifactType: artifactType,
+    artifactFormat: 'markdown',
     artifactStatus: sanitizeText_(artifact.status || 'complete', 40).trim(),
     artifactVersion: version,
     workflowId: workflowId,
     model: normalizeModel_(model || conversation.model || APP.DEFAULT_MODEL)
+  };
+  var record = recordGeneratedDocument_(project, file, metadata);
+  appendControlRow_(project, 'Documents', [file.getId(), file.getName(), file.getMimeType(), nowIso_(), accessEmail, file.getId(), conversation.conversationId, metadata.note]);
+  incrementGeneratedDocumentCount_(project.projectId || conversation.projectId, project);
+  var result = publicGeneratedFile_(file, 'artifact', parentIds, conversation.conversationId, record);
+  result.nodeId = 'document:' + file.getId();
+  return result;
+}
+
+function createJsonArtifact_(project, accessEmail, conversation, artifact, model) {
+  artifact = artifact || {};
+  var data = artifact.content;
+  if (typeof data === 'string') data = safeJsonParse_(data, null);
+  if (data == null || typeof data !== 'object') throw new Error('The JSON artifact did not contain a valid object or array.');
+  var artifactType = normalizeArtifactType_(artifact.artifactType || artifact.artifact_type || 'json_artifact');
+  var title = normalizeName_(artifact.title, artifactTitleForType_(artifactType));
+  var index = readDocumentIndex_(project);
+  var previous = index.documents.filter(function(record) {
+    return record.sourceConversation === conversation.conversationId && record.artifactType === artifactType;
+  }).sort(function(a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
+  var version = previous.length ? Number(previous[0].artifactVersion || previous.length) + 1 : 1;
+  var fileName = title.replace(/\.json$/i, '') + (version > 1 ? ' - v' + version : '') + '.json';
+  var parentIds = resolveArtifactParentIds_(
+    project,
+    conversation,
+    artifact.parentIds || artifact.parent_ids || [],
+    artifact.parentArtifactType || artifact.parent_artifact_type || ''
+  );
+  var presentation = artifact.presentation || {};
+  var template = resolveJsonPresentationTemplate_(project, presentation);
+  var jsonText = JSON.stringify(data, null, 2);
+  var folder = DriveApp.getFolderById(project.folders.documents);
+  var file = folder.createFile(Utilities.newBlob(jsonText, 'application/json', fileName));
+  var workflowId = sanitizeText_(artifact.workflowId || artifact.workflow_id || conversation.workflowId || conversation.conversationId, 120).trim();
+  var metadata = {
+    kind: 'artifact',
+    parentIds: parentIds,
+    createdBy: accessEmail,
+    sourceConversation: conversation.conversationId,
+    note: sanitizeText_(artifact.note || '', 1200).trim(),
+    artifactType: artifactType,
+    artifactFormat: 'json',
+    artifactStatus: sanitizeText_(artifact.status || 'complete', 40).trim(),
+    artifactVersion: version,
+    workflowId: workflowId,
+    model: normalizeModel_(model || conversation.model || APP.DEFAULT_MODEL),
+    presentationTemplateId: template ? template.templateId : '',
+    presentationTemplateName: template ? template.name : '',
+    presentationTemplateOrigin: template ? template.origin : ''
   };
   var record = recordGeneratedDocument_(project, file, metadata);
   appendControlRow_(project, 'Documents', [file.getId(), file.getName(), file.getMimeType(), nowIso_(), accessEmail, file.getId(), conversation.conversationId, metadata.note]);
@@ -207,6 +273,30 @@ function getDocumentPreview(projectId, nodeId) {
   if (textMode) {
     if (Number(file.getSize() || 0) > 2 * 1024 * 1024) throw new Error('The text preview is limited to 2 MB. Open this file in Drive instead.');
     var text = file.getBlob().getDataAsString('UTF-8');
+    if (/\.json$/i.test(lowerName) || mimeType === 'application/json') {
+      var data = safeJsonParse_(text, null);
+      var templateId = resolved.record && resolved.record.presentationTemplateId || '';
+      if (data != null && templateId) {
+        try {
+          var template = resolveJsonPresentationTemplate_(resolved.project, {templateId:templateId});
+          if (template) {
+            return {
+              nodeId: resolved.nodeId,
+              name: name,
+              mimeType: mimeType,
+              mode: 'templated_json',
+              text: text,
+              renderedHtml: renderJsonArtifactWithTemplate_(template, data),
+              presentation: {templateId:template.templateId, templateName:template.name, origin:template.origin},
+              url: file.getUrl()
+            };
+          }
+        } catch (templateError) {
+          return {nodeId:resolved.nodeId, name:name, mimeType:mimeType, mode:'json', text:text, presentationError:readableErrorMessage_(templateError), url:file.getUrl()};
+        }
+      }
+      return {nodeId: resolved.nodeId, name: name, mimeType: mimeType, mode: 'json', text: text, url: file.getUrl()};
+    }
     var mode = /\.(md|markdown)$/i.test(lowerName) ? 'markdown' : /\.html?$/i.test(lowerName) || mimeType === 'text/html' ? 'html' : 'text';
     return {nodeId: resolved.nodeId, name: name, mimeType: mimeType, mode: mode, text: text, url: file.getUrl()};
   }
@@ -325,8 +415,12 @@ function recordGeneratedDocument_(project, file, metadata) {
     createdBy: metadata.createdBy || record && record.createdBy || '',
     sourceConversation: metadata.sourceConversation || record && record.sourceConversation || '',
     artifactType: normalizeArtifactType_(metadata.artifactType || record && record.artifactType || ''),
+    artifactFormat: metadata.artifactFormat || record && record.artifactFormat || '',
     artifactStatus: metadata.artifactStatus || record && record.artifactStatus || '',
     artifactVersion: Number(metadata.artifactVersion || record && record.artifactVersion || 0),
+    presentationTemplateId: metadata.presentationTemplateId || record && record.presentationTemplateId || '',
+    presentationTemplateName: metadata.presentationTemplateName || record && record.presentationTemplateName || '',
+    presentationTemplateOrigin: metadata.presentationTemplateOrigin || record && record.presentationTemplateOrigin || '',
     workflowId: metadata.workflowId || record && record.workflowId || '',
     model: metadata.model || record && record.model || '',
     note: metadata.note != null ? sanitizeText_(metadata.note, 1200).trim() : record && record.note || '',
@@ -418,7 +512,9 @@ function publicGeneratedFile_(file, kind, parentIds, sourceConversation, metadat
     updatedAt: file.getLastUpdated().toISOString(), kind: kind || 'generated',
     parentIds: normalizeDocumentParentIds_(parentIds), sourceConversation: sourceConversation || '', note: metadata.note || '',
     artifactType: metadata.artifactType || '', artifactStatus: metadata.artifactStatus || '',
-    artifactVersion: Number(metadata.artifactVersion || 0), workflowId: metadata.workflowId || '', model: metadata.model || ''
+    artifactFormat: metadata.artifactFormat || '', artifactVersion: Number(metadata.artifactVersion || 0), workflowId: metadata.workflowId || '', model: metadata.model || '',
+    presentationTemplateId: metadata.presentationTemplateId || '', presentationTemplateName: metadata.presentationTemplateName || '',
+    presentationTemplateOrigin: metadata.presentationTemplateOrigin || ''
   };
 }
 

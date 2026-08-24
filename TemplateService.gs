@@ -1,5 +1,5 @@
 var TEMPLATE_INDEX_FILE = 'Templates Index.json';
-var TEMPLATE_MIME_TYPES = [MimeType.GOOGLE_DOCS, MimeType.GOOGLE_SHEETS, MimeType.GOOGLE_SLIDES];
+var TEMPLATE_MIME_TYPES = [MimeType.GOOGLE_DOCS, MimeType.GOOGLE_SHEETS, MimeType.GOOGLE_SLIDES, 'text/html'];
 
 function listTemplates(projectId) {
   var access = assertProjectAccess_(projectId, 'documents');
@@ -25,8 +25,8 @@ function addTemplateFromDrive(projectId, driveUrlOrId) {
   }
   if (original.isTrashed()) throw new Error('The selected template is in Drive trash.');
   var mimeType = original.getMimeType();
-  if (TEMPLATE_MIME_TYPES.indexOf(mimeType) === -1) {
-    throw new Error('Templates must be Google Docs, Google Sheets, or Google Slides files.');
+  if (TEMPLATE_MIME_TYPES.indexOf(mimeType) === -1 && !isHtmlPresentationTemplate_({mimeType:mimeType, name:original.getName()})) {
+    throw new Error('Templates must be Google Docs, Google Sheets, Google Slides, or HTML files.');
   }
   var copy;
   try {
@@ -71,6 +71,71 @@ function selectReportTemplate(projectId, templateId) {
     PropertiesService.getUserProperties().deleteProperty(APP.USER_TEMPLATE_PREFIX + projectId);
   }
   return {projectId: projectId, templateId: templateId};
+}
+
+function listJsonPresentationTemplatesForProject_(project) {
+  var projectTemplates = readTemplateIndex_(project).templates.filter(function(template) {
+    return template.status !== 'removed';
+  });
+  return projectTemplates.concat(listAgentTemplatesForProject_(project)).filter(isHtmlPresentationTemplate_).map(function(template) {
+    return {
+      templateId: String(template.templateId || template.assetId || ''),
+      name: template.name || 'HTML presentation',
+      driveId: template.driveId || '',
+      mimeType: template.mimeType || 'text/html',
+      origin: template.origin || (template.readOnly ? 'agent' : 'project')
+    };
+  });
+}
+
+function resolveJsonPresentationTemplate_(project, presentation) {
+  presentation = presentation || {};
+  var requestedId = String(presentation.templateId || presentation.template_id || '').trim();
+  var requestedName = String(presentation.templateName || presentation.template_name || '').trim().toLowerCase();
+  var templates = listJsonPresentationTemplatesForProject_(project);
+  var selectedId = PropertiesService.getUserProperties().getProperty(APP.USER_TEMPLATE_PREFIX + project.projectId) || '';
+  var match = templates.filter(function(template) {
+    return requestedId && template.templateId === requestedId;
+  })[0] || templates.filter(function(template) {
+    return requestedName && String(template.name || '').toLowerCase() === requestedName;
+  })[0] || templates.filter(function(template) {
+    return !requestedId && !requestedName && selectedId && template.templateId === selectedId;
+  })[0] || null;
+  if ((requestedId || requestedName) && !match) {
+    throw new Error('The JSON artifact requested an HTML presentation template that is not available in this project.');
+  }
+  return match;
+}
+
+function renderJsonArtifactWithTemplate_(template, data) {
+  if (!template || !template.driveId) throw new Error('The HTML presentation template is unavailable.');
+  var file = DriveApp.getFileById(template.driveId);
+  if (!isHtmlPresentationTemplate_({mimeType:file.getMimeType(), name:file.getName()})) {
+    throw new Error('The selected JSON presentation template is not an HTML file.');
+  }
+  if (Number(file.getSize() || 0) > 1024 * 1024) throw new Error('HTML presentation templates are limited to 1 MB.');
+  var html = file.getBlob().getDataAsString('UTF-8');
+  return html.replace(/\{\{\s*([A-Za-z0-9_.-]+|ARTIFACT_JSON)\s*\}\}/g, function(token, path) {
+    var value = path === 'ARTIFACT_JSON' ? JSON.stringify(data, null, 2) : jsonTemplateValueAtPath_(data, path);
+    if (value == null) return '';
+    if (typeof value === 'object') value = JSON.stringify(value, null, 2);
+    return escapeJsonTemplateHtml_(String(value));
+  });
+}
+
+function isHtmlPresentationTemplate_(template) {
+  return String(template && template.mimeType || '').toLowerCase() === 'text/html' || /\.html?$/i.test(String(template && template.name || ''));
+}
+
+function jsonTemplateValueAtPath_(data, path) {
+  return String(path || '').split('.').reduce(function(value, key) {
+    if (value == null || typeof value !== 'object' || !Object.prototype.hasOwnProperty.call(value, key)) return undefined;
+    return value[key];
+  }, data);
+}
+
+function escapeJsonTemplateHtml_(value) {
+  return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function removeTemplate(projectId, templateId) {

@@ -1644,7 +1644,7 @@
     const content = document.getElementById('document-viewer-content');
     const tabs = document.getElementById('document-viewer-tabs');
     const rawButton = tabs.querySelector('[data-preview-mode="raw"]');
-    const textPreview = preview.mode === 'markdown' || preview.mode === 'html' || preview.mode === 'text';
+    const textPreview = preview.mode === 'markdown' || preview.mode === 'html' || preview.mode === 'text' || preview.mode === 'json' || preview.mode === 'templated_json';
     rawButton.disabled = !textPreview; if (!textPreview) state.documentPreviewMode = 'preview';
     tabs.querySelectorAll('[data-preview-mode]').forEach(button => button.classList.toggle('active', button.dataset.previewMode === state.documentPreviewMode));
     content.className = 'document-viewer-content'; content.innerHTML = '';
@@ -1652,10 +1652,13 @@
       content.classList.add('raw-preview'); content.textContent = preview.text || ''; return;
     }
     if (preview.mode === 'markdown') { content.innerHTML = formatMarkdown(preview.text || ''); bindRenderedMessageActions_(content); return; }
+    if (preview.mode === 'templated_json') {
+      content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.setAttribute('sandbox', ''); frame.srcdoc = sanitizeHtmlPreview_(preview.renderedHtml || ''); frame.title = `${preview.name} · ${preview.presentation && preview.presentation.templateName || 'HTML template'}`; content.appendChild(frame); return;
+    }
     if (preview.mode === 'html') {
       content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.setAttribute('sandbox', ''); frame.srcdoc = sanitizeHtmlPreview_(preview.text || ''); content.appendChild(frame); return;
     }
-    if (preview.mode === 'text') { content.classList.add('raw-preview'); content.textContent = preview.text || ''; return; }
+    if (preview.mode === 'text' || preview.mode === 'json') { content.classList.add('raw-preview'); content.textContent = preview.text || ''; if (preview.presentationError) showToast(preview.presentationError, true); return; }
     content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.src = preview.previewUrl; frame.title = preview.name; frame.setAttribute('allowfullscreen', ''); content.appendChild(frame);
   }
 
