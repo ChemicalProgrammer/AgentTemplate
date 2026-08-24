@@ -322,6 +322,16 @@
   .message-context-audit.verified { color:#176b3a;border-color:#cfe8d8;background:#f0faf3; }
   .message-context-audit::before { content:"info";flex:0 0 auto;font-family:"Material Icons Round";font-size:18px;line-height:1; }
   .message-context-empty { margin:0;color:#7a8796;font-size:var(--font-size-9); }
+  .message-performance { padding:14px;border:1px solid #dce4ed;border-radius:16px;background:linear-gradient(145deg,#f8fafc,#f1f5f9); }
+  .message-performance > h3 { justify-content:space-between; }
+  .message-performance-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+  .message-performance-grid > div { min-width:0;display:grid;gap:3px;padding:10px;border:1px solid #e1e8f0;border-radius:12px;background:rgba(255,255,255,.8); }
+  .message-performance-grid small { color:#66758a;font-size:var(--font-size-7);font-weight:750;letter-spacing:.02em; }
+  .message-performance-grid strong { color:#263442;font-size:var(--font-size-12);font-variant-numeric:tabular-nums; }
+  .message-performance-details { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:2px 0 0; }
+  .message-performance-details > div { min-width:0;display:grid;gap:2px;padding-top:8px;border-top:1px solid #dce4ed; }
+  .message-performance-details dt { color:#66758a;font-size:var(--font-size-7);font-weight:800;letter-spacing:.05em;text-transform:uppercase; }
+  .message-performance-details dd { min-width:0;margin:0;overflow-wrap:anywhere;color:#334155;font-size:var(--font-size-9);font-weight:700; }
 
   /* Secondary windows use the same flat, contextual visual system as the app. */
   .modal-backdrop {
@@ -445,6 +455,7 @@
     .composer-footer > .chat-model-select { min-width: 0;width:100%; }
     .message-context-summary { grid-template-columns:1fr; }
     .message-context-summary dl { justify-content:space-between; }
+    .message-performance-details { grid-template-columns:1fr; }
     .modal-backdrop { padding:12px; }
     .modal { max-height:calc(100dvh - 24px);padding:26px 20px 28px; }
     .emoji-modal { height:min(720px,calc(100dvh - 24px)); }

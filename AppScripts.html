@@ -1332,7 +1332,78 @@
 
   function renderThinkingMessage(stopping) {
     const agent = state.projectAgent || {icon:'✦',name:'Agent'};
-    return `<article id="agent-thinking" class="message assistant thinking-message" style="${identityColorStyle_(agent)}"><div class="message-header">${identityMarkHtml_(agent, 'message-avatar')}<span>${escapeHtml(agent.name || 'Agent')}</span></div><div class="thinking-body"><span>${stopping ? 'Stopping response…' : 'Working with your project context'}</span><span class="thinking-dots"><i></i><i></i><i></i><i></i></span></div></article>`;
+    const request = state.activeRequest || {};
+    const status = request.status || {};
+    const label = stopping ? 'Stopping response…' : status.label || 'Starting the request';
+    const detail = stopping ? 'Gemini may finish the active HTTP request before it can stop.' : thinkingStatusDetail_(status);
+    return `<article id="agent-thinking" class="message assistant thinking-message" style="${identityColorStyle_(agent)}"><div class="message-header">${identityMarkHtml_(agent, 'message-avatar')}<span>${escapeHtml(agent.name || 'Agent')}</span></div><div class="thinking-body"><div class="thinking-progress"><div class="thinking-copy"><span id="thinking-status-label">${escapeHtml(label)}</span><small id="thinking-status-detail">${escapeHtml(detail)}</small></div><time id="thinking-elapsed" datetime="PT0S">${formatElapsedTime_(request.startedAtMs ? Date.now() - request.startedAtMs : 0)}</time></div><span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div></article>`;
+  }
+
+  function thinkingStatusDetail_(status) {
+    const details = status && status.details || {};
+    if (status && status.phase === 'gemini') return details.fileSearchUsed ? 'Gemini is retrieving indexed evidence before generating.' : 'Gemini is generating the response.';
+    if (status && status.phase === 'sources') return `${numberValue(details.selectedSourceCount || 0)} selected source${numberValue(details.selectedSourceCount || 0) === 1 ? '' : 's'} are being prepared.`;
+    if (status && status.phase === 'memory') return 'Older messages are being condensed into project memory.';
+    if (status && status.phase === 'artifact') return 'The response is being checked for a generated artifact.';
+    if (status && /^saving_/.test(status.phase || '')) return 'Conversation data is being written safely to Drive.';
+    return 'Elapsed time is shown while the server completes this stage.';
+  }
+
+  function formatElapsedTime_(elapsedMs) {
+    const totalSeconds = Math.max(0, Math.floor(Number(elapsedMs || 0) / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+  }
+
+  function startChatStatusTracking_(request) {
+    if (!request) return;
+    request.startedAtMs = Date.now();
+    request.status = {status:'pending',phase:'starting',label:'Starting the request',details:{}};
+    const refreshElapsed = () => {
+      if (state.activeRequest !== request) return stopChatStatusTracking_(request);
+      updateThinkingStatus_(request);
+    };
+    request.elapsedTimer = setInterval(refreshElapsed, 500);
+    request.statusTimer = setInterval(() => pollChatRequestStatus_(request), 1800);
+    pollChatRequestStatus_(request);
+  }
+
+  function stopChatStatusTracking_(request) {
+    if (!request) return;
+    if (request.elapsedTimer) clearInterval(request.elapsedTimer);
+    if (request.statusTimer) clearInterval(request.statusTimer);
+    request.elapsedTimer = null;
+    request.statusTimer = null;
+  }
+
+  async function pollChatRequestStatus_(request) {
+    if (!request || request.statusPollInFlight || state.activeRequest !== request || request.phase !== 'waiting') return;
+    request.statusPollInFlight = true;
+    try {
+      const status = await server('getChatRequestStatus', request.id);
+      if (state.activeRequest !== request || !status) return;
+      request.status = status;
+      updateThinkingStatus_(request);
+    } catch (_) {
+      // The primary request remains authoritative; a missed progress poll is harmless.
+    } finally {
+      request.statusPollInFlight = false;
+    }
+  }
+
+  function updateThinkingStatus_(request) {
+    if (!request) return;
+    const label = document.getElementById('thinking-status-label');
+    const detail = document.getElementById('thinking-status-detail');
+    const elapsed = document.getElementById('thinking-elapsed');
+    if (label) label.textContent = request.cancelled ? 'Stopping response…' : request.status && request.status.label || 'Working with your project context';
+    if (detail) detail.textContent = request.cancelled ? 'Gemini may finish the active HTTP request before it can stop.' : thinkingStatusDetail_(request.status || {});
+    if (elapsed) {
+      const elapsedMs = request.startedAtMs ? Date.now() - request.startedAtMs : Number(request.status && request.status.elapsedMs || 0);
+      elapsed.textContent = formatElapsedTime_(elapsedMs);
+      elapsed.setAttribute('datetime', `PT${Math.max(0,Math.floor(elapsedMs / 1000))}S`);
+    }
   }
 
   async function copyMessage(messageId, button) {
@@ -1430,10 +1501,44 @@
           : 'Gemini returned no source citation for this response.';
       auditHtml = `<p class="message-context-audit ${verifiedSources.length ? 'verified' : ''}">${escapeHtml(auditText)}</p>`;
     }
+    const performanceHtml = assistant ? messagePerformanceHtml_(message) : '';
     document.getElementById('message-context-title').textContent = assistant ? 'Response evidence' : 'Request details';
     document.getElementById('message-context-description').textContent = assistant ? 'Retrieval evidence and supplied context are saved privately with the response.' : 'This information was saved with the message and is not added to the visible conversation.';
-    document.getElementById('message-context-content').innerHTML = `<div class="message-context-summary"><div class="message-context-agent">${identityMarkHtml_(agent,'message-context-agent-mark')}<div><small>Agent</small><strong>${escapeHtml(savedAgentName)}</strong><span>${savedAgentVersion ? `Version ${escapeHtml(savedAgentVersion)}` : 'Version unavailable'}</span></div></div><dl><div><dt>Model</dt><dd>${escapeHtml(message.model || state.currentConversation.model || 'Unavailable')}</dd></div><div><dt>${assistant ? 'Created' : 'Sent'}</dt><dd>${escapeHtml(formatDateTime(message.createdAt))}</dd></div></dl></div>${auditHtml}<section><h3>${assistant ? 'Response sources' : 'Selected sources'} <span>${numberValue(sources.length)}</span></h3>${sourceHtml}</section><section><h3>${assistant ? 'Applied procedures' : 'Selected procedures'} <span>${numberValue(flows.length)}</span></h3>${flowHtml}</section>`;
+    document.getElementById('message-context-content').innerHTML = `<div class="message-context-summary"><div class="message-context-agent">${identityMarkHtml_(agent,'message-context-agent-mark')}<div><small>Agent</small><strong>${escapeHtml(savedAgentName)}</strong><span>${savedAgentVersion ? `Version ${escapeHtml(savedAgentVersion)}` : 'Version unavailable'}</span></div></div><dl><div><dt>Model</dt><dd>${escapeHtml(message.model || state.currentConversation.model || 'Unavailable')}</dd></div><div><dt>${assistant ? 'Created' : 'Sent'}</dt><dd>${escapeHtml(formatDateTime(message.createdAt))}</dd></div></dl></div>${auditHtml}${performanceHtml}<section><h3>${assistant ? 'Response sources' : 'Selected sources'} <span>${numberValue(sources.length)}</span></h3>${sourceHtml}</section><section><h3>${assistant ? 'Applied procedures' : 'Selected procedures'} <span>${numberValue(flows.length)}</span></h3>${flowHtml}</section>`;
     openModal('message-context-modal');
+  }
+
+  function messagePerformanceHtml_(message) {
+    const diagnostics = message && message.diagnostics;
+    if (!diagnostics || !diagnostics.timings) return '';
+    const timings = diagnostics.timings || {};
+    const contextMs = numberValue(timings.loading) + numberValue(timings.sources) + numberValue(timings.prompt);
+    const saveMs = numberValue(timings.saving_request) + numberValue(timings.saving_response);
+    const usage = diagnostics.usage || message.usage || {};
+    const inputTokens = firstNumber_(usage, ['promptTokenCount','inputTokenCount','input_tokens','inputTokens']);
+    const outputTokens = firstNumber_(usage, ['candidatesTokenCount','outputTokenCount','output_tokens','outputTokens']);
+    const thoughtTokens = firstNumber_(usage, ['thoughtsTokenCount','thoughtTokenCount','thought_tokens','thoughtTokens']);
+    const tokenSummary = [inputTokens ? `${numberValue(inputTokens)} input` : '',thoughtTokens ? `${numberValue(thoughtTokens)} thought` : '',outputTokens ? `${numberValue(outputTokens)} output` : ''].filter(Boolean).join(' · ') || 'Not reported';
+    const cards = [
+      ['Total before final return',formatDiagnosticDuration_(diagnostics.totalMs)],
+      ['Gemini',formatDiagnosticDuration_(timings.gemini)],
+      ['Context preparation',formatDiagnosticDuration_(contextMs)],
+      ['Drive persistence',formatDiagnosticDuration_(saveMs)]
+    ];
+    if (numberValue(timings.memory)) cards.push(['Memory refresh',formatDiagnosticDuration_(timings.memory)]);
+    return `<section class="message-performance"><h3>Performance <span>Private</span></h3><div class="message-performance-grid">${cards.map(card => `<div><small>${escapeHtml(card[0])}</small><strong>${escapeHtml(card[1])}</strong></div>`).join('')}</div><dl class="message-performance-details"><div><dt>Retrieval</dt><dd>${diagnostics.fileSearchUsed ? 'Gemini File Search' : 'Prepared context'}</dd></div><div><dt>Prompt size</dt><dd>${numberValue(diagnostics.promptCharacters || 0)} characters</dd></div><div><dt>Tokens</dt><dd>${escapeHtml(tokenSummary)}</dd></div></dl></section>`;
+  }
+
+  function firstNumber_(object, keys) {
+    for (const key of keys || []) if (Number(object && object[key]) > 0) return Number(object[key]);
+    return 0;
+  }
+
+  function formatDiagnosticDuration_(milliseconds) {
+    const value = Math.max(0, Number(milliseconds || 0));
+    if (value < 1000) return `${Math.round(value)} ms`;
+    if (value < 60000) return `${(value / 1000).toFixed(value < 10000 ? 1 : 0)} s`;
+    return `${Math.floor(value / 60000)}m ${Math.round(value % 60000 / 1000)}s`;
   }
 
   async function deleteMessageFromConversation(messageId, button) {
@@ -1532,6 +1637,7 @@
       input.value = ''; autoSizeComposer();
       const request = {id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`, cancelled: false, phase: 'waiting', displayedText: ''};
       state.activeRequest = request;
+      startChatStatusTracking_(request);
       const selection = Array.from(state.selectedSources);
       const flowSelection = Array.from(state.selectedFlows);
       const contextSnapshot = buildMessageContextSnapshot_(selection, flowSelection);
@@ -1548,6 +1654,7 @@
       state.currentConversation.messages.push(result.userMessage);
       const artifactEvent = result.assistantMessage.kind === 'artifact_event';
       const assistantMessage = artifactEvent ? Object.assign({}, result.assistantMessage) : Object.assign({}, result.assistantMessage, {text: '', isTyping: true});
+      if (result.diagnostics) assistantMessage.diagnostics = result.diagnostics;
       state.currentConversation.messages.push(assistantMessage); state.currentConversation.title = result.title; state.currentConversation.sourceSelection = selection; state.currentConversation.flowSelection = flowSelection;
       state.currentConversation.model = state.currentChatModel;
       state.conversationSelections.set(result.conversationId, selection);
@@ -1577,7 +1684,7 @@
     } catch (error) {
       await syncCurrentConversation();
       showToast(state.activeRequest && state.activeRequest.cancelled ? 'Response stopped.' : error.message, !(state.activeRequest && state.activeRequest.cancelled));
-    } finally { state.busy = false; state.activeRequest = null; setAgentBusy(false); input.focus(); }
+    } finally { stopChatStatusTracking_(state.activeRequest); state.busy = false; state.activeRequest = null; setAgentBusy(false); input.focus(); }
   }
 
   function stopResponse() {

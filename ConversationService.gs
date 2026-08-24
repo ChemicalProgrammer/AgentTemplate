@@ -40,6 +40,27 @@ function loadConversation(projectId, conversationId) {
 }
 
 function sendChatMessage(projectId, conversationId, message, selectedSourceIds, selectedFlowIds, requestId, modelOverride, contextSnapshot) {
+  var trace = beginChatExecutionTrace_(requestId, {
+    projectId: projectId,
+    conversationId: conversationId || '',
+    selectedSourceCount: Array.isArray(selectedSourceIds) ? selectedSourceIds.length : 0,
+    selectedFlowCount: Array.isArray(selectedFlowIds) ? selectedFlowIds.length : 0,
+    requestedModel: normalizeModel_(modelOverride || '')
+  });
+  try {
+    var response = sendChatMessageInternal_(projectId, conversationId, message, selectedSourceIds, selectedFlowIds, requestId, modelOverride, contextSnapshot, trace);
+    var diagnostics = finishChatExecutionTrace_(trace, 'complete', 'Response ready');
+    response.diagnostics = diagnostics;
+    if (response.assistantMessage) response.assistantMessage.diagnostics = diagnostics;
+    return response;
+  } catch (error) {
+    failChatExecutionTrace_(trace, error);
+    throw error;
+  }
+}
+
+function sendChatMessageInternal_(projectId, conversationId, message, selectedSourceIds, selectedFlowIds, requestId, modelOverride, contextSnapshot, trace) {
+  markChatExecutionPhase_(trace, 'loading', 'Opening the project and conversation');
   var access = assertProjectEdit_(projectId, 'history');
   var text = sanitizeText_(message, 20000).trim();
   if (!text) throw new Error('Enter a message.');
@@ -55,9 +76,11 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   conversation.model = normalizeModel_(modelOverride || conversation.model || getPublicUserGeminiSettings_().model || APP.DEFAULT_MODEL);
 
   if (isStandaloneAcceptCanvasCommand_(text)) {
-    return acceptLatestCanvas_(access, conversation, text, requestId, contextSnapshot);
+    markChatExecutionPhase_(trace, 'artifact', 'Creating the accepted Canvas artifact', {artifactRequested: true});
+    return acceptLatestCanvas_(access, conversation, text, requestId, contextSnapshot, trace);
   }
 
+  markChatExecutionPhase_(trace, 'sources', 'Preparing the selected sources');
   var projectContext = {text: '', inlineParts: [], sourcesUsed: [], warnings: [], selectedIds: []};
   var projectFileSearch = access.allowed.sources ? getFileSearchQueryConfig_(access.project, selectedSourceIds || []) : null;
   var agentFileSearch = access.allowed.sources ? getAgentFileSearchQueryConfig_(access.project, selectedSourceIds || []) : null;
@@ -88,10 +111,20 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
     throw new Error('None of the selected documents is still active and available. Refresh the Documents panel and select a current source.');
   }
   conversation.sourceSelection = authorizedSelection.slice();
+  markChatExecutionPhase_(trace, 'prompt', 'Building the agent context', {
+    authorizedSourceCount: authorizedSelection.length,
+    localContextCharacters: String(sourceContext.text || '').length,
+    inlinePartCount: (sourceContext.inlineParts || []).length,
+    fileSearchUsed: hasFileSearch
+  });
   var flowContext = access.allowed.sources ? buildFlowContext_(access.project, selectedFlowIds || []) : {text: '', flowsUsed: []};
   var messageContext = normalizeMessageContextSnapshot_(contextSnapshot, authorizedSelection, conversation.flowSelection);
   var config = getUserGeminiConfig_();
   var prompt = buildGeminiConversation_(access.project, conversation, text, sourceContext, flowContext, authorizedSelection);
+  trace.details.flowCount = (flowContext.flowsUsed || []).length;
+  trace.details.flowContextCharacters = String(flowContext.text || '').length;
+  trace.details.promptCharacters = String(prompt.systemInstruction || '').length + JSON.stringify(prompt.contents || []).length;
+  trace.details.model = conversation.model;
   var now = nowIso_();
   var userMessage = {
     messageId: uuid_(), role: 'user', text: text, createdAt: now, createdBy: access.email,
@@ -103,6 +136,7 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   delete conversation.pendingBranchMessage;
   conversation.messages.push(userMessage);
   conversation.updatedAt = nowIso_();
+  markChatExecutionPhase_(trace, 'saving_request', 'Saving the request before generation');
   var pendingFile = writeConversation_(access.project, conversation);
   upsertConversationIndex_(access.project, conversation, pendingFile.getId());
   if (isChatRequestCancelled_(requestId)) throw new Error('Generation stopped.');
@@ -112,6 +146,11 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   var fileSearchStores = [];
   fileSearchConfigs.forEach(function(item){fileSearchSourceIds=fileSearchSourceIds.concat(item.sourceIds||[]);if(item.storeName)fileSearchStores.push(item.storeName);});
   fileSearchSourceIds = fileSearchSourceIds.filter(function(id,index,all){return all.indexOf(id)===index;});
+  markChatExecutionPhase_(trace, 'gemini', fileSearchConfigs.length ? 'Retrieving evidence and asking Gemini' : 'Waiting for Gemini', {
+    fileSearchUsed: Boolean(fileSearchConfigs.length),
+    fileSearchStoreCount: fileSearchStores.length,
+    indexedSourceCount: fileSearchSourceIds.length
+  });
   var result = fileSearchConfigs.length ? generateWithFileSearch_({
     config: config,
     model: conversation.model,
@@ -129,8 +168,11 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
     temperature: 0.35,
     maxOutputTokens: 8192
   });
+  trace.details.model = result.model || conversation.model;
+  trace.details.usage = result.usage || {};
   if (isChatRequestCancelled_(requestId)) throw new Error('Generation stopped.');
 
+  markChatExecutionPhase_(trace, 'artifact', 'Checking and creating response artifacts');
   var artifactResponse = parseAgentConsoleArtifactResponse_(result.text) || inferArtifactResponseFromRequest_(text, result.text);
   var createdArtifact = null;
   if (artifactResponse) {
@@ -145,7 +187,8 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
     sourceSelection: authorizedSelection,
     sourceWarnings: sourceContext.warnings || [],
     retrievalAudit: result.retrievalAudit || null,
-    usage: result.usage
+    usage: result.usage,
+    diagnostics: chatExecutionDiagnostics_(trace)
   };
   if (createdArtifact) {
     assistantMessage.kind = 'artifact_event';
@@ -161,12 +204,19 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
     conversation.title = normalizeName_(text.slice(0, 70), 'Chat');
   }
   conversation.updatedAt = nowIso_();
+  var summaryDue = conversationMemoryUpdateDue_(conversation);
   try {
-    maybeSummarizeConversation_(conversation, config, access.project);
+    if (summaryDue) {
+      markChatExecutionPhase_(trace, 'memory', 'Refreshing conversation memory', {memorySummaryRequested: true});
+      trace.details.memorySummaryUpdated = maybeSummarizeConversation_(conversation, config, access.project);
+    }
   } catch (summaryError) {
+    trace.details.memorySummaryError = sanitizeText_(summaryError.message || String(summaryError), 500);
     console.warn('The response was preserved even though memory could not be updated: ' + summaryError.message);
   }
   if (isChatRequestCancelled_(requestId)) throw new Error('Generation stopped.');
+  markChatExecutionPhase_(trace, 'saving_response', 'Saving the response and diagnostics');
+  assistantMessage.diagnostics = chatExecutionDiagnostics_(trace);
   var file = writeConversation_(access.project, conversation);
   upsertConversationIndex_(access.project, conversation, file.getId());
   touchProjectStats_(projectId, {lastConversationAt: conversation.updatedAt});
@@ -180,7 +230,7 @@ function sendChatMessage(projectId, conversationId, message, selectedSourceIds, 
   };
 }
 
-function acceptLatestCanvas_(access, conversation, text, requestId, contextSnapshot) {
+function acceptLatestCanvas_(access, conversation, text, requestId, contextSnapshot, trace) {
   assertProjectEdit_(conversation.projectId, 'documents');
   var candidate = null;
   var shortCandidate = null;
@@ -220,6 +270,8 @@ function acceptLatestCanvas_(access, conversation, text, requestId, contextSnaps
   assistantMessage.agentName = getAgentExecutionContext_(access.project).name;
   conversation.messages.push(assistantMessage);
   conversation.updatedAt = nowIso_();
+  markChatExecutionPhase_(trace, 'saving_response', 'Saving the accepted Canvas and diagnostics');
+  assistantMessage.diagnostics = chatExecutionDiagnostics_(trace);
   var file = writeConversation_(access.project, conversation);
   upsertConversationIndex_(access.project, conversation, file.getId());
   touchProjectStats_(conversation.projectId, {lastConversationAt: conversation.updatedAt});
@@ -271,6 +323,7 @@ function cancelChatRequest(requestId) {
   requestId = normalizeChatRequestId_(requestId);
   if (!requestId) return {cancelled: false};
   CacheService.getUserCache().put('CHAT_CANCEL_' + requestId, '1', 600);
+  updateCachedChatRequestStatus_(requestId, {status:'stopping', phase:'stopping', label:'Stopping after the current Gemini request finishes'});
   return {cancelled: true, requestId: requestId};
 }
 
@@ -559,9 +612,14 @@ function normalizeConversationSourceId_(id) {
   return /^(source|document|agent-source):/.test(id) ? id : 'source:' + id;
 }
 
+function conversationMemoryUpdateDue_(conversation) {
+  var cutoff = conversation.messages.length - APP.RECENT_MESSAGE_LIMIT;
+  return cutoff - (conversation.summaryThrough || 0) >= 8;
+}
+
 function maybeSummarizeConversation_(conversation, config, project) {
   var cutoff = conversation.messages.length - APP.RECENT_MESSAGE_LIMIT;
-  if (cutoff - (conversation.summaryThrough || 0) < 8) return;
+  if (cutoff - (conversation.summaryThrough || 0) < 8) return false;
   var pending = conversation.messages.slice(conversation.summaryThrough || 0, cutoff);
   var transcript = pending.map(function(message) { return message.role.toUpperCase() + ': ' + conversationMessageTextForModel_(message); }).join('\n\n');
   var response = generateWithGemini_({
@@ -573,6 +631,7 @@ function maybeSummarizeConversation_(conversation, config, project) {
   });
   conversation.summary = response.text;
   conversation.summaryThrough = cutoff;
+  return true;
 }
 
 function readConversationIndex_(project) {
@@ -601,6 +660,131 @@ function repairConversationMessageCounts_(project, index, allowWrite) {
 
 function normalizeChatRequestId_(requestId) {
   return String(requestId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
+}
+
+function beginChatExecutionTrace_(requestId, details) {
+  var now = new Date().getTime();
+  var trace = {
+    requestId: normalizeChatRequestId_(requestId),
+    startedAt: new Date(now).toISOString(),
+    startedAtMs: now,
+    phaseStartedAtMs: now,
+    phase: 'starting',
+    label: 'Starting the request',
+    timings: {},
+    details: details || {}
+  };
+  publishChatRequestStatus_(trace, 'running');
+  return trace;
+}
+
+function markChatExecutionPhase_(trace, phase, label, details) {
+  if (!trace) return;
+  commitChatExecutionPhase_(trace);
+  trace.phase = String(phase || 'working');
+  trace.label = String(label || 'Working');
+  trace.phaseStartedAtMs = new Date().getTime();
+  Object.keys(details || {}).forEach(function(key) { trace.details[key] = details[key]; });
+  publishChatRequestStatus_(trace, 'running');
+}
+
+function commitChatExecutionPhase_(trace) {
+  if (!trace || !trace.phase || !trace.phaseStartedAtMs) return;
+  var elapsed = Math.max(0, new Date().getTime() - trace.phaseStartedAtMs);
+  trace.timings[trace.phase] = Number(trace.timings[trace.phase] || 0) + elapsed;
+}
+
+function chatExecutionDiagnostics_(trace) {
+  if (!trace) return null;
+  var now = new Date().getTime();
+  var timings = {};
+  Object.keys(trace.timings || {}).forEach(function(key) { timings[key] = Math.round(Number(trace.timings[key] || 0)); });
+  if (trace.phase && trace.phaseStartedAtMs) timings[trace.phase] = Number(timings[trace.phase] || 0) + Math.max(0, now - trace.phaseStartedAtMs);
+  return {
+    schemaVersion: 1,
+    requestId: trace.requestId,
+    startedAt: trace.startedAt,
+    totalMs: Math.max(0, now - trace.startedAtMs),
+    phase: trace.phase,
+    timings: timings,
+    model: trace.details.model || trace.details.requestedModel || '',
+    fileSearchUsed: Boolean(trace.details.fileSearchUsed),
+    selectedSourceCount: Number(trace.details.selectedSourceCount || 0),
+    authorizedSourceCount: Number(trace.details.authorizedSourceCount || 0),
+    indexedSourceCount: Number(trace.details.indexedSourceCount || 0),
+    selectedFlowCount: Number(trace.details.selectedFlowCount || 0),
+    flowCount: Number(trace.details.flowCount || 0),
+    localContextCharacters: Number(trace.details.localContextCharacters || 0),
+    flowContextCharacters: Number(trace.details.flowContextCharacters || 0),
+    promptCharacters: Number(trace.details.promptCharacters || 0),
+    memorySummaryRequested: Boolean(trace.details.memorySummaryRequested),
+    memorySummaryUpdated: Boolean(trace.details.memorySummaryUpdated),
+    usage: trace.details.usage || {}
+  };
+}
+
+function finishChatExecutionTrace_(trace, status, label) {
+  if (!trace) return null;
+  commitChatExecutionPhase_(trace);
+  trace.phaseStartedAtMs = new Date().getTime();
+  trace.phase = status === 'complete' ? 'complete' : trace.phase;
+  trace.label = label || trace.label;
+  var diagnostics = chatExecutionDiagnostics_(trace);
+  publishChatRequestStatus_(trace, status || 'complete', diagnostics);
+  return diagnostics;
+}
+
+function failChatExecutionTrace_(trace, error) {
+  if (!trace) return;
+  commitChatExecutionPhase_(trace);
+  trace.phaseStartedAtMs = new Date().getTime();
+  trace.phase = 'failed';
+  trace.label = 'The request could not be completed';
+  trace.details.error = sanitizeText_(error && error.message || String(error || 'Unknown error'), 500);
+  publishChatRequestStatus_(trace, 'failed', chatExecutionDiagnostics_(trace));
+}
+
+function publishChatRequestStatus_(trace, status, diagnostics) {
+  if (!trace || !trace.requestId) return;
+  var payload = {
+    requestId: trace.requestId,
+    status: status || 'running',
+    phase: trace.phase || 'working',
+    label: trace.label || 'Working',
+    startedAt: trace.startedAt,
+    updatedAt: nowIso_(),
+    elapsedMs: Math.max(0, new Date().getTime() - trace.startedAtMs),
+    details: {
+      model: trace.details.model || trace.details.requestedModel || '',
+      selectedSourceCount: Number(trace.details.selectedSourceCount || 0),
+      authorizedSourceCount: Number(trace.details.authorizedSourceCount || 0),
+      selectedFlowCount: Number(trace.details.selectedFlowCount || 0),
+      fileSearchUsed: Boolean(trace.details.fileSearchUsed)
+    }
+  };
+  if (trace.details.error) payload.error = trace.details.error;
+  if (diagnostics) payload.diagnostics = diagnostics;
+  CacheService.getUserCache().put('CHAT_STATUS_' + trace.requestId, JSON.stringify(payload), 600);
+}
+
+function updateCachedChatRequestStatus_(requestId, patch) {
+  requestId = normalizeChatRequestId_(requestId);
+  if (!requestId) return;
+  var cache = CacheService.getUserCache();
+  var value = safeJsonParse_(cache.get('CHAT_STATUS_' + requestId), null) || {requestId:requestId,startedAt:nowIso_()};
+  Object.keys(patch || {}).forEach(function(key) { value[key] = patch[key]; });
+  value.updatedAt = nowIso_();
+  cache.put('CHAT_STATUS_' + requestId, JSON.stringify(value), 600);
+}
+
+function getChatRequestStatus(requestId) {
+  requestId = normalizeChatRequestId_(requestId);
+  if (!requestId) return {status:'missing',phase:'missing',label:'Request status unavailable',elapsedMs:0};
+  var value = safeJsonParse_(CacheService.getUserCache().get('CHAT_STATUS_' + requestId), null);
+  if (!value) return {requestId:requestId,status:'pending',phase:'starting',label:'Starting the request',elapsedMs:0};
+  var startedMs = Date.parse(value.startedAt || '');
+  if (isFinite(startedMs)) value.elapsedMs = Math.max(Number(value.elapsedMs || 0), new Date().getTime() - startedMs);
+  return value;
 }
 
 function isChatRequestCancelled_(requestId) {
