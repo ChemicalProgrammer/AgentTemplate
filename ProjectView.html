@@ -155,7 +155,14 @@
         <div><span>Document preview</span><strong id="document-viewer-title">Document</strong></div>
         <div class="document-viewer-actions"><button id="export-document-pdf" class="emoji-action-btn" title="Export to PDF" aria-label="Export document to PDF">📄</button><a id="document-viewer-drive-link" class="emoji-action-btn" target="_blank" rel="noopener" title="Open in Drive" aria-label="Open in Drive">📂</a><button id="close-document-viewer" class="emoji-action-btn" title="Close preview" aria-label="Close preview">❌</button></div>
       </header>
-      <div id="document-viewer-tabs" class="document-viewer-tabs" role="tablist"><button class="active" data-preview-mode="preview" role="tab">Preview</button><button data-preview-mode="raw" role="tab">Raw</button></div>
+      <div id="document-viewer-tabs" class="document-viewer-tabs">
+        <div class="document-viewer-tab-buttons" role="tablist" aria-label="Document representations">
+          <button class="active" data-preview-mode="preview" role="tab" aria-selected="true">Preview</button>
+          <button class="hidden" data-preview-mode="html" role="tab" aria-selected="false">HTML</button>
+          <button data-preview-mode="raw" role="tab" aria-selected="false">Raw</button>
+        </div>
+        <button id="export-document-html" class="viewer-html-export hidden" type="button" title="Export the filled HTML" aria-label="Export HTML with the JSON data filled in"><span aria-hidden="true">&lt;/&gt;</span> Export HTML</button>
+      </div>
       <div id="document-viewer-loader" class="document-viewer-loader hidden"><span class="spinner"></span></div>
       <div id="document-viewer-content" class="document-viewer-content"></div>
     </aside>

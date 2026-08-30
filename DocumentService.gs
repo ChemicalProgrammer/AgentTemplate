@@ -275,22 +275,11 @@ function getDocumentPreview(projectId, nodeId) {
     var text = file.getBlob().getDataAsString('UTF-8');
     if (/\.json$/i.test(lowerName) || mimeType === 'application/json') {
       var data = safeJsonParse_(text, null);
-      var templateId = resolved.record && resolved.record.presentationTemplateId || '';
-      if (data != null && templateId) {
+      var hasPresentation = Boolean(resolved.record && (resolved.record.presentationTemplateId || resolved.record.presentationTemplateName));
+      if (data != null && hasPresentation) {
         try {
-          var template = resolveJsonPresentationTemplate_(resolved.project, {templateId:templateId});
-          if (template) {
-            return {
-              nodeId: resolved.nodeId,
-              name: name,
-              mimeType: mimeType,
-              mode: 'templated_json',
-              text: text,
-              renderedHtml: renderJsonArtifactWithTemplate_(template, data),
-              presentation: {templateId:template.templateId, templateName:template.name, origin:template.origin},
-              url: file.getUrl()
-            };
-          }
+          var rendered = buildTemplatedJsonArtifactView_(resolved, text, data);
+          if (rendered) return rendered;
         } catch (templateError) {
           return {nodeId:resolved.nodeId, name:name, mimeType:mimeType, mode:'json', text:text, presentationError:readableErrorMessage_(templateError), url:file.getUrl()};
         }
@@ -301,6 +290,102 @@ function getDocumentPreview(projectId, nodeId) {
     return {nodeId: resolved.nodeId, name: name, mimeType: mimeType, mode: mode, text: text, url: file.getUrl()};
   }
   return {nodeId: resolved.nodeId, name: name, mimeType: mimeType, mode: 'drive', previewUrl: buildDrivePreviewUrl_(file), url: file.getUrl()};
+}
+
+function buildTemplatedJsonArtifactView_(resolved, text, data) {
+  var record = resolved.record || {};
+  var template = resolveJsonPresentationTemplate_(resolved.project, {
+    templateId: record.presentationTemplateId || '',
+    templateName: record.presentationTemplateName || ''
+  });
+  if (!template) return null;
+  return {
+    nodeId: resolved.nodeId,
+    name: resolved.file.getName(),
+    mimeType: resolved.file.getMimeType(),
+    mode: 'templated_json',
+    text: text,
+    renderedHtml: renderJsonArtifactWithTemplate_(template, data),
+    presentation: {templateId:template.templateId, templateName:template.name, origin:template.origin},
+    url: resolved.file.getUrl()
+  };
+}
+
+function exportTemplatedJsonArtifactToHtml(projectId, nodeId, options) {
+  options = options || {};
+  var resolved = resolveProjectDocumentFile_(projectId, nodeId);
+  var mimeType = resolved.file.getMimeType();
+  var sourceName = resolved.file.getName();
+  if (!(mimeType === 'application/json' || /\.json$/i.test(sourceName))) {
+    throw new Error('Only a JSON artifact with an HTML presentation template can be exported this way.');
+  }
+  if (Number(resolved.file.getSize() || 0) > 2 * 1024 * 1024) {
+    throw new Error('The JSON artifact is too large to export from the viewer.');
+  }
+  var text = resolved.file.getBlob().getDataAsString('UTF-8');
+  var data = safeJsonParse_(text, null);
+  if (data == null) throw new Error('The JSON artifact is not valid.');
+  if (!(resolved.record && (resolved.record.presentationTemplateId || resolved.record.presentationTemplateName))) {
+    throw new Error('This JSON artifact does not have an HTML presentation template.');
+  }
+  var rendered = buildTemplatedJsonArtifactView_(resolved, text, data);
+  if (!rendered || !rendered.renderedHtml) throw new Error('The filled HTML presentation could not be created.');
+
+  var destination = String(options.destination || 'project').toLowerCase();
+  var baseName = normalizeName_(options.fileName || sourceName.replace(/\.[^.]+$/, ''), 'HTML export').replace(/\.html?$/i, '');
+  var htmlName = baseName + '.html';
+  var blob = Utilities.newBlob(rendered.renderedHtml, 'text/html', htmlName);
+  var outputFolder;
+  var projectAccess = null;
+
+  if (destination === 'project') {
+    projectAccess = assertProjectEdit_(projectId, 'documents');
+    outputFolder = DriveApp.getFolderById(projectAccess.project.folders.documents);
+  } else if (destination === 'external') {
+    var folderId = extractDriveId_(options.folderId || '');
+    if (!folderId) throw new Error('Enter the Drive folder URL or ID where the HTML file should be saved.');
+    try { outputFolder = DriveApp.getFolderById(folderId); }
+    catch (error) { throw new Error('The selected Drive folder could not be opened. Check the URL and your permissions.'); }
+  } else {
+    throw new Error('Choose where the HTML file should be saved.');
+  }
+
+  var htmlFile = outputFolder.createFile(blob);
+  if (destination === 'project') {
+    var parentIds = [resolved.nodeId];
+    var record = recordGeneratedDocument_(projectAccess.project, htmlFile, {
+      kind: 'html-export',
+      parentIds: parentIds,
+      createdBy: projectAccess.email,
+      sourceConversation: resolved.record && resolved.record.sourceConversation || 'viewer-export',
+      artifactType: resolved.record && resolved.record.artifactType || '',
+      artifactFormat: 'html',
+      artifactStatus: resolved.record && resolved.record.artifactStatus || 'complete',
+      artifactVersion: resolved.record && resolved.record.artifactVersion || 0,
+      presentationTemplateId: rendered.presentation.templateId,
+      presentationTemplateName: rendered.presentation.templateName,
+      presentationTemplateOrigin: rendered.presentation.origin,
+      workflowId: resolved.record && resolved.record.workflowId || '',
+      model: resolved.record && resolved.record.model || '',
+      note: 'Filled HTML exported from ' + sourceName
+    });
+    appendControlRow_(projectAccess.project, 'Documents', [htmlFile.getId(), htmlFile.getName(), htmlFile.getMimeType(), nowIso_(), projectAccess.email, htmlFile.getId(), 'viewer-export', record.note]);
+    incrementGeneratedDocumentCount_(projectId, projectAccess.project);
+    var projectResult = publicGeneratedFile_(htmlFile, 'html-export', parentIds, record.sourceConversation, record);
+    projectResult.nodeId = 'document:' + htmlFile.getId();
+    projectResult.savedInProject = true;
+    return projectResult;
+  }
+
+  var externalResult = publicGeneratedFile_(htmlFile, 'html-export', [], 'external-export', {
+    artifactFormat: 'html',
+    presentationTemplateId: rendered.presentation.templateId,
+    presentationTemplateName: rendered.presentation.templateName,
+    presentationTemplateOrigin: rendered.presentation.origin
+  });
+  externalResult.savedInProject = false;
+  externalResult.outsideProject = true;
+  return externalResult;
 }
 
 function resolveProjectDocumentFile_(projectId, nodeId) {

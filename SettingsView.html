@@ -130,6 +130,22 @@
     </form>
   </section>
 
+  <section id="html-export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="html-export-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">HTML PRESENTATION EXPORT</p><h2 id="html-export-title">Export filled HTML</h2>
+    <p id="html-export-source-name" class="muted document-note-name"></p>
+    <form id="html-export-form">
+      <label>HTML file name<input id="html-export-file-name" required maxlength="160"></label>
+      <p class="muted">All placeholders are replaced with the current JSON values. Raw JSON remains unchanged.</p>
+      <fieldset class="destination-options"><legend>Save destination</legend>
+        <label class="destination-choice"><input type="radio" name="html-export-destination" value="project" checked><span><b>📚 Save as a generated project document</b><small>The filled HTML becomes a child of the JSON artifact in the document graph.</small></span></label>
+        <label class="destination-choice"><input type="radio" name="html-export-destination" value="external"><span><b>📤 Export outside this project</b><small>Save it in another Drive folder without adding it to this project's document graph.</small></span></label>
+      </fieldset>
+      <label id="html-external-folder-field" class="hidden">Destination Drive folder URL or ID<input id="html-export-folder" placeholder="Paste the destination folder URL or ID"><small>You must have permission to create files in this folder.</small></label>
+      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Export HTML</button></div>
+    </form>
+  </section>
+
   <section id="index-diagnostic-modal" class="modal index-diagnostic-modal hidden" role="dialog" aria-modal="true" aria-labelledby="index-diagnostic-title">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
     <p class="eyebrow">FILE SEARCH DIAGNOSTIC</p><h2 id="index-diagnostic-title">Index status</h2>

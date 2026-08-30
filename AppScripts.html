@@ -84,6 +84,7 @@
     sourceIndexTimers: new Map(),
     activeIndexSources: new Set(),
     pdfExportNodeId: null,
+    htmlExportNodeId: null,
     branchSourceMessageId: null,
     lastProjectRefresh: 0,
     projectLoadToken: 0,
@@ -227,8 +228,11 @@
     });
     document.getElementById('close-document-viewer').addEventListener('click', () => closeDocumentViewer(false));
     document.getElementById('export-document-pdf').addEventListener('click', openDocumentPdfExport);
+    document.getElementById('export-document-html').addEventListener('click', openDocumentHtmlExport);
     document.getElementById('pdf-export-form').addEventListener('submit', submitDocumentPdfExport);
     document.querySelectorAll('input[name="pdf-export-destination"]').forEach(input => input.addEventListener('change', syncPdfExportDestination));
+    document.getElementById('html-export-form').addEventListener('submit', submitDocumentHtmlExport);
+    document.querySelectorAll('input[name="html-export-destination"]').forEach(input => input.addEventListener('change', syncHtmlExportDestination));
     document.querySelectorAll('[data-preview-mode]').forEach(button => button.addEventListener('click', () => setDocumentPreviewMode(button.dataset.previewMode)));
     document.getElementById('branch-message-form').addEventListener('submit', submitConversationBranch);
     document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => {
@@ -1717,6 +1721,8 @@
     workspace.classList.add('viewer-open'); viewer.classList.add('viewer-visible'); grip.classList.add('viewer-visible');
     document.getElementById('document-viewer-title').textContent = node ? node.name : 'Document';
     document.getElementById('document-viewer-content').innerHTML = '';
+    document.querySelector('[data-preview-mode="html"]').classList.add('hidden');
+    document.getElementById('export-document-html').classList.add('hidden');
     document.getElementById('document-viewer-loader').classList.remove('hidden');
     try {
       const preview = await server('getDocumentPreview', state.currentProjectId, nodeId);
@@ -1743,7 +1749,8 @@
   }
 
   function setDocumentPreviewMode(mode) {
-    state.documentPreviewMode = mode === 'raw' ? 'raw' : 'preview'; renderDocumentPreview_();
+    const allowed = ['preview', 'html', 'raw'];
+    state.documentPreviewMode = allowed.includes(mode) ? mode : 'preview'; renderDocumentPreview_();
   }
 
   function renderDocumentPreview_() {
@@ -1751,16 +1758,29 @@
     const content = document.getElementById('document-viewer-content');
     const tabs = document.getElementById('document-viewer-tabs');
     const rawButton = tabs.querySelector('[data-preview-mode="raw"]');
+    const htmlButton = tabs.querySelector('[data-preview-mode="html"]');
+    const htmlExportButton = document.getElementById('export-document-html');
     const textPreview = preview.mode === 'markdown' || preview.mode === 'html' || preview.mode === 'text' || preview.mode === 'json' || preview.mode === 'templated_json';
-    rawButton.disabled = !textPreview; if (!textPreview) state.documentPreviewMode = 'preview';
-    tabs.querySelectorAll('[data-preview-mode]').forEach(button => button.classList.toggle('active', button.dataset.previewMode === state.documentPreviewMode));
+    const templatedJson = preview.mode === 'templated_json' && Boolean(preview.renderedHtml);
+    rawButton.disabled = !textPreview;
+    htmlButton.classList.toggle('hidden', !templatedJson);
+    htmlExportButton.classList.toggle('hidden', !templatedJson);
+    if (!textPreview || (state.documentPreviewMode === 'html' && !templatedJson)) state.documentPreviewMode = 'preview';
+    tabs.querySelectorAll('[data-preview-mode]').forEach(button => {
+      const active = button.dataset.previewMode === state.documentPreviewMode;
+      button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active));
+    });
     content.className = 'document-viewer-content'; content.innerHTML = '';
+    if (state.documentPreviewMode === 'html') {
+      content.classList.add('raw-preview', 'html-source-preview');
+      content.textContent = preparedTemplatedHtml_(preview); return;
+    }
     if (state.documentPreviewMode === 'raw') {
       content.classList.add('raw-preview'); content.textContent = preview.text || ''; return;
     }
     if (preview.mode === 'markdown') { content.innerHTML = formatMarkdown(preview.text || ''); bindRenderedMessageActions_(content); return; }
     if (preview.mode === 'templated_json') {
-      content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.setAttribute('sandbox', ''); frame.srcdoc = sanitizeHtmlPreview_(preview.renderedHtml || ''); frame.title = `${preview.name} · ${preview.presentation && preview.presentation.templateName || 'HTML template'}`; content.appendChild(frame); return;
+      content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.setAttribute('sandbox', ''); frame.srcdoc = preparedTemplatedHtml_(preview); frame.title = `${preview.name} · ${preview.presentation && preview.presentation.templateName || 'HTML template'}`; content.appendChild(frame); return;
     }
     if (preview.mode === 'html') {
       content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.setAttribute('sandbox', ''); frame.srcdoc = sanitizeHtmlPreview_(preview.text || ''); content.appendChild(frame); return;
@@ -1769,12 +1789,22 @@
     content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.src = preview.previewUrl; frame.title = preview.name; frame.setAttribute('allowfullscreen', ''); content.appendChild(frame);
   }
 
+  function preparedTemplatedHtml_(preview) {
+    if (!preview) return '';
+    if (!preview.preparedHtml) preview.preparedHtml = sanitizeHtmlPreview_(preview.renderedHtml || '');
+    return preview.preparedHtml;
+  }
+
   function sanitizeHtmlPreview_(html) {
     const parsed = new DOMParser().parseFromString(String(html || ''), 'text/html');
-    parsed.querySelectorAll('script,object,embed,iframe,link,meta,base').forEach(node => node.remove());
+    parsed.querySelectorAll('script,object,embed,iframe,link,base').forEach(node => node.remove());
+    parsed.querySelectorAll('meta').forEach(node => { if (!node.hasAttribute('charset')) node.remove(); });
     parsed.querySelectorAll('*').forEach(node => Array.from(node.attributes).forEach(attribute => {
       const name = attribute.name.toLowerCase(); const value = attribute.value.trim().toLowerCase();
-      if (name.startsWith('on') || ((name === 'href' || name === 'src' || name === 'action') && value.startsWith('javascript:'))) node.removeAttribute(attribute.name);
+      const urlAttribute = name === 'href' || name === 'src' || name === 'action' || name === 'formaction' || name === 'xlink:href';
+      const compactValue = value.replace(/\s+/g, '');
+      const dangerousUrl = compactValue.startsWith('javascript:') || compactValue.startsWith('vbscript:') || compactValue.startsWith('data:text/html');
+      if (name.startsWith('on') || (urlAttribute && dangerousUrl)) node.removeAttribute(attribute.name);
     }));
     return '<!doctype html>' + parsed.documentElement.outerHTML;
   }
@@ -1816,6 +1846,51 @@
       } else {
         if (externalWindow) externalWindow.location = pdf.url; else window.open(pdf.url, '_blank', 'noopener');
         showToast('PDF exported to the selected Drive folder.');
+      }
+    } catch (error) { if (externalWindow) externalWindow.close(); showToast(error.message, true); }
+    finally { setBusy(form, false); }
+  }
+
+  function openDocumentHtmlExport() {
+    const preview = state.documentPreview;
+    if (!state.previewNodeId || !preview || preview.mode !== 'templated_json') {
+      return showToast('Open a JSON artifact with an HTML template before exporting it.', true);
+    }
+    state.htmlExportNodeId = state.previewNodeId;
+    const sourceName = preview.name || 'Artifact.json';
+    document.getElementById('html-export-source-name').textContent = `${sourceName} · ${preview.presentation && preview.presentation.templateName || 'HTML template'}`;
+    document.getElementById('html-export-file-name').value = sourceName.replace(/\.[^.]+$/, '') + '.html';
+    const projectChoice = document.querySelector('input[name="html-export-destination"][value="project"]');
+    projectChoice.checked = true; document.getElementById('html-export-folder').value = '';
+    syncHtmlExportDestination(); openModal('html-export-modal'); document.getElementById('html-export-file-name').focus();
+  }
+
+  function syncHtmlExportDestination() {
+    const selected = document.querySelector('input[name="html-export-destination"]:checked');
+    const external = selected && selected.value === 'external';
+    const field = document.getElementById('html-external-folder-field');
+    const input = document.getElementById('html-export-folder');
+    field.classList.toggle('hidden', !external); input.required = external;
+  }
+
+  async function submitDocumentHtmlExport(event) {
+    event.preventDefault(); if (!state.htmlExportNodeId) return;
+    const form = event.target; const destination = document.querySelector('input[name="html-export-destination"]:checked').value;
+    const externalWindow = destination === 'external' ? window.open('', '_blank') : null;
+    setBusy(form, true);
+    try {
+      const html = await server('exportTemplatedJsonArtifactToHtml', state.currentProjectId, state.htmlExportNodeId, {
+        destination: destination,
+        fileName: document.getElementById('html-export-file-name').value,
+        folderId: document.getElementById('html-export-folder').value
+      });
+      closeModals(); state.htmlExportNodeId = null;
+      if (html.savedInProject) {
+        await refreshDocumentGraph(); await openDocumentPreview(html.nodeId);
+        showToast('Filled HTML saved as a generated project document.');
+      } else {
+        if (externalWindow) externalWindow.location = html.url; else window.open(html.url, '_blank', 'noopener');
+        showToast('Filled HTML exported to the selected Drive folder.');
       }
     } catch (error) { if (externalWindow) externalWindow.close(); showToast(error.message, true); }
     finally { setBusy(form, false); }

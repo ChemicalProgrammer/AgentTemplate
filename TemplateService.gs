@@ -115,12 +115,32 @@ function renderJsonArtifactWithTemplate_(template, data) {
   }
   if (Number(file.getSize() || 0) > 1024 * 1024) throw new Error('HTML presentation templates are limited to 1 MB.');
   var html = file.getBlob().getDataAsString('UTF-8');
-  return html.replace(/\{\{\s*([A-Za-z0-9_.-]+|ARTIFACT_JSON)\s*\}\}/g, function(token, path) {
+  var rendered = html.replace(/\{\{\s*([A-Za-z0-9_.-]+|ARTIFACT_JSON)\s*\}\}/g, function(token, path) {
     var value = path === 'ARTIFACT_JSON' ? JSON.stringify(data, null, 2) : jsonTemplateValueAtPath_(data, path);
     if (value == null) return '';
     if (typeof value === 'object') value = JSON.stringify(value, null, 2);
     return escapeJsonTemplateHtml_(String(value));
   });
+  return sanitizeRenderedHtmlArtifact_(rendered);
+}
+
+function sanitizeRenderedHtmlArtifact_(html) {
+  var safe = String(html || '');
+  safe = safe.replace(/<\s*(script|iframe|object|embed)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '');
+  safe = safe.replace(/<\s*(script|iframe|object|embed|link|meta|base)\b[^>]*\/?\s*>/gi, '');
+  safe = safe.replace(/\s+on[a-z][a-z0-9_-]*\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  safe = safe.replace(/\s+(href|src|action|formaction|xlink:href)\s*=\s*(["'])\s*(?:javascript|vbscript|data\s*:\s*text\/html)\s*:[\s\S]*?\2/gi, '');
+  safe = safe.replace(/\s+(href|src|action|formaction|xlink:href)\s*=\s*(?:javascript|vbscript|data\s*:\s*text\/html)\s*:[^\s>]*/gi, '');
+  safe = safe.replace(/^\s*<!doctype[^>]*>\s*/i, '');
+
+  if (!/<html\b/i.test(safe)) {
+    safe = '<html><head><meta charset="utf-8"></head><body>' + safe + '</body></html>';
+  } else if (/<head\b[^>]*>/i.test(safe)) {
+    safe = safe.replace(/<head\b([^>]*)>/i, '<head$1><meta charset="utf-8">');
+  } else {
+    safe = safe.replace(/<html\b([^>]*)>/i, '<html$1><head><meta charset="utf-8"></head>');
+  }
+  return '<!doctype html>\n' + safe;
 }
 
 function isHtmlPresentationTemplate_(template) {
