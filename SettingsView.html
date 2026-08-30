@@ -130,6 +130,17 @@
     </form>
   </section>
 
+  <section id="document-template-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="document-template-title">
+    <button class="modal-close" data-close-modal aria-label="Close">×</button>
+    <p class="eyebrow">JSON PRESENTATION</p><h2 id="document-template-title">Choose HTML template</h2>
+    <p class="muted">Only the presentation association changes. The original JSON and its document ID remain unchanged. Add the new HTML under Templates first.</p>
+    <form id="document-template-form">
+      <label>Available HTML templates<select id="document-template-select" required></select></label>
+      <p id="document-template-status" class="muted" role="status"></p>
+      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button id="document-template-submit" type="submit" class="primary-btn">Apply template</button></div>
+    </form>
+  </section>
+
   <section id="html-export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="html-export-title">
     <button class="modal-close" data-close-modal aria-label="Close">×</button>
     <p class="eyebrow">HTML PRESENTATION EXPORT</p><h2 id="html-export-title">Export filled HTML</h2>

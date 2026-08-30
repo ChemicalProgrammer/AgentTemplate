@@ -77,6 +77,7 @@
     previewNodeId: null,
     documentPreview: null,
     documentPreviewMode: 'preview',
+    documentTemplateTarget: null,
     viewerCloseTimer: null,
     chatCollapsed: false,
     sideCollapsed: false,
@@ -229,6 +230,8 @@
     document.getElementById('close-document-viewer').addEventListener('click', () => closeDocumentViewer(false));
     document.getElementById('export-document-pdf').addEventListener('click', openDocumentPdfExport);
     document.getElementById('export-document-html').addEventListener('click', openDocumentHtmlExport);
+    document.getElementById('choose-document-template').addEventListener('click', openDocumentTemplateChooser);
+    document.getElementById('document-template-form').addEventListener('submit', submitDocumentTemplateChoice);
     document.getElementById('pdf-export-form').addEventListener('submit', submitDocumentPdfExport);
     document.querySelectorAll('input[name="pdf-export-destination"]').forEach(input => input.addEventListener('change', syncPdfExportDestination));
     document.getElementById('html-export-form').addEventListener('submit', submitDocumentHtmlExport);
@@ -1721,8 +1724,11 @@
     workspace.classList.add('viewer-open'); viewer.classList.add('viewer-visible'); grip.classList.add('viewer-visible');
     document.getElementById('document-viewer-title').textContent = node ? node.name : 'Document';
     document.getElementById('document-viewer-content').innerHTML = '';
+    const diagnostics = document.getElementById('document-viewer-diagnostics');
+    if (diagnostics) { diagnostics.textContent = ''; diagnostics.classList.add('hidden'); }
     document.querySelector('[data-preview-mode="html"]').classList.add('hidden');
     document.getElementById('export-document-html').classList.add('hidden');
+    document.getElementById('choose-document-template').classList.add('hidden');
     document.getElementById('document-viewer-loader').classList.remove('hidden');
     try {
       const preview = await server('getDocumentPreview', state.currentProjectId, nodeId);
@@ -1762,6 +1768,10 @@
     const htmlExportButton = document.getElementById('export-document-html');
     const textPreview = preview.mode === 'markdown' || preview.mode === 'html' || preview.mode === 'text' || preview.mode === 'json' || preview.mode === 'templated_json';
     const templatedJson = preview.mode === 'templated_json' && Boolean(preview.renderedHtml);
+    const jsonDocument = String(preview.nodeId || '').startsWith('document:') && (preview.mimeType === 'application/json' || /\.json$/i.test(preview.name || ''));
+    const canEditPresentation = state.projectDetails && state.projectDetails.permissions && state.projectDetails.permissions.edit && state.projectDetails.permissions.documents;
+    document.getElementById('choose-document-template').classList.toggle('hidden', !jsonDocument || !canEditPresentation);
+    renderDocumentPresentationDiagnostics_(preview);
     rawButton.disabled = !textPreview;
     htmlButton.classList.toggle('hidden', !templatedJson);
     htmlExportButton.classList.toggle('hidden', !templatedJson);
@@ -1785,19 +1795,86 @@
     if (preview.mode === 'html') {
       content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.setAttribute('sandbox', ''); frame.srcdoc = sanitizeHtmlPreview_(preview.text || ''); content.appendChild(frame); return;
     }
-    if (preview.mode === 'text' || preview.mode === 'json') { content.classList.add('raw-preview'); content.textContent = preview.text || ''; if (preview.presentationError) showToast(preview.presentationError, true); return; }
+    if (preview.mode === 'text' || preview.mode === 'json') { content.classList.add('raw-preview'); content.textContent = preview.text || ''; return; }
     content.classList.add('drive-preview'); const frame = document.createElement('iframe'); frame.src = preview.previewUrl; frame.title = preview.name; frame.setAttribute('allowfullscreen', ''); content.appendChild(frame);
+  }
+
+  function renderDocumentPresentationDiagnostics_(preview) {
+    const box = document.getElementById('document-viewer-diagnostics');
+    if (!box) return;
+    box.textContent = ''; box.classList.add('hidden');
+    const warnings = Array.isArray(preview.presentationWarnings) ? preview.presentationWarnings : [];
+    if (!preview.presentationError && !warnings.length) return;
+    box.classList.remove('hidden');
+    const title = document.createElement('strong');
+    title.textContent = preview.presentationError ? 'Template could not be rendered — original JSON preserved' : 'Check this presentation';
+    box.appendChild(title);
+    if (preview.presentation && preview.presentation.templateName) {
+      const name = document.createElement('small'); name.textContent = preview.presentation.templateName; box.appendChild(name);
+    }
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = preview.presentationError ? 'View the cause and required change' : `${warnings.length} presentation warning(s)`;
+    details.appendChild(summary);
+    if (preview.presentationError) {
+      details.open = true; const message = document.createElement('p'); message.textContent = preview.presentationError; details.appendChild(message);
+    } else {
+      const list = document.createElement('ul');
+      warnings.forEach(warning => { const item = document.createElement('li'); item.textContent = warning.message || String(warning); list.appendChild(item); });
+      details.appendChild(list);
+    }
+    box.appendChild(details);
+  }
+
+  async function openDocumentTemplateChooser() {
+    if (!state.previewNodeId || !state.documentPreview) return;
+    const target = {projectId: state.currentProjectId, nodeId: state.previewNodeId, expectedTemplateId: ''};
+    state.documentTemplateTarget = target;
+    const select = document.getElementById('document-template-select');
+    const status = document.getElementById('document-template-status');
+    const submit = document.getElementById('document-template-submit');
+    select.textContent = ''; select.disabled = true; submit.disabled = true; status.textContent = 'Loading available HTML templates…';
+    openModal('document-template-modal');
+    try {
+      const result = await server('getDocumentPresentationTemplates', target.projectId, target.nodeId);
+      if (state.documentTemplateTarget !== target || state.currentProjectId !== target.projectId) return;
+      target.expectedTemplateId = result.currentTemplateId || '';
+      const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Select a registered HTML template'; select.appendChild(placeholder);
+      (result.templates || []).forEach(template => { const option = document.createElement('option'); option.value = template.templateId; option.textContent = `${template.name} · ${template.origin}`; select.appendChild(option); });
+      select.value = target.expectedTemplateId;
+      const available = Boolean(result.templates && result.templates.length);
+      select.disabled = !available; submit.disabled = !available;
+      status.textContent = available ? 'The template will be validated before its association is saved.' : 'No HTML templates are available. Add one in the project Templates section first.';
+    } catch (error) { if (state.documentTemplateTarget === target) status.textContent = error.message; }
+  }
+
+  async function submitDocumentTemplateChoice(event) {
+    event.preventDefault();
+    const target = state.documentTemplateTarget;
+    if (!target || state.currentProjectId !== target.projectId) return;
+    const templateId = document.getElementById('document-template-select').value;
+    if (!templateId) return;
+    const status = document.getElementById('document-template-status');
+    setBusy(event.target, true); status.textContent = 'Validating and applying the template…';
+    try {
+      const preview = await server('setDocumentPresentationTemplate', target.projectId, target.nodeId, templateId, target.expectedTemplateId);
+      target.expectedTemplateId = templateId;
+      if (state.documentTemplateTarget === target && !document.getElementById('document-template-modal').classList.contains('hidden')) closeModals();
+      if (state.currentProjectId === target.projectId && state.previewNodeId === target.nodeId) { state.documentPreview = preview; state.documentPreviewMode = 'preview'; renderDocumentPreview_(); }
+      showToast('Template updated. Original JSON preserved.');
+    } catch (error) { if (state.documentTemplateTarget === target) status.textContent = error.message; }
+    finally { if (state.documentTemplateTarget === target) setBusy(event.target, false); }
   }
 
   function preparedTemplatedHtml_(preview) {
     if (!preview) return '';
-    if (!preview.preparedHtml) preview.preparedHtml = sanitizeHtmlPreview_(preview.renderedHtml || '');
+    if (!preview.preparedHtml) preview.preparedHtml = sanitizeHtmlPreview_(preview.renderedHtml || '', true);
     return preview.preparedHtml;
   }
 
-  function sanitizeHtmlPreview_(html) {
+  function sanitizeHtmlPreview_(html, staticPresentation) {
     const parsed = new DOMParser().parseFromString(String(html || ''), 'text/html');
-    parsed.querySelectorAll('script,object,embed,iframe,link,base').forEach(node => node.remove());
+    parsed.querySelectorAll('script,object,embed,iframe,link,base,foreignObject,animate,animateMotion,animateTransform,set').forEach(node => node.remove());
     parsed.querySelectorAll('meta').forEach(node => { if (!node.hasAttribute('charset')) node.remove(); });
     parsed.querySelectorAll('*').forEach(node => Array.from(node.attributes).forEach(attribute => {
       const name = attribute.name.toLowerCase(); const value = attribute.value.trim().toLowerCase();
@@ -1806,6 +1883,11 @@
       const dangerousUrl = compactValue.startsWith('javascript:') || compactValue.startsWith('vbscript:') || compactValue.startsWith('data:text/html');
       if (name.startsWith('on') || (urlAttribute && dangerousUrl)) node.removeAttribute(attribute.name);
     }));
+    if (staticPresentation) {
+      const policy = parsed.createElement('meta'); policy.setAttribute('http-equiv', 'Content-Security-Policy');
+      policy.setAttribute('content', "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'");
+      parsed.head.insertBefore(policy, parsed.head.firstChild);
+    }
     return '<!doctype html>' + parsed.documentElement.outerHTML;
   }
 

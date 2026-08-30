@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "line_name": "Línea de ejemplo — datos ficticios",
+    "format": "Formato de prueba",
+    "pacemaker_machine": "Blowmolder",
+    "oee_ceiling": 94.5,
+    "baseline_efficiency": 72.3
+  },
+  "v_graph": [
+    {"machine": "Blowmolder", "rated_speed": 193, "actual_speed": 193, "is_pacemaker": true},
+    {"machine": "Pucker", "rated_speed": 191, "actual_speed": 195.9, "is_pacemaker": false},
+    {"machine": "Filler/Capper", "rated_speed": 180, "actual_speed": 205.9, "is_pacemaker": false},
+    {"machine": "De-Pucker", "rated_speed": 185, "actual_speed": 226.9, "is_pacemaker": false},
+    {"machine": "Sleever", "rated_speed": 185, "actual_speed": 255.2, "is_pacemaker": false},
+    {"machine": "Case Packer", "rated_speed": 190, "actual_speed": 269.3, "is_pacemaker": false},
+    {"machine": "Palletizer", "rated_speed": 288, "actual_speed": 269.7, "is_pacemaker": false}
+  ],
+  "critical_alerts": [
+    {"type": "REVIEW", "component": "Ejemplo de visualización", "message": "Datos ficticios para comprobar tablas, listas y gráficos. No usar estas velocidades como instrucciones de operación."},
+    {"type": "DATA_CHECK", "component": "Validación pendiente", "message": "La plantilla muestra los datos recibidos; no valida límites del equipo ni declara cumplimiento normativo."}
+  ],
+  "action_plan": {
+    "zero_capex": ["Verificar la procedencia y unidades de los datos antes de interpretar el reporte.", "Comparar la tabla y el gráfico con el JSON original en Raw."],
+    "capex_required": ["No se propone una inversión real: esta entrada demuestra cómo se presenta una lista."]
+  },
+  "report_markdown": "# Reporte de prueba\n\nTodos los valores son ilustrativos. Este campo se muestra como texto original, sin interpretar Markdown, LaTeX ni HTML."
+}

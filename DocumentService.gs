@@ -276,6 +276,9 @@ function getDocumentPreview(projectId, nodeId) {
     if (/\.json$/i.test(lowerName) || mimeType === 'application/json') {
       var data = safeJsonParse_(text, null);
       var hasPresentation = Boolean(resolved.record && (resolved.record.presentationTemplateId || resolved.record.presentationTemplateName));
+      if (hasPresentation && (data == null || typeof data !== 'object')) {
+        return {nodeId: resolved.nodeId, name: name, mimeType: mimeType, mode: 'json', text: text, presentationError: 'This presentation requires a valid JSON object or array. Check the original file in Raw; it has not been changed.', url: file.getUrl()};
+      }
       if (data != null && hasPresentation) {
         try {
           var rendered = buildTemplatedJsonArtifactView_(resolved, text, data);
@@ -299,16 +302,63 @@ function buildTemplatedJsonArtifactView_(resolved, text, data) {
     templateName: record.presentationTemplateName || ''
   });
   if (!template) return null;
+  var rendered = renderJsonArtifactWithTemplateDetails_(template, data);
   return {
     nodeId: resolved.nodeId,
     name: resolved.file.getName(),
     mimeType: resolved.file.getMimeType(),
     mode: 'templated_json',
     text: text,
-    renderedHtml: renderJsonArtifactWithTemplate_(template, data),
+    renderedHtml: rendered.html,
+    presentationWarnings: rendered.warnings,
+    presentationRenderer: rendered.renderer,
+    presentationStats: rendered.stats,
     presentation: {templateId:template.templateId, templateName:template.name, origin:template.origin},
     url: resolved.file.getUrl()
   };
+}
+
+function getDocumentPresentationTemplates(projectId, nodeId) {
+  var resolved = resolveProjectDocumentFile_(projectId, nodeId);
+  if (String(nodeId).indexOf('document:') !== 0 || !(/\.json$/i.test(resolved.file.getName()) || resolved.file.getMimeType() === 'application/json')) throw new Error('Select a generated JSON document.');
+  return {
+    currentTemplateId: resolved.record.presentationTemplateId || '',
+    templates: listJsonPresentationTemplatesForProject_(resolved.project).map(function(template) {
+      return {templateId: template.templateId, name: template.name, origin: template.origin};
+    })
+  };
+}
+
+function setDocumentPresentationTemplate(projectId, nodeId, templateId, expectedTemplateId) {
+  var access = assertProjectEdit_(projectId, 'documents');
+  var resolved = resolveProjectDocumentFile_(projectId, nodeId);
+  if (String(nodeId).indexOf('document:') !== 0 || !(/\.json$/i.test(resolved.file.getName()) || resolved.file.getMimeType() === 'application/json')) throw new Error('Select a generated JSON document.');
+  if (!templateId) throw new Error('Select an available HTML template.');
+  if (Number(resolved.file.getSize() || 0) > 2 * 1024 * 1024) throw new Error('The JSON preview is limited to 2 MB.');
+  var text = resolved.file.getBlob().getDataAsString('UTF-8');
+  var data = safeJsonParse_(text, null);
+  if (data == null || typeof data !== 'object') throw new Error('The document must contain a valid JSON object or array.');
+  var template = resolveJsonPresentationTemplate_(access.project, {templateId: String(templateId)});
+  if (!template) throw new Error('The selected template is not available in this project.');
+  // Validate BEFORE writing metadata. The JSON file is never rewritten.
+  var rendered = renderJsonArtifactWithTemplateDetails_(template, data);
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) throw new Error('Another update is in progress. Try again.');
+  try {
+    var index = readDocumentIndex_(access.project);
+    var record = index.documents.filter(function(item) { return item.driveId === resolved.file.getId(); })[0];
+    if (!record) throw new Error('The document is no longer available.');
+    if (String(record.presentationTemplateId || '') !== String(expectedTemplateId || '')) throw new Error('The template association changed. Reopen Choose template before saving.');
+    record.presentationTemplateId = template.templateId;
+    record.presentationTemplateName = template.name;
+    record.presentationTemplateOrigin = template.origin;
+    record.presentationUpdatedAt = nowIso_();
+    record.presentationUpdatedBy = access.email;
+    writeDocumentIndex_(access.project, index);
+  } finally { lock.releaseLock(); }
+  return {nodeId: nodeId, name: resolved.file.getName(), mimeType: resolved.file.getMimeType(), mode: 'templated_json', text: text,
+    renderedHtml: rendered.html, presentationWarnings: rendered.warnings, presentationRenderer: rendered.renderer, presentationStats: rendered.stats,
+    presentation: {templateId: template.templateId, templateName: template.name, origin: template.origin}, url: resolved.file.getUrl()};
 }
 
 function exportTemplatedJsonArtifactToHtml(projectId, nodeId, options) {

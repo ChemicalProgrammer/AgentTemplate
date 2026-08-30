@@ -161,8 +161,10 @@
           <button class="hidden" data-preview-mode="html" role="tab" aria-selected="false">HTML</button>
           <button data-preview-mode="raw" role="tab" aria-selected="false">Raw</button>
         </div>
+        <button id="choose-document-template" class="viewer-template-choice hidden" type="button" title="Choose the HTML template for this JSON">Choose template</button>
         <button id="export-document-html" class="viewer-html-export hidden" type="button" title="Export the filled HTML" aria-label="Export HTML with the JSON data filled in"><span aria-hidden="true">&lt;/&gt;</span> Export HTML</button>
       </div>
+      <div id="document-viewer-diagnostics" class="document-viewer-diagnostics hidden" role="status" aria-live="polite"></div>
       <div id="document-viewer-loader" class="document-viewer-loader hidden"><span class="spinner"></span></div>
       <div id="document-viewer-content" class="document-viewer-content"></div>
     </aside>
