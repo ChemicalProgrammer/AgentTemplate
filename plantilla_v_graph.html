@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>V-Graph · {{metadata.line_name}}</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:28px;background:#f5f7fa;color:#172033;font:14px/1.5 Arial,"Segoe UI",sans-serif}.page{max-width:1180px;margin:auto}.header{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:0 4px 22px}.eyebrow{font-size:10px;letter-spacing:1.8px;font-weight:700;color:#64748b;margin:0 0 7px}h1{font-size:29px;line-height:1.2;margin:0 0 7px;letter-spacing:-.5px}.subtitle{margin:0;color:#64748b}.status{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:20px;padding:7px 12px;font-size:11px;font-weight:700;white-space:nowrap}.card{background:#fff;border:1px solid #e2e8f0;border-radius:18px;box-shadow:0 3px 14px #17203304;margin-bottom:20px;overflow:hidden}.card-heading{padding:25px 28px 0}.card-heading h2{margin:0 0 5px;font-size:18px;line-height:1.4;letter-spacing:.2px}.card-heading p{margin:0;color:#64748b;font-size:13px}.chart-scroll{overflow-x:auto;padding:0 12px}.v-graph{display:block;width:100%;min-width:760px;background:#fff;font-family:Arial,sans-serif}.legend{display:flex;justify-content:center;flex-wrap:wrap;gap:26px;padding:5px 20px 23px;color:#475569;font-size:12px}.legend span{display:inline-flex;align-items:center;gap:8px}.dot{width:10px;height:10px;border-radius:50%;background:#1d4ed8}.dot.red{background:#dc2626}.dash{width:23px;border-top:2px dashed #94a3b8}.note{padding:16px 28px;background:#f8fafc;border-top:1px solid #edf2f7;color:#64748b;font-size:12px}.note strong{color:#334155}.table-scroll{overflow-x:auto;padding:16px 20px}table{border-collapse:collapse;width:100%;min-width:640px;font-size:13px}th{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#64748b;background:#f8fafc;padding:12px;text-align:left;border-bottom:1px solid #e2e8f0}td{padding:14px 12px;border-bottom:1px solid #f1f5f9}tbody tr:last-child td{border-bottom:0}.numeric{text-align:right;font-variant-numeric:tabular-nums}.actual{color:#1d4ed8;font-weight:700}.badge{display:inline-block;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:20px;font-size:10px;font-weight:700;padding:3px 8px}.muted{color:#94a3b8}footer{font-size:11px;color:#94a3b8;padding:0 4px 15px}@media(max-width:700px){body{padding:12px}.header{align-items:flex-start;flex-direction:column;gap:10px}h1{font-size:24px}.card-heading{padding:20px 18px 0}.note{padding:16px 18px}.legend{gap:16px}}@media print{body{padding:0;background:#fff}.page{max-width:none}.card{box-shadow:none;break-inside:avoid}.chart-scroll,.table-scroll{overflow:visible}.v-graph,table{min-width:0}.status{white-space:normal}}
+</style>
+</head>
+<body>
+<main class="page">
+<header class="header"><div><p class="eyebrow">AGENT CONSOLE · EJEMPLO DE PRESENTACIÓN</p><h1>Perfil de velocidades</h1><p class="subtitle">{{metadata.line_name}} · Secuencia de seis equipos</p></div><span class="status">{{metadata.data_status}}</span></header>
+<section class="card">
+<div class="card-heading"><h2>V-Graph vectorial</h2><p>Velocidad operativa frente a capacidad nominal. El marcador rojo identifica el pacemaker informado.</p></div>
+<div class="chart-scroll">
+<!-- Layout de seis estaciones. Los puntos reciben números del JSON; no hay JavaScript ni datos de respaldo. -->
+<svg class="v-graph" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 410" role="img" aria-labelledby="vgraph-title vgraph-desc">
+<title id="vgraph-title">Perfil de velocidades · {{metadata.line_name}}</title>
+<desc id="vgraph-desc">Seis máquinas en su orden de proceso. Línea azul: velocidad operativa. Línea gris discontinua: capacidad nominal. Punto rojo: pacemaker informado en el JSON. Eje vertical de cero a trescientos {{metadata.unit}}.</desc>
+<text x="78" y="27" font-size="11" fill="#64748b">{{metadata.unit}}</text>
+<line x1="78" y1="350" x2="1015" y2="350" stroke="#cbd5e1" stroke-width="1"/><text x="61" y="354" text-anchor="end" font-size="11" fill="#94a3b8">0</text>
+<line x1="78" y1="300" x2="1015" y2="300" stroke="#eef2f6" stroke-width="1"/><text x="61" y="304" text-anchor="end" font-size="11" fill="#94a3b8">50</text>
+<line x1="78" y1="250" x2="1015" y2="250" stroke="#eef2f6" stroke-width="1"/><text x="61" y="254" text-anchor="end" font-size="11" fill="#94a3b8">100</text>
+<line x1="78" y1="200" x2="1015" y2="200" stroke="#eef2f6" stroke-width="1"/><text x="61" y="204" text-anchor="end" font-size="11" fill="#94a3b8">150</text>
+<line x1="78" y1="150" x2="1015" y2="150" stroke="#eef2f6" stroke-width="1"/><text x="61" y="154" text-anchor="end" font-size="11" fill="#94a3b8">200</text>
+<line x1="78" y1="100" x2="1015" y2="100" stroke="#eef2f6" stroke-width="1"/><text x="61" y="104" text-anchor="end" font-size="11" fill="#94a3b8">250</text>
+<line x1="78" y1="50" x2="1015" y2="50" stroke="#eef2f6" stroke-width="1"/><text x="61" y="54" text-anchor="end" font-size="11" fill="#94a3b8">300</text>
+<g transform="translate(0 350) scale(1 -1)">
+<polyline data-series="rated_speed" points="100,{{v_graph.0.rated_speed}} 276,{{v_graph.1.rated_speed}} 452,{{v_graph.2.rated_speed}} 628,{{v_graph.3.rated_speed}} 804,{{v_graph.4.rated_speed}} 980,{{v_graph.5.rated_speed}}" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="8 7"/>
+<polyline data-series="actual_speed" points="100,{{v_graph.0.actual_speed}} 276,{{v_graph.1.actual_speed}} 452,{{v_graph.2.actual_speed}} 628,{{v_graph.3.actual_speed}} 804,{{v_graph.4.actual_speed}} 980,{{v_graph.5.actual_speed}}" fill="none" stroke="#1d4ed8" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
+</g>
+<g transform="translate(100 350)">
+  <g transform="scale(1 -1)">
+    <g transform="translate(0 {{v_graph.0.rated_speed}}) scale(1 -1)">
+      <circle r="4" fill="#fff" stroke="#94a3b8" stroke-width="2"><title>{{v_graph.0.machine}} · Nominal: {{v_graph.0.rated_speed}} {{metadata.unit}}</title></circle>
+    </g>
+    <g data-machine-index="0" transform="translate(0 {{v_graph.0.actual_speed}}) scale(1 -1)">
+      <circle data-actual-point="0" r="{{#if v_graph.0.is_pacemaker}}8{{else}}6{{/if}}" fill="{{#if v_graph.0.is_pacemaker}}#dc2626{{else}}#1d4ed8{{/if}}" stroke="#fff" stroke-width="2">
+        <title>{{v_graph.0.machine}} · Operativa: {{v_graph.0.actual_speed}} {{metadata.unit}}{{#if v_graph.0.is_pacemaker}} · Pacemaker informado{{/if}}</title>
+      </circle>
+      <text y="-18" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke fill" text-anchor="middle" font-size="14" font-weight="700" fill="{{#if v_graph.0.is_pacemaker}}#b91c1c{{else}}#172554{{/if}}">{{number v_graph.0.actual_speed 0}}</text>
+    </g>
+  </g>
+  <text y="32" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">{{v_graph.0.machine}}</text>
+</g>
+<g transform="translate(276 350)">
+  <g transform="scale(1 -1)">
+    <g transform="translate(0 {{v_graph.1.rated_speed}}) scale(1 -1)">
+      <circle r="4" fill="#fff" stroke="#94a3b8" stroke-width="2"><title>{{v_graph.1.machine}} · Nominal: {{v_graph.1.rated_speed}} {{metadata.unit}}</title></circle>
+    </g>
+    <g data-machine-index="1" transform="translate(0 {{v_graph.1.actual_speed}}) scale(1 -1)">
+      <circle data-actual-point="1" r="{{#if v_graph.1.is_pacemaker}}8{{else}}6{{/if}}" fill="{{#if v_graph.1.is_pacemaker}}#dc2626{{else}}#1d4ed8{{/if}}" stroke="#fff" stroke-width="2">
+        <title>{{v_graph.1.machine}} · Operativa: {{v_graph.1.actual_speed}} {{metadata.unit}}{{#if v_graph.1.is_pacemaker}} · Pacemaker informado{{/if}}</title>
+      </circle>
+      <text y="-18" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke fill" text-anchor="middle" font-size="14" font-weight="700" fill="{{#if v_graph.1.is_pacemaker}}#b91c1c{{else}}#172554{{/if}}">{{number v_graph.1.actual_speed 0}}</text>
+    </g>
+  </g>
+  <text y="32" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">{{v_graph.1.machine}}</text>
+</g>
+<g transform="translate(452 350)">
+  <g transform="scale(1 -1)">
+    <g transform="translate(0 {{v_graph.2.rated_speed}}) scale(1 -1)">
+      <circle r="4" fill="#fff" stroke="#94a3b8" stroke-width="2"><title>{{v_graph.2.machine}} · Nominal: {{v_graph.2.rated_speed}} {{metadata.unit}}</title></circle>
+    </g>
+    <g data-machine-index="2" transform="translate(0 {{v_graph.2.actual_speed}}) scale(1 -1)">
+      <circle data-actual-point="2" r="{{#if v_graph.2.is_pacemaker}}8{{else}}6{{/if}}" fill="{{#if v_graph.2.is_pacemaker}}#dc2626{{else}}#1d4ed8{{/if}}" stroke="#fff" stroke-width="2">
+        <title>{{v_graph.2.machine}} · Operativa: {{v_graph.2.actual_speed}} {{metadata.unit}}{{#if v_graph.2.is_pacemaker}} · Pacemaker informado{{/if}}</title>
+      </circle>
+      <text y="-18" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke fill" text-anchor="middle" font-size="14" font-weight="700" fill="{{#if v_graph.2.is_pacemaker}}#b91c1c{{else}}#172554{{/if}}">{{number v_graph.2.actual_speed 0}}</text>
+    </g>
+  </g>
+  <text y="32" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">{{v_graph.2.machine}}</text>
+</g>
+<g transform="translate(628 350)">
+  <g transform="scale(1 -1)">
+    <g transform="translate(0 {{v_graph.3.rated_speed}}) scale(1 -1)">
+      <circle r="4" fill="#fff" stroke="#94a3b8" stroke-width="2"><title>{{v_graph.3.machine}} · Nominal: {{v_graph.3.rated_speed}} {{metadata.unit}}</title></circle>
+    </g>
+    <g data-machine-index="3" transform="translate(0 {{v_graph.3.actual_speed}}) scale(1 -1)">
+      <circle data-actual-point="3" r="{{#if v_graph.3.is_pacemaker}}8{{else}}6{{/if}}" fill="{{#if v_graph.3.is_pacemaker}}#dc2626{{else}}#1d4ed8{{/if}}" stroke="#fff" stroke-width="2">
+        <title>{{v_graph.3.machine}} · Operativa: {{v_graph.3.actual_speed}} {{metadata.unit}}{{#if v_graph.3.is_pacemaker}} · Pacemaker informado{{/if}}</title>
+      </circle>
+      <text y="-18" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke fill" text-anchor="middle" font-size="14" font-weight="700" fill="{{#if v_graph.3.is_pacemaker}}#b91c1c{{else}}#172554{{/if}}">{{number v_graph.3.actual_speed 0}}</text>
+    </g>
+  </g>
+  <text y="32" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">{{v_graph.3.machine}}</text>
+</g>
+<g transform="translate(804 350)">
+  <g transform="scale(1 -1)">
+    <g transform="translate(0 {{v_graph.4.rated_speed}}) scale(1 -1)">
+      <circle r="4" fill="#fff" stroke="#94a3b8" stroke-width="2"><title>{{v_graph.4.machine}} · Nominal: {{v_graph.4.rated_speed}} {{metadata.unit}}</title></circle>
+    </g>
+    <g data-machine-index="4" transform="translate(0 {{v_graph.4.actual_speed}}) scale(1 -1)">
+      <circle data-actual-point="4" r="{{#if v_graph.4.is_pacemaker}}8{{else}}6{{/if}}" fill="{{#if v_graph.4.is_pacemaker}}#dc2626{{else}}#1d4ed8{{/if}}" stroke="#fff" stroke-width="2">
+        <title>{{v_graph.4.machine}} · Operativa: {{v_graph.4.actual_speed}} {{metadata.unit}}{{#if v_graph.4.is_pacemaker}} · Pacemaker informado{{/if}}</title>
+      </circle>
+      <text y="-18" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke fill" text-anchor="middle" font-size="14" font-weight="700" fill="{{#if v_graph.4.is_pacemaker}}#b91c1c{{else}}#172554{{/if}}">{{number v_graph.4.actual_speed 0}}</text>
+    </g>
+  </g>
+  <text y="32" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">{{v_graph.4.machine}}</text>
+</g>
+<g transform="translate(980 350)">
+  <g transform="scale(1 -1)">
+    <g transform="translate(0 {{v_graph.5.rated_speed}}) scale(1 -1)">
+      <circle r="4" fill="#fff" stroke="#94a3b8" stroke-width="2"><title>{{v_graph.5.machine}} · Nominal: {{v_graph.5.rated_speed}} {{metadata.unit}}</title></circle>
+    </g>
+    <g data-machine-index="5" transform="translate(0 {{v_graph.5.actual_speed}}) scale(1 -1)">
+      <circle data-actual-point="5" r="{{#if v_graph.5.is_pacemaker}}8{{else}}6{{/if}}" fill="{{#if v_graph.5.is_pacemaker}}#dc2626{{else}}#1d4ed8{{/if}}" stroke="#fff" stroke-width="2">
+        <title>{{v_graph.5.machine}} · Operativa: {{v_graph.5.actual_speed}} {{metadata.unit}}{{#if v_graph.5.is_pacemaker}} · Pacemaker informado{{/if}}</title>
+      </circle>
+      <text y="-18" stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke fill" text-anchor="middle" font-size="14" font-weight="700" fill="{{#if v_graph.5.is_pacemaker}}#b91c1c{{else}}#172554{{/if}}">{{number v_graph.5.actual_speed 0}}</text>
+    </g>
+  </g>
+  <text y="32" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">{{v_graph.5.machine}}</text>
+</g>
+</svg>
+</div>
+<div class="legend"><span><i class="dot"></i>Velocidad operativa real</span><span><i class="dot red"></i>Pacemaker informado</span><span><i class="dash"></i>Capacidad nominal</span></div>
+<div class="note"><strong>{{metadata.data_status}}.</strong> El color rojo proviene de <code>is_pacemaker: true</code>; esta gráfica no determina automáticamente el cuello de botella ni valida setpoints.</div>
+</section>
+<section class="card">
+<div class="card-heading"><h2>Datos utilizados</h2><p>Los mismos valores alimentan la tabla y la gráfica.</p></div>
+<div class="table-scroll"><table>
+<thead><tr><th>Máquina</th><th class="numeric">Nominal ({{metadata.unit}})</th><th class="numeric">Operativa ({{metadata.unit}})</th><th class="numeric">Variación</th><th>Rol</th></tr></thead>
+<tbody>{{#each v_graph}}<tr><td><strong>{{machine}}</strong></td><td class="numeric">{{number rated_speed 0}}</td><td class="numeric actual">{{number actual_speed 0}}</td><td class="numeric">{{percent_change actual_speed rated_speed 1}}%</td><td>{{#if is_pacemaker}}<span class="badge">PACEMAKER</span>{{else}}<span class="muted">—</span>{{/if}}</td></tr>{{/each}}</tbody>
+</table></div>
+</section>
+<footer>Plantilla fija: 6 máquinas · Escala: 0–300 BPM · SVG estático + datos JSON · JsonTemplateRenderer v2.</footer>
+</main>
+</body>
+</html>

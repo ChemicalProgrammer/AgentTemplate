@@ -1,0 +1,45 @@
+{
+  "metadata": {
+    "line_name": "Línea de ejemplo 1",
+    "unit": "BPM",
+    "data_status": "Datos ficticios para demostrar la visualización"
+  },
+  "v_graph": [
+    {
+      "machine": "Blowmolder",
+      "rated_speed": 210,
+      "actual_speed": 193,
+      "is_pacemaker": false
+    },
+    {
+      "machine": "Pucker",
+      "rated_speed": 205,
+      "actual_speed": 191,
+      "is_pacemaker": false
+    },
+    {
+      "machine": "Filler/Capper",
+      "rated_speed": 180,
+      "actual_speed": 180,
+      "is_pacemaker": true
+    },
+    {
+      "machine": "Labeler",
+      "rated_speed": 205,
+      "actual_speed": 189,
+      "is_pacemaker": false
+    },
+    {
+      "machine": "Case Packer",
+      "rated_speed": 215,
+      "actual_speed": 195,
+      "is_pacemaker": false
+    },
+    {
+      "machine": "Palletizer",
+      "rated_speed": 220,
+      "actual_speed": 200,
+      "is_pacemaker": false
+    }
+  ]
+}
