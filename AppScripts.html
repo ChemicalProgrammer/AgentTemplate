@@ -84,8 +84,8 @@
     pendingUploads: new Map(),
     sourceIndexTimers: new Map(),
     activeIndexSources: new Set(),
-    pdfExportNodeId: null,
     htmlExportNodeId: null,
+    htmlExportTarget: null,
     branchSourceMessageId: null,
     lastProjectRefresh: 0,
     projectLoadToken: 0,
@@ -233,8 +233,6 @@
     document.getElementById('export-document-html').addEventListener('click', openDocumentHtmlExport);
     document.getElementById('choose-document-template').addEventListener('click', openDocumentTemplateChooser);
     document.getElementById('document-template-form').addEventListener('submit', submitDocumentTemplateChoice);
-    document.getElementById('pdf-export-form').addEventListener('submit', submitDocumentPdfExport);
-    document.querySelectorAll('input[name="pdf-export-destination"]').forEach(input => input.addEventListener('change', syncPdfExportDestination));
     document.getElementById('html-export-form').addEventListener('submit', submitDocumentHtmlExport);
     document.querySelectorAll('input[name="html-export-destination"]').forEach(input => input.addEventListener('change', syncHtmlExportDestination));
     document.querySelectorAll('[data-preview-mode]').forEach(button => button.addEventListener('click', () => setDocumentPreviewMode(button.dataset.previewMode)));
@@ -950,7 +948,8 @@
     const cached = workspace105.documents.get(projectId);
     if(cached){state.documentNodes=visibleWorkspaceNodes_(cached,projectId);renderDocumentGraph();setPanelLoading_('documents',false);}
     try {
-      const data = await server('getProjectDocumentsPanel', projectId);
+      const data = await loadWorkspaceCatalog106_(projectId);
+      if(data.catalogRefreshWarning && loadToken === state.projectLoadToken && state.currentProjectId === projectId) showToast(data.catalogRefreshWarning, true);
       workspace105.documents.set(projectId,data.documentGraph||[]);
       if(workspace105.documents.size>8)workspace105.documents.delete(workspace105.documents.keys().next().value);
       if (loadToken !== state.projectLoadToken || state.currentProjectId !== projectId) return;
@@ -1104,9 +1103,8 @@
     document.getElementById('share-project-button').classList.toggle('hidden', project.role !== 'owner');
     document.querySelector('[data-side-tab="chats"]').classList.toggle('hidden', !permissions.history);
     document.querySelector('[data-side-tab="documents"]').classList.toggle('hidden', !permissions.sources && !permissions.documents);
-    document.querySelector('[data-side-tab="resources"]').classList.toggle('hidden', !permissions.documents && !permissions.sources);
-    document.getElementById('side-panel-templates').classList.toggle('hidden', !permissions.documents);
-    document.getElementById('side-panel-flows').classList.toggle('hidden', !permissions.sources);
+    document.querySelector('[data-side-tab="templates"]').classList.toggle('hidden', !permissions.documents);
+    document.querySelector('[data-side-tab="flows"]').classList.toggle('hidden', !permissions.sources);
     document.getElementById('new-conversation').classList.toggle('hidden', !permissions.edit);
     document.querySelector('.composer-wrap').classList.toggle('hidden', !permissions.edit || !permissions.history);
     document.getElementById('add-source-link').classList.toggle('hidden', !permissions.edit || !permissions.sources);
@@ -1191,8 +1189,6 @@
   }
 
   function showSideTab(name, load = true) {
-    if(name==='templates'||name==='flows')name='resources';
-    if(name==='resources'){renderAgentResources105_(); if(load){if(state.projectDetails.permissions.documents)ensurePanelLoaded_('templates');if(state.projectDetails.permissions.sources)ensurePanelLoaded_('flows');resumeWorkspaceOperations105_(state.currentProjectId);}}
     document.querySelectorAll('[data-side-tab]').forEach(tab => {
       const active = tab.dataset.sideTab === name; tab.classList.toggle('active', active); tab.setAttribute('aria-selected', String(active));
     });
@@ -1496,27 +1492,26 @@
     const savedAgentName = message.agentName || state.currentConversation.agentName || agent.name || 'Agent';
     const savedAgentVersion = message.agentVersion || state.currentConversation.agentVersion || '';
     const assistant = message.role === 'assistant';
-    const sources = assistant ? messageResponseSources_(message) : messageContextSources_(message);
-    const flows = assistant ? messageResponseFlows_(message) : messageContextFlows_(message);
+    const sources = (assistant ? messageResponseSources_(message) : messageContextSources_(message)).filter(isProjectResource106_);
+    const flows = (assistant ? messageResponseFlows_(message) : messageContextFlows_(message)).filter(isProjectResource106_);
     const verifiedSources = assistant ? sources.filter(source => source.verified) : [];
     const contextualSources = assistant ? sources.filter(source => !source.verified) : [];
-    const citationCount = numberValue(message.retrievalAudit && message.retrievalAudit.citationCount);
-    const sourceHtml = sources.length ? `<div class="message-context-items">${sources.map(source => `<span class="message-context-chip ${escapeHtml(fileTypeClass(source.mimeType,source.name))}"><b>${escapeHtml(fileTypeIcon(source.mimeType,source.name))}</b><span>${escapeHtml(source.name)}${source.pages && source.pages.length ? ` · p. ${escapeHtml(source.pages.join(', '))}` : ''}</span>${assistant ? `<span class="source-evidence-badge ${source.verified ? 'verified' : ''}">${source.verified ? 'Retrieved' : 'Context'}</span>` : ''}</span>`).join('')}</div>` : `<p class="message-context-empty">${assistant ? 'No source citations or supplied source context were saved.' : 'No documents were selected.'}</p>`;
-    const flowHtml = flows.length ? `<div class="message-context-items">${flows.map(flow => `<span class="message-context-chip type-flow"><b>⇄</b>${escapeHtml(flow.name)}</span>`).join('')}</div>` : '<p class="message-context-empty">No procedures were selected.</p>';
+    const sourceHtml = sources.length ? `<div class="message-context-items">${sources.map(source => `<span class="message-context-chip ${escapeHtml(fileTypeClass(source.mimeType,source.name))}"><b>${escapeHtml(fileTypeIcon(source.mimeType,source.name))}</b><span>${escapeHtml(source.name)}${source.pages && source.pages.length ? ` · p. ${escapeHtml(source.pages.join(', '))}` : ''}</span>${assistant ? `<span class="source-evidence-badge ${source.verified ? 'verified' : ''}">${source.verified ? 'Retrieved' : 'Context'}</span>` : ''}</span>`).join('')}</div>` : `<p class="message-context-empty">${assistant ? 'No project sources are listed for this response.' : 'No project documents were selected.'}</p>`;
+    const flowHtml = flows.length ? `<div class="message-context-items">${flows.map(flow => `<span class="message-context-chip type-flow"><b>⇄</b>${escapeHtml(flow.name)}</span>`).join('')}</div>` : '<p class="message-context-empty">No project workflows were selected.</p>';
     let auditHtml = '';
     if (assistant) {
       const auditText = verifiedSources.length
-        ? `${numberValue(verifiedSources.length)} source${verifiedSources.length === 1 ? '' : 's'} were retrieved with ${citationCount || verifiedSources.length} saved citation${(citationCount || verifiedSources.length) === 1 ? '' : 's'}.${contextualSources.length ? ` ${numberValue(contextualSources.length)} additional source${contextualSources.length === 1 ? '' : 's'} were supplied as context; their influence cannot be independently verified.` : ''}`
+        ? `${numberValue(verifiedSources.length)} project source${verifiedSources.length === 1 ? ' has' : 's have'} saved retrieval evidence.${contextualSources.length ? ` ${numberValue(contextualSources.length)} additional project source${contextualSources.length === 1 ? ' was' : 's were'} supplied as context; their influence cannot be independently verified.` : ''}`
         : sources.length
           ? `${numberValue(sources.length)} source${sources.length === 1 ? '' : 's'} were supplied as context. Gemini returned no verifiable File Search citation for them, so their influence cannot be proven independently.`
-          : 'Gemini returned no source citation for this response.';
+          : 'No project source citations are listed. Agent resources remain internal.';
       auditHtml = `<p class="message-context-audit ${verifiedSources.length ? 'verified' : ''}">${escapeHtml(auditText)}</p>`;
     }
     const performanceHtml = assistant ? messagePerformanceHtml_(message) : '';
     document.getElementById('message-context-title').textContent = assistant ? 'Response evidence' : 'Request details';
-    document.getElementById('message-context-description').textContent = assistant ? 'Retrieval evidence and supplied context are saved privately with the response.' : 'This information was saved with the message and is not added to the visible conversation.';
-    document.getElementById('message-context-content').innerHTML = `<div class="message-context-summary"><div class="message-context-agent">${identityMarkHtml_(agent,'message-context-agent-mark')}<div><small>Agent</small><strong>${escapeHtml(savedAgentName)}</strong><span>${savedAgentVersion ? `Version ${escapeHtml(savedAgentVersion)}` : 'Version unavailable'}</span></div></div><dl><div><dt>Model</dt><dd>${escapeHtml(message.model || state.currentConversation.model || 'Unavailable')}</dd></div><div><dt>${assistant ? 'Created' : 'Sent'}</dt><dd>${escapeHtml(formatDateTime(message.createdAt))}</dd></div></dl></div>${auditHtml}${performanceHtml}<section><h3>${assistant ? 'Response sources' : 'Selected sources'} <span>${numberValue(sources.length)}</span></h3>${sourceHtml}</section><section><h3>${assistant ? 'Applied procedures' : 'Selected procedures'} <span>${numberValue(flows.length)}</span></h3>${flowHtml}</section>`;
-    if(message.artifact && message.artifact.presentationTemplateName){const t=document.createElement('p');t.textContent='Presentation: '+message.artifact.presentationTemplateName;document.getElementById('message-context-content').appendChild(t);}
+    document.getElementById('message-context-description').textContent = assistant ? 'Project context is shown here. Agent resources remain active internally and are omitted from these lists.' : 'This information was saved with the message and is not added to the visible conversation.';
+    document.getElementById('message-context-content').innerHTML = `<div class="message-context-summary"><div class="message-context-agent">${identityMarkHtml_(agent,'message-context-agent-mark')}<div><small>Agent</small><strong>${escapeHtml(savedAgentName)}</strong><span>${savedAgentVersion ? `Version ${escapeHtml(savedAgentVersion)}` : 'Version unavailable'}</span></div></div><dl><div><dt>Model</dt><dd>${escapeHtml(message.model || state.currentConversation.model || 'Unavailable')}</dd></div><div><dt>${assistant ? 'Created' : 'Sent'}</dt><dd>${escapeHtml(formatDateTime(message.createdAt))}</dd></div></dl></div>${auditHtml}${performanceHtml}<section><h3>${assistant ? 'Project sources used' : 'Selected project sources'} <span>${numberValue(sources.length)}</span></h3>${sourceHtml}</section><section><h3>${assistant ? 'Project workflows applied' : 'Selected project workflows'} <span>${numberValue(flows.length)}</span></h3>${flowHtml}</section>`;
+    if(message.artifact && message.artifact.presentationTemplateName && (message.artifact.presentationTemplateOrigin === 'project' || (state.projectDetails.templates || []).some(t => t.templateId === message.artifact.presentationTemplateId && isProjectResource106_(t)))){const t=document.createElement('p');t.textContent='Presentation: '+message.artifact.presentationTemplateName;document.getElementById('message-context-content').appendChild(t);}
     if(message.resourcePlan){const info=document.createElement('p');info.className='panel-help';info.textContent='Resource selection: '+message.resourcePlan.mode+' · '+(message.resourcePlan.selectionMs||0)+' ms';document.getElementById('message-context-content').appendChild(info);}
     openModal('message-context-modal');
   }
@@ -1735,6 +1730,8 @@
     if (diagnostics) { diagnostics.textContent = ''; diagnostics.classList.add('hidden'); }
     document.querySelector('[data-preview-mode="html"]').classList.add('hidden');
     document.getElementById('export-document-html').classList.add('hidden');
+    document.getElementById('export-document-raw').classList.add('hidden');
+    document.getElementById('export-document-pdf').disabled = true;
     document.getElementById('choose-document-template').classList.add('hidden');
     document.getElementById('document-viewer-loader').classList.remove('hidden');
     try {
@@ -1770,19 +1767,17 @@
     const preview = state.documentPreview; if (!preview) return;
     const content = document.getElementById('document-viewer-content');
     const tabs = document.getElementById('document-viewer-tabs');
-    const rawButton = tabs.querySelector('[data-preview-mode="raw"]');
-    const htmlButton = tabs.querySelector('[data-preview-mode="html"]');
-    const htmlExportButton = document.getElementById('export-document-html');
-    const textPreview = preview.mode === 'markdown' || preview.mode === 'html' || preview.mode === 'text' || preview.mode === 'json' || preview.mode === 'templated_json';
-    const templatedJson = preview.mode === 'templated_json' && Boolean(preview.renderedHtml);
-    const jsonDocument = String(preview.nodeId || '').startsWith('document:') && (preview.mimeType === 'application/json' || /\.json$/i.test(preview.name || ''));
-    const canEditPresentation = state.projectDetails && state.projectDetails.permissions && state.projectDetails.permissions.edit && state.projectDetails.permissions.documents;
-    document.getElementById('choose-document-template').classList.toggle('hidden', !jsonDocument || !canEditPresentation);
+    const presentation = documentViewActions106_(preview, state.documentPreviewMode, state.projectDetails.permissions);
+    state.documentPreviewMode = presentation.mode;
+    tabs.querySelector('[data-preview-mode="raw"]').disabled = !presentation.text;
+    tabs.querySelector('[data-preview-mode="html"]').classList.toggle('hidden', !presentation.htmlTab);
+    document.getElementById('choose-document-template').classList.toggle('hidden', !presentation.chooseTemplate);
+    document.getElementById('export-document-html').classList.toggle('hidden', !presentation.exportHtml);
+    const rawExportButton = document.getElementById('export-document-raw');
+    rawExportButton.classList.toggle('hidden', !presentation.exportRaw);
+    rawExportButton.textContent = 'Export ' + (presentation.rawFormat || 'JSON');
+    document.getElementById('export-document-pdf').disabled = !presentation.printable;
     renderDocumentPresentationDiagnostics_(preview);
-    rawButton.disabled = !textPreview;
-    htmlButton.classList.toggle('hidden', !templatedJson);
-    htmlExportButton.classList.toggle('hidden', !templatedJson);
-    if (!textPreview || (state.documentPreviewMode === 'html' && !templatedJson)) state.documentPreviewMode = 'preview';
     tabs.querySelectorAll('[data-preview-mode]').forEach(button => {
       const active = button.dataset.previewMode === state.documentPreviewMode;
       button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active));
@@ -1790,7 +1785,7 @@
     content.className = 'document-viewer-content'; content.innerHTML = '';
     if (state.documentPreviewMode === 'html') {
       content.classList.add('raw-preview', 'html-source-preview');
-      content.textContent = preparedTemplatedHtml_(preview); return;
+      content.textContent = presentation.hasHtml ? activeHtmlSource106_(preview) : 'No HTML presentation is available. Choose a template above, or review the template error.'; return;
     }
     if (state.documentPreviewMode === 'raw') {
       content.classList.add('raw-preview'); content.textContent = preview.text || ''; return;
@@ -1867,7 +1862,7 @@
       const preview = await server('setDocumentPresentationTemplate', target.projectId, target.nodeId, templateId, target.expectedTemplateId);
       target.expectedTemplateId = templateId;
       if (state.documentTemplateTarget === target && !document.getElementById('document-template-modal').classList.contains('hidden')) closeModals();
-      if (state.currentProjectId === target.projectId && state.previewNodeId === target.nodeId) { state.documentPreview = preview; state.documentPreviewMode = 'preview'; renderDocumentPreview_(); }
+      if (state.currentProjectId === target.projectId && state.previewNodeId === target.nodeId) { state.documentPreview = preview; state.documentPreviewMode = 'html'; renderDocumentPreview_(); }
       showToast('Template updated. Original JSON preserved.');
     } catch (error) { if (state.documentTemplateTarget === target) status.textContent = error.message; }
     finally { if (state.documentTemplateTarget === target) setBusy(event.target, false); }
@@ -1899,54 +1894,18 @@
   }
 
   function openDocumentPdfExport() {
-    if (!state.previewNodeId || !state.documentPreview) return showToast('Open a document before exporting it.', true);
-    state.pdfExportNodeId = state.previewNodeId;
-    const sourceName = state.documentPreview.name || 'Document';
-    document.getElementById('pdf-export-source-name').textContent = sourceName;
-    document.getElementById('pdf-export-file-name').value = sourceName.replace(/\.[^.]+$/, '') + '.pdf';
-    const projectChoice = document.querySelector('input[name="pdf-export-destination"][value="project"]');
-    projectChoice.checked = true; document.getElementById('pdf-export-folder').value = '';
-    syncPdfExportDestination(); openModal('pdf-export-modal'); document.getElementById('pdf-export-file-name').focus();
-  }
-
-  function syncPdfExportDestination() {
-    const selected = document.querySelector('input[name="pdf-export-destination"]:checked');
-    const external = selected && selected.value === 'external';
-    const field = document.getElementById('pdf-external-folder-field');
-    const input = document.getElementById('pdf-export-folder');
-    field.classList.toggle('hidden', !external); input.required = external;
-  }
-
-  async function submitDocumentPdfExport(event) {
-    event.preventDefault(); if (!state.pdfExportNodeId) return;
-    const form = event.target; const destination = document.querySelector('input[name="pdf-export-destination"]:checked').value;
-    const externalWindow = destination === 'external' ? window.open('', '_blank') : null;
-    setBusy(form, true);
-    try {
-      const pdf = await server('exportProjectDocumentToPdf', state.currentProjectId, state.pdfExportNodeId, {
-        destination: destination,
-        fileName: document.getElementById('pdf-export-file-name').value,
-        folderId: document.getElementById('pdf-export-folder').value
-      });
-      closeModals(); state.pdfExportNodeId = null;
-      if (pdf.download) { downloadBlob105_(pdf); return; }
-      if (pdf.savedInProject) {
-        upsertGeneratedNode105_(pdf); await openDocumentPreview(pdf.nodeId);
-        showToast('PDF saved as a generated project source.');
-      } else {
-        if (externalWindow) externalWindow.location = pdf.url; else window.open(pdf.url, '_blank', 'noopener');
-        showToast('PDF exported to the selected Drive folder.');
-      }
-    } catch (error) { if (externalWindow) externalWindow.close(); showToast(error.message, true); }
-    finally { setBusy(form, false); }
+    return printActiveDocument106_();
   }
 
   function openDocumentHtmlExport() {
     const preview = state.documentPreview;
-    if (!state.previewNodeId || !preview || preview.mode !== 'templated_json') {
+    if (!preview || state.documentPreviewMode !== 'html') return;
+    if (preview.mode === 'html') return downloadText106_(activeHtmlSource106_(preview), preview.name, 'HTML');
+    if (!state.previewNodeId || preview.mode !== 'templated_json') {
       return showToast('Open a JSON artifact with an HTML template before exporting it.', true);
     }
     state.htmlExportNodeId = state.previewNodeId;
+    state.htmlExportTarget = {projectId:state.currentProjectId,nodeId:state.previewNodeId,html:activeHtmlSource106_(preview)};
     const sourceName = preview.name || 'Artifact.json';
     document.getElementById('html-export-source-name').textContent = `${sourceName} · ${preview.presentation && preview.presentation.templateName || 'HTML template'}`;
     document.getElementById('html-export-file-name').value = sourceName.replace(/\.[^.]+$/, '') + '.html';
@@ -1964,20 +1923,25 @@
   }
 
   async function submitDocumentHtmlExport(event) {
-    event.preventDefault(); if (!state.htmlExportNodeId) return;
+    event.preventDefault(); if (!state.htmlExportNodeId || !state.htmlExportTarget) return;
+    const target = state.htmlExportTarget;
     const form = event.target; const destination = document.querySelector('input[name="html-export-destination"]:checked').value;
     const externalWindow = destination === 'external' ? window.open('', '_blank') : null;
     setBusy(form, true);
     try {
-      const html = await server('exportTemplatedJsonArtifactToHtml', state.currentProjectId, state.htmlExportNodeId, {
+      if (destination === 'download') {
+        downloadText106_(target.html, document.getElementById('html-export-file-name').value, 'HTML');
+        closeModals(); state.htmlExportNodeId = null; state.htmlExportTarget = null; return;
+      }
+      const html = await server('exportTemplatedJsonArtifactToHtml', target.projectId, target.nodeId, {
         destination: destination,
         fileName: document.getElementById('html-export-file-name').value,
         folderId: document.getElementById('html-export-folder').value
       });
-      closeModals(); state.htmlExportNodeId = null;
+      closeModals(); state.htmlExportNodeId = null; state.htmlExportTarget = null;
       if (html.download) { downloadBlob105_(html); return; }
       if (html.savedInProject) {
-        upsertGeneratedNode105_(html); await openDocumentPreview(html.nodeId);
+        if(state.currentProjectId === target.projectId){upsertGeneratedNode105_(html); await openDocumentPreview(html.nodeId);}
         showToast('Filled HTML saved as a generated project document.');
       } else {
         if (externalWindow) externalWindow.location = html.url; else window.open(html.url, '_blank', 'noopener');
@@ -2382,8 +2346,8 @@
   }
 
   function renderSourceChips() {
-    const selected = state.documentNodes.filter(node => !node.hiddenInProject && state.selectedSources.has(node.nodeId));
-    const flows = state.projectDetails ? (state.projectDetails.flows || []).filter(flow => state.selectedFlows.has(flow.flowId)) : [];
+    const selected = state.documentNodes.filter(node => !node.hiddenInProject && isProjectResource106_(node) && state.selectedSources.has(node.nodeId));
+    const flows = state.projectDetails ? (state.projectDetails.flows || []).filter(flow => isProjectResource106_(flow) && state.selectedFlows.has(flow.flowId)) : [];
     const items = selected.map(node => ({icon:fileTypeIcon(node.mimeType,node.name), name:node.name, typeClass:fileTypeClass(node.mimeType,node.name)})).concat(flows.map(flow => ({icon:'⇄',name:flow.name,typeClass:'type-flow'})));
     const countLabel = selected.length ? `<span class="source-chip-count">${numberValue(selected.length)} ${selected.length === 1 ? 'source' : 'sources'}${flows.length ? ` · ${numberValue(flows.length)} ${flows.length === 1 ? 'flow' : 'flows'}` : ''}</span>` : flows.length ? `<span class="source-chip-count">${numberValue(flows.length)} ${flows.length === 1 ? 'flow' : 'flows'}</span>` : '';
     document.getElementById('active-source-chips').innerHTML = items.map(item => `<span class="source-chip ${item.typeClass}" title="${escapeHtml(item.name)}">${item.icon} ${escapeHtml(item.name)}</span>`).join('') + countLabel;
@@ -2726,7 +2690,7 @@
 
   function renderTemplates() {
     if (!state.projectDetails || !state.panelLoaded.templates) return;
-    const templates = state.projectDetails.templates || [];
+    const templates = (state.projectDetails.templates || []).filter(isProjectResource106_);
     const container = document.getElementById('template-list');
     container.innerHTML = templates.map(template => `<article class="asset-card ${template.templateId === state.selectedTemplateId ? 'selected' : ''}">
       <label class="asset-select"><input type="radio" name="report-template" value="${escapeHtml(template.templateId)}" ${template.templateId === state.selectedTemplateId ? 'checked' : ''}><span class="file-type-icon ${fileTypeClass(template.mimeType,template.name)}">${fileTypeIcon(template.mimeType,template.name)}</span><span><strong>${escapeHtml(template.name)}</strong><small>${escapeHtml(friendlyMime(template.mimeType,template.name))} · ${template.origin === 'agent' ? 'inherited from agent' : 'project output'}</small></span></label>
@@ -2770,7 +2734,7 @@
 
   function renderFlows() {
     if (!state.projectDetails || !state.panelLoaded.flows) return;
-    const flows = state.projectDetails.flows || [];
+    const flows = (state.projectDetails.flows || []).filter(isProjectResource106_);
     const container = document.getElementById('flow-list');
     container.innerHTML = flows.map(flow => `<article class="asset-card ${state.selectedFlows.has(flow.flowId) ? 'selected' : ''}">
       <label class="asset-select">${flow.origin === 'agent' ? '<span class="automatic-resource-badge">Agent</span>' : `<input type="checkbox" data-flow-select="${escapeHtml(flow.flowId)}" ${state.selectedFlows.has(flow.flowId) ? 'checked' : ''}>`}<span class="file-type-icon type-flow">MD</span><span><strong>${escapeHtml(flow.name)}</strong><small>${flow.origin === 'agent' ? 'Agent procedure' : 'Project procedure'} · ${formatFileSize(flow.size)}</small></span></label>
@@ -2917,6 +2881,9 @@
   }
 
   function openSettings() {
+    const projectDiagnostics = document.getElementById('project-resource-diagnostics');
+    projectDiagnostics.classList.toggle('hidden', !state.currentProjectId || !state.projectDetails);
+    if(state.currentProjectId && state.projectDetails){renderAgentResources105_();resumeWorkspaceOperations105_(state.currentProjectId);}
     const settings = state.bootstrap.userSettings;
     const config = state.bootstrap.config;
     document.getElementById('gemini-api-key').value = settings.apiKey || '';
@@ -3246,7 +3213,8 @@
     document.querySelectorAll('.modal').forEach(modal => { modal.classList.add('hidden'); modal.classList.remove('modal-visible'); });
     state.editingDocumentId = null;
     state.diagnosingSourceId = null;
-    state.pdfExportNodeId = null;
+    state.htmlExportNodeId = null;
+    state.htmlExportTarget = null;
   }
 
   function syncDashboardFilters() { document.querySelectorAll('[data-dashboard-filter]').forEach(button => button.classList.toggle('active', button.dataset.dashboardFilter === state.dashboardFilter)); }

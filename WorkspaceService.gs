@@ -75,7 +75,11 @@ function syncProjectDocumentCatalog(projectId) {
       index.catalogReady = true; if(access.allowed.history)index.catalogPdfsReady=true; index.catalogSyncedAt = nowIso_(); writeDocumentIndex_(access.project,index);
     });
   }
+  if (access.allowed.documents && !access.allowed.edit) {
+    var graph = (access.allowed.sources ? listAgentKnowledgeNodesForProject_(access.project) : []).concat(listProjectDocumentNodes_(projectId, docs));
+    return {documentGraph:applyProjectDocumentOrder_(projectId, graph)};
+  }
   return getProjectDocumentsPanel(projectId);
 }
 
-function activeWorkspaceFile_(id) {var file=DriveApp.getFileById(id);if(file.isTrashed())throw new Error('This file is in Drive trash. Synchronize Documents.');return file;}
+function activeWorkspaceFile_(id) {var file=DriveApp.getFileById(id);if(file.isTrashed())throw new Error('This file is in Drive trash. Reload the page to refresh Documents.');return file;}

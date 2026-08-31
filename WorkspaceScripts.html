@@ -25,15 +25,6 @@ function renderAgentResources105_() {
   const timing=document.getElementById('workspace-load-timings');if(timing)timing.innerHTML=workspace105.metrics.slice(-12).map(m=>`<div><code>${escapeHtml(m.action)}</code><span>${m.ms} ms</span></div>`).join('');
   container.querySelectorAll('[data-resource-repair]').forEach(b=>b.addEventListener('click',()=>repairProjectAgentSource_(b.dataset.resourceRepair,b)));
 }
-async function refreshWorkspaceCatalog105_(button) {
-  const projectId=state.currentProjectId,token=state.projectLoadToken;setBusy(button,true);
-  try {
-    const data=await server('syncProjectDocumentCatalog',projectId);
-    if(projectId!==state.currentProjectId||token!==state.projectLoadToken)return;
-    state.documentNodes=visibleWorkspaceNodes_(data.documentGraph,projectId);workspace105.documents.set(projectId,data.documentGraph);
-    state.projectDetails.documentGraph=state.documentNodes;renderDocumentGraph();renderAgentResources105_();showToast('Drive folder synchronized.');
-  } catch(error){showToast(error.message,true);}finally{setBusy(button,false);}
-}
 async function resumeWorkspaceOperations105_(projectId,retry=false) {
   if(workspace105.workerProjects.has(projectId))return;
   workspace105.workerProjects.add(projectId);
@@ -52,10 +43,6 @@ function downloadBlob105_(result) {
   const url=URL.createObjectURL(new Blob([bytes],{type:result.mimeType||'application/octet-stream'}));
   const link=document.createElement('a');link.href=url;link.download=result.name||'download';document.body.appendChild(link);link.click();link.remove();
   setTimeout(()=>URL.revokeObjectURL(url),60000);showToast('Download started. The destination is controlled by your browser.');
-}
-async function downloadOriginal105_(button) {
-  if(!state.previewNodeId)return;const p=state.currentProjectId,id=state.previewNodeId;setBusy(button,true);
-  try{downloadBlob105_(await server('downloadProjectDocument',p,id));}catch(e){showToast(e.message,true);}finally{setBusy(button,false);}
 }
 async function browseExportFolders105_(kind,id='',more=false) {
   const projectId=state.currentProjectId, token=(workspace105.folderTokens[kind]||0)+1;workspace105.folderTokens[kind]=token;
@@ -84,9 +71,144 @@ function upsertGeneratedNode105_(artifact) {
   updateProjectCount('documentCount',state.documentNodes.filter(n=>n.kind!=='source'&&n.kind!=='agent-source').length);renderDocumentGraph();
 }
 document.addEventListener('DOMContentLoaded',()=>{
-  document.getElementById('refresh-document-catalog').onclick=e=>refreshWorkspaceCatalog105_(e.currentTarget);
-  document.getElementById('download-document-original').onclick=e=>downloadOriginal105_(e.currentTarget);
-  ['pdf','html'].forEach(kind=>document.getElementById(kind+'-browse-folder').onclick=()=>browseExportFolders105_(kind,document.getElementById(kind+'-export-folder').value));
+  document.getElementById('export-document-raw').onclick=exportActiveRaw106_;
+  ['html'].forEach(kind=>document.getElementById(kind+'-browse-folder').onclick=()=>browseExportFolders105_(kind,document.getElementById(kind+'-export-folder').value));
   const refreshAgent=document.getElementById('refresh-agent-resources');if(refreshAgent)refreshAgent.onclick=async()=>{const id=state.currentAgentId;setBusy(refreshAgent,true);try{const d=await server('getAgentDetails',id,true);if(id===state.currentAgentId){state.currentAgentDetails=d;renderAgentEditor();}}catch(e){showToast(e.message,true);}finally{setBusy(refreshAgent,false);}};
 });
+// Hotfix 10.6: presentation-only filters. Never mutate execution selections or saved evidence.
+function isProjectResource106_(resource) {
+  resource = resource || {};
+  const inherited = r => r.origin === 'agent' || r.kind === 'agent-source' ||
+    /^(?:agent-source|agent-flow|agent-template):/.test(String(r.nodeId || r.sourceId || r.flowId || r.templateId || r.assetId || ''));
+  if (inherited(resource)) return false;
+  const id = String(resource.nodeId || resource.sourceId || resource.flowId || resource.templateId || resource.assetId || '');
+  if (!id) return true;
+  const normalized = normalizedEvidenceSourceId_(id);
+  const catalogs = (state.documentNodes || []).concat(state.projectDetails && state.projectDetails.flows || [], state.projectDetails && state.projectDetails.templates || []);
+  return !catalogs.some(r => inherited(r) && [r.nodeId,r.sourceId,r.flowId,r.templateId,r.assetId].some(value => value && normalizedEvidenceSourceId_(String(value)) === normalized));
+}
+const refreshedProjects106_ = new Set();
+const refreshingProjects106_ = new Map();
+async function loadWorkspaceCatalog106_(projectId) {
+  // A page reload resets this state: first visit reconciles Drive, later visits use the index.
+  if (refreshedProjects106_.has(projectId)) return server('getProjectDocumentsPanel', projectId);
+  if (refreshingProjects106_.has(projectId)) return refreshingProjects106_.get(projectId);
+  const request = server('syncProjectDocumentCatalog', projectId).then(data => {
+    refreshedProjects106_.add(projectId); return data;
+  }).catch(async error => {
+    const data = await server('getProjectDocumentsPanel', projectId);
+    return Object.assign({}, data, {catalogRefreshWarning:'Drive refresh incomplete; showing the existing index. ' + error.message});
+  }).finally(() => refreshingProjects106_.delete(projectId));
+  refreshingProjects106_.set(projectId, request);
+  return request;
+}
+function documentRawFormat106_(preview) {
+  if (!preview) return '';
+  if (['json','templated_json'].includes(preview.mode) || preview.mimeType === 'application/json' || /\.json$/i.test(preview.name || '')) return 'JSON';
+  if (preview.mode === 'markdown' || /\.(md|markdown)$/i.test(preview.name || '') || preview.mimeType === 'text/markdown') return 'MD';
+  return '';
+}
+function documentViewActions106_(preview, requestedMode, permissions) {
+  preview = preview || {}; permissions = permissions || {};
+  const text = ['markdown','html','text','json','templated_json'].includes(preview.mode);
+  const hasHtml = preview.mode === 'html' || (preview.mode === 'templated_json' && Boolean(preview.renderedHtml));
+  const rawFormat = documentRawFormat106_(preview);
+  const jsonDocument = rawFormat === 'JSON' && String(preview.nodeId || '').startsWith('document:');
+  // Keep HTML reachable when rendering fails or no template is assigned, so Choose template can repair it.
+  const htmlTab = hasHtml || jsonDocument;
+  let mode = ['preview','html','raw'].includes(requestedMode) ? requestedMode : 'preview';
+  if (!text || (mode === 'html' && !htmlTab)) mode = 'preview';
+  return {mode, text, hasHtml, htmlTab, rawFormat,
+    chooseTemplate: mode === 'html' && jsonDocument && Boolean(permissions.edit && permissions.documents),
+    exportHtml: mode === 'html' && hasHtml,
+    exportRaw: mode === 'raw' && Boolean(rawFormat),
+    printable: Boolean(preview.mode) && !(mode === 'html' && !hasHtml)
+  };
+}
+function activeHtmlSource106_(preview) {
+  return preview.mode === 'templated_json' ? preparedTemplatedHtml_(preview) : sanitizeHtmlPreview_(preview.text || '');
+}
+function downloadText106_(text, name, format) {
+  const extensions = {JSON:'json', MD:'md', HTML:'html'};
+  const types = {JSON:'application/json', MD:'text/markdown', HTML:'text/html'};
+  if (!extensions[format]) throw new Error('Unsupported text export.');
+  const fileName = String(name || 'Document').replace(/\.[^.]+$/, '').replace(/[\\/\u0000-\u001f]/g, '_') + '.' + extensions[format];
+  const url = URL.createObjectURL(new Blob([String(text == null ? '' : text)], {type:types[format] + ';charset=utf-8'}));
+  const link = document.createElement('a'); link.href = url; link.download = fileName;
+  try { document.body.appendChild(link); link.click(); }
+  finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); }
+  showToast('Download started. Your browser controls the save location.');
+}
+function exportActiveRaw106_() {
+  const preview = state.documentPreview;
+  if (!preview || state.documentPreviewMode !== 'raw') return;
+  const format = documentRawFormat106_(preview); if (!format) return;
+  // Export exactly the UTF-8 text on screen, without parsing/reserializing JSON or rendering Markdown.
+  try { downloadText106_(preview.text, preview.name, format); }
+  catch(error) { showToast(error.message, true); }
+}
+function buildDocumentPrint106_(preview, mode, visibleMarkdown, appStyles) {
+  const title = String(preview.name || 'Document').replace(/\.[^.]+$/, '') + ' - ' + mode;
+  let html;
+  if (mode === 'html' || mode === 'raw' || ['json','text'].includes(preview.mode)) {
+    const text = mode === 'html' ? activeHtmlSource106_(preview) : String(preview.text || '');
+    html = '<!doctype html><html><head><meta charset="UTF-8"></head><body><pre class="document-print-code">' + escapeHtml(text) + '</pre></body></html>';
+  } else if (preview.mode === 'templated_json' || preview.mode === 'html') {
+    html = activeHtmlSource106_(preview);
+  } else if (preview.mode === 'markdown') {
+    html = '<!doctype html><html><head><meta charset="UTF-8"><style>' + (appStyles || '') + '</style></head><body><article class="document-viewer-content document-print-markdown">' + (visibleMarkdown || '') + '</article></body></html>';
+  } else {
+    throw new Error('This document is displayed by Drive. Use the print control in its Drive viewer.');
+  }
+  // The print window has no application scripts or opener, and receives only static, sanitized content.
+  const parsed = new DOMParser().parseFromString(sanitizeHtmlPreview_(html, true), 'text/html');
+  parsed.title = title;
+  const style = parsed.createElement('style');
+  style.textContent = '@page{margin:12mm}html,body{height:auto!important;overflow:visible!important}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.document-print-code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:10pt/1.5 monospace;color:#17212b;background:#fff}.document-print-markdown{display:block!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important;padding:0!important;width:auto!important;max-width:none!important}img,svg{max-width:100%}';
+  parsed.head.appendChild(style);
+  return '<!doctype html>' + parsed.documentElement.outerHTML;
+}
+async function printActiveDocument106_() {
+  const preview = state.documentPreview;
+  if (!preview || !state.previewNodeId) return showToast('Open a document before exporting it.', true);
+  const view = documentViewActions106_(preview, state.documentPreviewMode, state.projectDetails && state.projectDetails.permissions);
+  if (!view.printable) return showToast('Choose a working HTML template before printing this view.', true);
+  if (preview.mode === 'drive') {
+    // Cross-origin Drive frames cannot be read or printed by the console.
+    const url = preview.previewUrl || preview.url || '';
+    if (!/^https:\/\/(drive|docs)\.google\.com\//i.test(url)) return showToast('Open this document in Drive to print it.', true);
+    const driveWindow = window.open(url, '_blank');
+    if (driveWindow) { driveWindow.opener = null; showToast('Use Print / Save as PDF in the opened Drive viewer.'); }
+    else showToast('Allow pop-ups to open the Drive print viewer.', true);
+    return;
+  }
+  let html;
+  try {
+    const content = document.getElementById('document-viewer-content');
+    const styles = preview.mode === 'markdown' ? Array.from(document.querySelectorAll('style'), style => style.textContent).join('\n') : '';
+    html = buildDocumentPrint106_(preview, view.mode, content.innerHTML, styles);
+  } catch(error) { return showToast(error.message, true); }
+  // Open synchronously from the click. No RPC can change the selected tab or document after this point.
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return showToast('Allow pop-ups to print the active view.', true);
+  try {
+    const print = printWindow.print.bind(printWindow);
+    printWindow.opener = null;
+    printWindow.document.open(); printWindow.document.write(html); printWindow.document.close();
+    // Wait for embedded fonts/images, without holding the UI or assuming print success.
+    let timer;
+    const assets = [printWindow.document.fonts ? printWindow.document.fonts.ready.catch(() => {}) : Promise.resolve()];
+    Array.from(printWindow.document.images).forEach(img => {
+      if (!img.complete) assets.push(new Promise(resolve => { img.addEventListener('load', resolve, {once:true}); img.addEventListener('error', resolve, {once:true}); }));
+    });
+    await Promise.race([Promise.all(assets), new Promise(resolve => { timer = setTimeout(resolve, 8000); })]);
+    clearTimeout(timer);
+    if (printWindow.closed) return;
+    printWindow.focus(); print();
+    showToast('Choose Save as PDF in the print dialog. The active view is ready in the new tab.');
+  } catch(error) {
+    showToast('Use Print / Save as PDF in the new tab. ' + error.message, true);
+  }
+}
+
 </script>

@@ -12,6 +12,12 @@
           <div class="modal-actions"><button type="button" id="load-models" class="secondary-btn">Load models</button><button type="submit" class="primary-btn">Validate and save</button></div>
         </form>
       </section>
+      <section id="project-resource-diagnostics" class="settings-section hidden">
+        <div class="settings-section-heading"><div><h3>Project diagnostics</h3><p class="muted">Inspect inherited knowledge or retry pending cleanup. These resources stay out of the document panels and chat context lists.</p></div></div>
+        <div id="workspace-operation-status" class="workspace-operation-status" aria-live="polite"></div>
+        <details class="resource-group"><summary>Agent knowledge and index repair</summary><div id="agent-resource-list"></div></details>
+        <details class="workspace-timings"><summary>Recent loading times</summary><p class="panel-help">Measured browser-to-server round trips for this session.</p><div id="workspace-load-timings"></div></details>
+      </section>
       <section id="project-location-settings" class="settings-section admin-only hidden">
         <div class="settings-section-heading"><div><h3>Console location</h3><p class="muted">Choose the main Drive folder. It contains separate Agents, Projects, and _System folders.</p></div><span class="settings-badge">Admin</span></div>
         <form id="root-settings-form">
@@ -112,22 +118,6 @@
     <form id="branch-message-form">
       <label>Revised message<textarea id="branch-message-text" rows="7" required></textarea></label>
       <div class="modal-actions"><button type="button" class="text-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Create branch and continue</button></div>
-    </form>
-  </section>
-
-  <section id="pdf-export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pdf-export-title">
-    <button class="modal-close" data-close-modal aria-label="Close">×</button>
-    <p class="eyebrow">DOCUMENT EXPORT</p><h2 id="pdf-export-title">Export document to PDF</h2>
-    <p id="pdf-export-source-name" class="muted document-note-name"></p>
-    <form id="pdf-export-form">
-      <label>PDF file name<input id="pdf-export-file-name" required maxlength="160"></label>
-      <fieldset class="destination-options"><legend>Save destination</legend>
-        <label class="destination-choice"><input type="radio" name="pdf-export-destination" value="project" checked><span><b>📚 Save as a generated project source</b><small>The PDF becomes a child of the current document and appears at the next generated level.</small></span></label>
-        <label class="destination-choice"><input type="radio" name="pdf-export-destination" value="download"><span><b>⬇ Download to this device</b><small>Your browser chooses the save location or shows Save as.</small></span></label>
-        <label class="destination-choice"><input type="radio" name="pdf-export-destination" value="external"><span><b>📁 Save in another Drive folder</b><small>Save it in another Drive folder without adding it to this project's document graph.</small></span></label>
-      </fieldset>
-      <div id="pdf-external-folder-field" class="hidden"><label>Destination Drive folder<input id="pdf-export-folder" placeholder="Select a folder or paste its URL / ID"></label><div class="folder-actions"><button type="button" id="pdf-browse-folder" class="secondary-btn">Browse folders</button><span id="pdf-selected-folder" class="muted"></span></div><small>You need permission to create files here. To browse a shared folder, paste its URL first.</small><div id="pdf-folder-browser" class="folder-browser hidden"></div></div>
-      <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Export PDF</button></div>
     </form>
   </section>
 

@@ -6,6 +6,10 @@ function listGeneratedDocuments(projectId) {
 }
 
 function listProjectDocuments(projectId) {
+  return listProjectDocumentNodes_(projectId);
+}
+
+function listProjectDocumentNodes_(projectId, refreshedDocuments) {
   var access = assertProjectAccess_(projectId);
   var nodes = [];
 
@@ -42,7 +46,7 @@ function listProjectDocuments(projectId) {
   }
 
   if (access.allowed.documents) {
-    listGeneratedDocumentsForProject_(access.project, Boolean(access.allowed.history), false).forEach(function(document) {
+    (Array.isArray(refreshedDocuments) ? refreshedDocuments : listGeneratedDocumentsForProject_(access.project, Boolean(access.allowed.history), false)).forEach(function(document) {
       nodes.push({
         nodeId: 'document:' + document.id,
         driveId: document.id,
