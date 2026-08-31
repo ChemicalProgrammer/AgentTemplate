@@ -115,15 +115,16 @@ function createAgent(input) {
   return publicAgent_(agent, email);
 }
 
-function getAgentDetails(agentId) {
+function getAgentDetails(agentId, forceRefresh) {
   var access = assertAgentAccess_(agentId, false);
   var agent = access.agent;
-  var draft = scanAgentDraftAssets_(agent);
+  var instructions=readAgentInstructions_(agent);
+  var draft = workspaceCached_('D105:'+agentId+':'+agent.updatedAt,60,function(){return scanAgentDraftAssets_(agent);},Boolean(forceRefresh));
   return {
     agent: publicAgent_(agent, access.email),
-    instructions: readAgentInstructions_(agent),
+    instructions: instructions,
     assets: draft,
-    validation: validateAgentDraft_(agent, draft),
+    validation: validateAgentDraft_(agent, draft, instructions),
     folderUrl: 'https://drive.google.com/drive/folders/' + agent.folderId,
     versions: (agent.versions || []).slice().sort(function(a, b) { return String(b.releasedAt).localeCompare(String(a.releasedAt)); })
   };
@@ -557,10 +558,10 @@ function scanAgentDraftAssets_(agent) {
   return groups;
 }
 
-function validateAgentDraft_(agent, assets) {
+function validateAgentDraft_(agent, assets, instructions) {
   assets = assets || scanAgentDraftAssets_(agent);
   var errors = []; var warnings = [];
-  if (!readAgentInstructions_(agent).trim()) errors.push('System Instructions.md is empty.');
+  if (!(instructions==null?readAgentInstructions_(agent):instructions).trim()) errors.push('System Instructions.md is empty.');
   (assets.workflows || []).forEach(function(asset){if(!/\.md$/i.test(asset.name))errors.push('Workflow must use .md: '+asset.name);});
   (assets.templates || []).forEach(function(asset){if(TEMPLATE_MIME_TYPES.indexOf(asset.mimeType)===-1&&!isHtmlPresentationTemplate_(asset))errors.push('Template must be Google Docs, Sheets, Slides, or HTML: '+asset.name);});
   (assets.mandatoryKnowledge || []).concat(assets.optionalKnowledge || []).forEach(function(asset){if(Number(asset.size||0)>APP.MAX_FILE_SEARCH_BYTES)errors.push('Knowledge source exceeds 100 MB: '+asset.name);});
@@ -696,13 +697,15 @@ function getAgentRelease_(agentId, version) {
 }
 
 function getProjectAgentRelease_(project) {
+  var memoKey='release:'+project.projectId+':'+project.agentId+':'+project.agentVersion;
+  if(WORKSPACE_REQUEST_CACHE_[memoKey])return WORKSPACE_REQUEST_CACHE_[memoKey];
   if (!project.agentId) {
     var fallback = getDefaultAgent_();
     project.agentId = fallback.agentId; project.agentVersion = fallback.publishedVersion;
   }
   var resolved = getAgentRelease_(project.agentId, project.agentVersion || '');
   if (!resolved) throw new Error('The agent version assigned to this project is unavailable. Restore the agent folder or explicitly load another published agent.');
-  return resolved;
+  WORKSPACE_REQUEST_CACHE_[memoKey]=resolved; return resolved;
 }
 
 function publicAgentRelease_(release) {
@@ -745,7 +748,7 @@ function listAgentKnowledgeNodesForProject_(project) {
       createdAt:resolved.release.releasedAt, updatedAt:source.updatedAt || resolved.release.releasedAt,
       kind:'agent-source', origin:'agent', status:'active', level:-1, parentIds:[], note:source.relativePath || '',
       mandatory:Boolean(source.mandatory), locked:Boolean(source.mandatory), selectedByDefault:Boolean(source.mandatory),
-      hiddenInProject:Boolean(source.mandatory && !showMandatory),
+      hiddenInProject:true,
       indexStatus:indexed.indexStatus || 'not_indexed', indexError:indexed.indexError || '', indexCheckError:indexed.indexCheckError || '', indexProgress:Number(indexed.indexProgress || 0),
       indexStage:indexed.indexStage || '', indexUpdatedAt:indexed.indexUpdatedAt || '', indexedAt:indexed.indexedAt || '',
       agentId:resolved.agent.agentId, agentVersion:resolved.release.version,

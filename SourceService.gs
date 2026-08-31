@@ -188,7 +188,7 @@ function setSourceActive(projectId, sourceId, active) {
   var access = assertProjectEdit_(projectId, 'sources');
   var index = readSourceIndex_(access.project);
   var source = index.sources.filter(function(item) { return item.sourceId === sourceId; })[0];
-  if (!source) throw new Error('Source not found.');
+  if (!source || source.status==='removed') throw new Error('Source not found.');
   source.status = active ? 'active' : 'inactive';
   source.updatedAt = nowIso_();
   try { purgeFileSearchDocumentsForSource_(projectId, source); } catch (indexError) { console.warn(indexError.message); }
@@ -197,30 +197,8 @@ function setSourceActive(projectId, sourceId, active) {
   return source;
 }
 
-function removeSource(projectId, sourceId) {
-  var access = assertProjectEdit_(projectId, 'sources');
-  var index = readSourceIndex_(access.project);
-  var source = index.sources.filter(function(item) { return item.sourceId === sourceId; })[0];
-  if (!source) throw new Error('Source not found.');
-  source.status = 'removed';
-  source.updatedAt = nowIso_();
-  writeSourceIndex_(access.project, index);
-  var driveTrashed = false;
-  var driveWarning = '';
-  try { DriveApp.getFileById(source.driveId).setTrashed(true); driveTrashed = true; } catch (error) { driveWarning = readableErrorMessage_(error); }
-  var cleanup = {deleted: 0, storesChecked: 0, warnings: []};
-  try { cleanup = purgeFileSearchDocumentsForSource_(projectId, source); } catch (indexError) { cleanup.warnings.push(readableErrorMessage_(indexError)); }
-  appendControlRow_(access.project, 'Change Log', [nowIso_(), access.email, 'DELETE_SOURCE', 'Source', sourceId, source.name]);
-  touchProjectStats_(projectId, {sourceCount: index.sources.filter(function(item) { return item.status !== 'removed'; }).length});
-  return {
-    removed: true,
-    sourceId: sourceId,
-    driveTrashed: driveTrashed,
-    driveWarning: driveWarning,
-    remoteDeleted: Number(cleanup.deleted || 0),
-    remoteCleanupPending: Boolean((cleanup.warnings || []).length),
-    cleanupWarnings: cleanup.warnings || []
-  };
+function removeSource(projectId,sourceId) {
+  return beginWorkspaceRemoval_(projectId,'source:'+String(sourceId));
 }
 
 function readSourceIndex_(project) {
@@ -230,8 +208,11 @@ function readSourceIndex_(project) {
   return data;
 }
 
-function writeSourceIndex_(project, index) {
-  writeJsonFile_(DriveApp.getFolderById(project.folders.sources), SOURCE_INDEX_FILE, index);
+function writeSourceIndex_(project,index) {
+  return withWorkspaceLock_(function(){
+    index.sources=preserveRemovedRecords_(index.sources,readSourceIndex_(project).sources,'sourceId');
+    writeJsonFile_(DriveApp.getFolderById(project.folders.sources),SOURCE_INDEX_FILE,index);
+  });
 }
 
 function buildSourceContext_(project, query, selectedSourceIds, options) {

@@ -72,6 +72,7 @@ function sendChatMessageInternal_(projectId, conversationId, message, selectedSo
   conversation.agentId = access.project.agentId || '';
   conversation.agentVersion = access.project.agentVersion || '';
   conversation.sourceSelection = Array.isArray(selectedSourceIds) ? selectedSourceIds.map(String) : [];
+  conversation.explicitSourceSelection = conversation.sourceSelection.slice();
   conversation.flowSelection = Array.isArray(selectedFlowIds) ? selectedFlowIds.map(String) : [];
   conversation.model = normalizeModel_(modelOverride || conversation.model || getPublicUserGeminiSettings_().model || APP.DEFAULT_MODEL);
 
@@ -80,6 +81,11 @@ function sendChatMessageInternal_(projectId, conversationId, message, selectedSo
     return acceptLatestCanvas_(access, conversation, text, requestId, contextSnapshot, trace);
   }
 
+  var resourcePlan = access.allowed.sources ? resolveRuntimeResources_(access.project, conversation, text, selectedFlowIds || [], selectedSourceIds || [], trace) : {workflowIds:[],sourceIds:selectedSourceIds||[],requiredSourceIds:[],flows:[],mode:'restricted'};
+  selectedFlowIds = resourcePlan.workflowIds; selectedSourceIds = resourcePlan.sourceIds;
+  // Store explicit selections independently: automatic choices are recalculated for each task.
+  conversation.explicitFlowSelection = conversation.flowSelection.slice();
+  conversation.flowSelection = selectedFlowIds.slice();
   markChatExecutionPhase_(trace, 'sources', 'Preparing the selected sources');
   var projectContext = {text: '', inlineParts: [], sourcesUsed: [], warnings: [], selectedIds: []};
   var projectFileSearch = access.allowed.sources ? getFileSearchQueryConfig_(access.project, selectedSourceIds || []) : null;
@@ -110,6 +116,8 @@ function sendChatMessageInternal_(projectId, conversationId, message, selectedSo
   if ((selectedSourceIds || []).length && !authorizedSelection.length) {
     throw new Error('None of the selected documents is still active and available. Refresh the Documents panel and select a current source.');
   }
+  var actuallyAvailable=sourceContext.sourcesUsed.map(function(s){return s.sourceId;}).concat(agentFileSearch?agentFileSearch.sourceIds.map(function(id){return 'agent-source:'+id;}):[]);
+  (resourcePlan.requiredSourceIds||[]).forEach(function(id){if(actuallyAvailable.indexOf(id)===-1)throw new Error('A required workflow source is unavailable: '+id);});
   conversation.sourceSelection = authorizedSelection.slice();
   markChatExecutionPhase_(trace, 'prompt', 'Building the agent context', {
     authorizedSourceCount: authorizedSelection.length,
@@ -184,6 +192,7 @@ function sendChatMessageInternal_(projectId, conversationId, message, selectedSo
     model: result.model,
     sourcesUsed: sourceContext.sourcesUsed.concat(fileSearchConfigs.length ? annotationsToScopedSourcesUsed_(result.annotations, access.project, agentFileSearch ? agentFileSearch.resolved : getProjectAgentRelease_(access.project)) : []),
     flowsUsed: flowContext.flowsUsed,
+    resourcePlan: {mode:resourcePlan.mode,selectionMs:resourcePlan.selectionMs||0,workflows:resourcePlan.flows},
     sourceSelection: authorizedSelection,
     sourceWarnings: sourceContext.warnings || [],
     retrievalAudit: result.retrievalAudit || null,
@@ -492,7 +501,7 @@ function buildGeminiConversation_(project, conversation, newMessage, sourceConte
     sourceScoped ? 'SOURCE ISOLATION: Use only the documents selected for this request as factual evidence. Do not use facts from earlier messages, memories, or unselected documents. If the selected evidence does not answer the request, say so explicitly.' : '',
     sourceScoped ? 'CURRENT AUTHORIZED DOCUMENT IDS: ' + authorizedSelection.join(', ') : '',
     sourceContext && sourceContext.warnings && sourceContext.warnings.length ? 'SOURCE AVAILABILITY NOTICE:\n' + sourceContext.warnings.join('\n') + '\nDo not claim to have read the unavailable sources. Continue with the evidence that is actually present and clearly qualify any gap.' : '',
-    flowContext && flowContext.text ? 'Follow the selected FLOW INSTRUCTIONS as an execution procedure. Do not treat flow instructions as factual evidence.\n\n' + flowContext.text : '',
+    flowContext && flowContext.text ? 'Follow the applicable FLOW INSTRUCTIONS as mandatory execution procedures. Agent requirements take precedence over project customization. Explain conflicts or missing inputs rather than silently skipping required steps. Do not treat flow instructions as factual evidence.\n\n' + flowContext.text : '',
     sourceScoped ? 'Earlier conversation content associated with other documents has been removed from this request.' : 'Accumulated memory summarizes older messages; recent messages are shown in full.',
     !sourceScoped && conversation.summary ? 'ACCUMULATED MEMORY:\n' + conversation.summary : ''
   ].filter(Boolean).join('\n\n');

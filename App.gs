@@ -14,6 +14,7 @@ function include(filename) {
 }
 
 function getBootstrap() {
+  if (typeof renderJsonTemplateDocument_ !== 'function' || typeof beginWorkspaceRemoval_ !== 'function' || typeof resolveRuntimeResources_ !== 'function') throw new Error('Incomplete Hotfix 10.5 installation: add JsonTemplateRenderer.gs, WorkspaceService.gs, OperationService.gs and ResourceService.gs.');
   var identity = getCurrentIdentity_();
   var config = getPublicConfig_();
   var initialized = Boolean(config.rootFolderId && config.organizationDomain);
@@ -34,6 +35,7 @@ function getBootstrap() {
 
 function getCurrentIdentity_() {
   var email = String(Session.getActiveUser().getEmail() || '').toLowerCase();
+  if (typeof WORKSPACE_WORKER_EMAIL_ !== 'undefined' && WORKSPACE_WORKER_EMAIL_ && WORKSPACE_WORKER_EMAIL_ === String(Session.getEffectiveUser().getEmail() || '').toLowerCase()) email = WORKSPACE_WORKER_EMAIL_;
   return {
     email: email,
     name: email ? email.split('@')[0].replace(/[._-]+/g, ' ') : 'User'

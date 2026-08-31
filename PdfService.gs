@@ -27,7 +27,7 @@ function exportConversationToPdf(projectId, conversationId) {
   tempFile.setTrashed(true);
   var parentIds = inferConversationParentIds_(conversation);
   recordGeneratedDocument_(access.project, pdfFile, {
-    kind: 'pdf', parentIds: parentIds, createdBy: access.email, sourceConversation: conversationId
+    kind: 'pdf', storageArea:'pdfs', parentIds: parentIds, createdBy: access.email, sourceConversation: conversationId
   });
   incrementGeneratedDocumentCount_(projectId, access.project);
   return publicGeneratedFile_(pdfFile, 'pdf', parentIds, conversationId);
@@ -40,6 +40,7 @@ function exportProjectDocumentToPdf(projectId, nodeId, options) {
   var baseName = normalizeName_(options.fileName || resolved.file.getName().replace(/\.[^.]+$/, ''), 'Document export').replace(/\.pdf$/i, '');
   var pdfName = baseName + '.pdf';
   var pdfBlob = createProjectDocumentPdfBlob_(resolved.file, pdfName);
+  if (destination === 'download') return downloadWorkspaceBlob_(pdfBlob);
   var outputFolder;
   var projectAccess = null;
 

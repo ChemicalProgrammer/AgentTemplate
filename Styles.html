@@ -821,4 +821,24 @@
   /* Hotfix 9: leave a dedicated column for the per-release index repair action. */
   .release-row{grid-template-columns:auto minmax(0,1fr) repeat(3,auto) auto}
   @media(max-width:650px){.release-row{grid-template-columns:auto minmax(0,1fr) auto}}
+
+/* Hotfix 10.5 — resources and folder navigation */
+.side-tabs { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.resource-group { padding:16px 0;border-top:1px solid var(--border,#dce2e9); }
+.resource-group summary {cursor:pointer;font-weight:700;padding-bottom:12px;}
+.resource-card {display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border,#dce2e9);border-radius:14px;background:var(--surface,#fff);}
+.resource-card>div:first-child {flex:1;min-width:0;overflow-wrap:anywhere;}
+.resource-card small {display:block;margin-top:4px;color:var(--muted,#5f6368);}
+.resource-error {color:#a62727;font-size:12px;overflow-wrap:anywhere;}
+.automatic-resource-badge {font-size:11px;padding:4px 7px;border-radius:8px;background:#e8f0fe;color:#174ea6;}
+.folder-actions,.folder-browser-heading {display:flex;align-items:center;gap:10px;margin:8px 0;}
+.folder-browser-heading strong {flex:1;overflow-wrap:anywhere;}
+.folder-browser {border:1px solid #dce2e9;border-radius:12px;padding:10px;margin-top:10px;}
+.folder-browser-list {max-height:220px;overflow:auto;display:grid;gap:4px;}
+.folder-browser-list button {text-align:left;background:#f5f8fc;border:0;border-radius:8px;padding:10px;cursor:pointer;overflow-wrap:anywhere;}
+.folder-browser-list button:hover {background:#e8f0fe;}
+.workspace-operation-status {font-size:12px;color:#6f5012;overflow-wrap:anywhere;}
+#side-panel-resources .panel-help {line-height:1.5;}
+#workspace-load-timings>div {display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:5px 0;}
+.workspace-timings {margin-bottom:16px;}
 </style>

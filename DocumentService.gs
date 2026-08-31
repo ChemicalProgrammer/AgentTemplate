@@ -71,7 +71,8 @@ function listProjectDocuments(projectId) {
     });
   }
 
-  assignDocumentLevels_(nodes);
+  var removedAncestors = (access.allowed.documents?readDocumentIndex_(access.project).documents:[]).filter(function(r){return r.status==='removed' || r.missing;}).map(function(r){return {nodeId:'document:'+r.driveId,kind:r.kind||'generated',parentIds:normalizeDocumentParentIds_(r.parentIds)};});
+  assignDocumentLevels_(nodes.concat(removedAncestors));
   return nodes.sort(function(a, b) {
     if (a.level !== b.level) return a.level - b.level;
     return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
@@ -79,17 +80,34 @@ function listProjectDocuments(projectId) {
 }
 
 function listGeneratedDocumentsForProject_(project, includePdfs, allowRepair) {
+  var index = readDocumentIndex_(project);
+  if (!index.catalogReady || includePdfs && !index.catalogPdfsReady) {
+    var access = assertProjectAccess_(project.projectId, 'documents');
+    var files = scanGeneratedDocumentCatalog_(project, includePdfs, Boolean(access.allowed.edit));
+    if (access.allowed.edit) withWorkspaceLock_(function(){
+      var fresh=readDocumentIndex_(project);fresh.catalogReady=true;if(includePdfs)fresh.catalogPdfsReady=true;fresh.catalogSyncedAt=nowIso_();writeDocumentIndex_(project,fresh);
+    });
+    return files.filter(function(f){return !index.documents.some(function(r){return r.driveId===f.id && r.status==='removed';});});
+  }
+  return index.documents.filter(function(r){return r.status!=='removed' && !r.missing && (includePdfs || r.storageArea!=='pdfs');}).map(function(r){
+    var copy=Object.assign({},r);copy.id=r.driveId;copy.url='https://drive.google.com/open?id='+r.driveId;return copy;
+  }).sort(function(a,b){return String(b.updatedAt).localeCompare(String(a.updatedAt));});
+}
+
+function scanGeneratedDocumentCatalog_(project, includePdfs, allowRepair) {
   var documents = listFilesRecursive_(DriveApp.getFolderById(project.folders.documents), [], 300)
     .filter(function(file) { return file.name !== DOCUMENT_INDEX_FILE; });
   var pdfs = [];
   if (includePdfs && project.folders.pdfs) {
-    try { pdfs = listFilesRecursive_(DriveApp.getFolderById(project.folders.pdfs), [], 300); } catch (error) { console.warn(error.message); }
+    pdfs = listFilesRecursive_(DriveApp.getFolderById(project.folders.pdfs), [], 300);
   }
+  if(documents.length>=299 || pdfs.length>=300)throw new Error('The folder exceeds the 300-file synchronization limit. Split it before synchronizing; existing records are preserved.');
+  documents.forEach(function(f){f.storageArea='documents';});pdfs.forEach(function(f){f.storageArea='pdfs';});
   var files = documents.concat(pdfs);
   var index = allowRepair ? reconcileDocumentIndex_(project, files) : readDocumentIndex_(project);
   var byId = {};
   index.documents.forEach(function(record) { byId[record.driveId] = record; });
-  return files.map(function(file) {
+  return files.filter(function(file){return !byId[file.id] || byId[file.id].status!=='removed';}).map(function(file) {
     var record = byId[file.id] || {};
     return {
       id: file.id,
@@ -203,6 +221,7 @@ function createMarkdownArtifact_(project, accessEmail, conversation, artifact, m
     artifactStatus: sanitizeText_(artifact.status || 'complete', 40).trim(),
     artifactVersion: version,
     workflowId: workflowId,
+    executionWorkflowIds: (conversation.flowSelection||[]).slice(),
     model: normalizeModel_(model || conversation.model || APP.DEFAULT_MODEL)
   };
   var record = recordGeneratedDocument_(project, file, metadata);
@@ -249,6 +268,7 @@ function createJsonArtifact_(project, accessEmail, conversation, artifact, model
     artifactStatus: sanitizeText_(artifact.status || 'complete', 40).trim(),
     artifactVersion: version,
     workflowId: workflowId,
+    executionWorkflowIds: (conversation.flowSelection||[]).slice(),
     model: normalizeModel_(model || conversation.model || APP.DEFAULT_MODEL),
     presentationTemplateId: template ? template.templateId : '',
     presentationTemplateName: template ? template.name : '',
@@ -342,12 +362,10 @@ function setDocumentPresentationTemplate(projectId, nodeId, templateId, expected
   if (!template) throw new Error('The selected template is not available in this project.');
   // Validate BEFORE writing metadata. The JSON file is never rewritten.
   var rendered = renderJsonArtifactWithTemplateDetails_(template, data);
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(5000)) throw new Error('Another update is in progress. Try again.');
-  try {
+  withWorkspaceLock_(function(){
     var index = readDocumentIndex_(access.project);
     var record = index.documents.filter(function(item) { return item.driveId === resolved.file.getId(); })[0];
-    if (!record) throw new Error('The document is no longer available.');
+    if (!record || record.status==='removed' || record.missing) throw new Error('The document is no longer available.');
     if (String(record.presentationTemplateId || '') !== String(expectedTemplateId || '')) throw new Error('The template association changed. Reopen Choose template before saving.');
     record.presentationTemplateId = template.templateId;
     record.presentationTemplateName = template.name;
@@ -355,7 +373,7 @@ function setDocumentPresentationTemplate(projectId, nodeId, templateId, expected
     record.presentationUpdatedAt = nowIso_();
     record.presentationUpdatedBy = access.email;
     writeDocumentIndex_(access.project, index);
-  } finally { lock.releaseLock(); }
+  });
   return {nodeId: nodeId, name: resolved.file.getName(), mimeType: resolved.file.getMimeType(), mode: 'templated_json', text: text,
     renderedHtml: rendered.html, presentationWarnings: rendered.warnings, presentationRenderer: rendered.renderer, presentationStats: rendered.stats,
     presentation: {templateId: template.templateId, templateName: template.name, origin: template.origin}, url: resolved.file.getUrl()};
@@ -385,6 +403,7 @@ function exportTemplatedJsonArtifactToHtml(projectId, nodeId, options) {
   var baseName = normalizeName_(options.fileName || sourceName.replace(/\.[^.]+$/, ''), 'HTML export').replace(/\.html?$/i, '');
   var htmlName = baseName + '.html';
   var blob = Utilities.newBlob(rendered.renderedHtml, 'text/html', htmlName);
+  if (destination === 'download') return downloadWorkspaceBlob_(blob);
   var outputFolder;
   var projectAccess = null;
 
@@ -447,33 +466,21 @@ function resolveProjectDocumentFile_(projectId, nodeId) {
       return item.sourceId === sourceId && item.status !== 'removed';
     })[0];
     if (!source || !source.driveId) throw new Error('Source document not found.');
-    return {access: sourceAccess, project: sourceAccess.project, nodeId: nodeId, kind: 'source', record: source, file: DriveApp.getFileById(source.driveId)};
+    return {access: sourceAccess, project: sourceAccess.project, nodeId: nodeId, kind: 'source', record: source, file: activeWorkspaceFile_(source.driveId)};
   }
   if (nodeId.indexOf('document:') === 0) {
     var documentAccess = assertProjectAccess_(projectId, 'documents');
     var fileId = nodeId.slice('document:'.length);
     var record = readDocumentIndex_(documentAccess.project).documents.filter(function(item) { return item.driveId === fileId; })[0];
-    if (!record) throw new Error('Generated document not found.');
-    return {access: documentAccess, project: documentAccess.project, nodeId: nodeId, kind: record.kind || 'generated', record: record, file: DriveApp.getFileById(fileId)};
+    if (!record || record.status === 'removed' || record.missing) throw new Error('Generated document not found.');
+    return {access: documentAccess, project: documentAccess.project, nodeId: nodeId, kind: record.kind || 'generated', record: record, file: activeWorkspaceFile_(fileId)};
   }
   throw new Error('Document not found.');
 }
 
-function removeGeneratedDocument(projectId, nodeId) {
-  var access = assertProjectEdit_(projectId, 'documents');
-  var fileId = String(nodeId || '').replace(/^document:/, '');
-  if (!fileId) throw new Error('Document not found.');
-  var file;
-  try { file = DriveApp.getFileById(fileId); } catch (error) { throw new Error('Document not found.'); }
-  var name = file.getName();
-  file.setTrashed(true);
-  var index = readDocumentIndex_(access.project);
-  index.documents = index.documents.filter(function(record) { return record.driveId !== fileId; });
-  writeDocumentIndex_(access.project, index);
-  appendControlRow_(access.project, 'Change Log', [nowIso_(), access.email, 'DELETE_DOCUMENT', 'Document', fileId, name]);
-  var count = countGeneratedDocuments_(access.project);
-  touchProjectStats_(projectId, {documentCount: count});
-  return {removed: true, nodeId: 'document:' + fileId, documentCount: count};
+function removeGeneratedDocument(projectId,nodeId) {
+  if(!/^document:[A-Za-z0-9_-]+$/.test(String(nodeId)))throw new Error('Invalid document ID.');
+  return beginWorkspaceRemoval_(projectId,nodeId);
 }
 
 function updateDocumentNote(projectId, nodeId, note) {
@@ -507,7 +514,8 @@ function updateDocumentNote(projectId, nodeId, note) {
 }
 
 function getDocumentContextRecords_(project) {
-  var records = readSourceIndex_(project).sources
+  var contextAccess=assertProjectAccess_(project.projectId);
+  var records = (contextAccess.allowed.sources?readSourceIndex_(project).sources:[])
     .filter(function(source) { return source.status !== 'removed'; })
     .map(function(source) {
       return {
@@ -521,7 +529,7 @@ function getDocumentContextRecords_(project) {
         note: source.note || ''
       };
     });
-  listGeneratedDocumentsForProject_(project, true, false).forEach(function(document) {
+  (contextAccess.allowed.documents?listGeneratedDocumentsForProject_(project,Boolean(contextAccess.allowed.history),false):[]).forEach(function(document) {
     records.push({
       sourceId: 'document:' + document.id,
       name: document.name,
@@ -535,16 +543,22 @@ function getDocumentContextRecords_(project) {
   return records;
 }
 
-function recordGeneratedDocument_(project, file, metadata) {
+function recordGeneratedDocument_(project,file,metadata) {
+  return withWorkspaceLock_(function(){return recordGeneratedDocumentLocked_(project,file,metadata);});
+}
+
+function recordGeneratedDocumentLocked_(project, file, metadata) {
   metadata = metadata || {};
   var index = readDocumentIndex_(project);
   var record = index.documents.filter(function(item) { return item.driveId === file.getId(); })[0];
   var value = {
     documentId: record ? record.documentId : uuid_(),
     driveId: file.getId(),
+    size: file.getSize(),
     name: file.getName(),
     mimeType: file.getMimeType(),
     kind: metadata.kind || (file.getMimeType() === MimeType.PDF ? 'pdf' : 'generated'),
+    storageArea: metadata.storageArea || record && record.storageArea || 'documents',
     parentIds: normalizeDocumentParentIds_(metadata.parentIds),
     createdAt: record && record.createdAt ? record.createdAt : file.getDateCreated().toISOString(),
     createdBy: metadata.createdBy || record && record.createdBy || '',
@@ -557,6 +571,7 @@ function recordGeneratedDocument_(project, file, metadata) {
     presentationTemplateName: metadata.presentationTemplateName || record && record.presentationTemplateName || '',
     presentationTemplateOrigin: metadata.presentationTemplateOrigin || record && record.presentationTemplateOrigin || '',
     workflowId: metadata.workflowId || record && record.workflowId || '',
+    executionWorkflowIds: metadata.executionWorkflowIds || record && record.executionWorkflowIds || [],
     model: metadata.model || record && record.model || '',
     note: metadata.note != null ? sanitizeText_(metadata.note, 1200).trim() : record && record.note || '',
     updatedAt: file.getLastUpdated().toISOString()
@@ -573,13 +588,13 @@ function reconcileDocumentIndex_(project, files) {
     var record = index.documents.filter(function(item) { return item.driveId === file.id; })[0];
     if (!record) {
       index.documents.push({
-        documentId: uuid_(), driveId: file.id, name: file.name, mimeType: file.mimeType,
+        documentId: uuid_(), driveId: file.id, name: file.name, mimeType: file.mimeType, size: file.size || 0, storageArea:file.storageArea||'documents',
         kind: file.mimeType === MimeType.PDF ? 'pdf' : 'generated', parentIds: [],
         createdAt: file.createdAt || file.updatedAt, createdBy: '', sourceConversation: '', note: '', updatedAt: file.updatedAt
       });
       changed = true;
-    } else if (record.name !== file.name || record.mimeType !== file.mimeType || record.updatedAt !== file.updatedAt) {
-      record.name = file.name; record.mimeType = file.mimeType; record.updatedAt = file.updatedAt; changed = true;
+    } else if (record.name !== file.name || record.mimeType !== file.mimeType || record.updatedAt !== file.updatedAt || record.storageArea !== file.storageArea) {
+      record.storageArea=file.storageArea||'documents'; record.size = file.size || 0; record.missing = false; record.name = file.name; record.mimeType = file.mimeType; record.updatedAt = file.updatedAt; changed = true;
     }
   });
   if (changed) writeDocumentIndex_(project, index);
@@ -594,8 +609,14 @@ function readDocumentIndex_(project) {
   return data;
 }
 
-function writeDocumentIndex_(project, index) {
-  writeJsonFile_(DriveApp.getFolderById(project.folders.documents), DOCUMENT_INDEX_FILE, index);
+function writeDocumentIndex_(project,index) {
+  return withWorkspaceLock_(function(){
+    var current=readDocumentIndex_(project);
+    index.documents=preserveRemovedRecords_(index.documents,current.documents,'driveId');
+    if(current.catalogReady)index.catalogReady=true;
+    if(current.catalogPdfsReady)index.catalogPdfsReady=true;
+    writeJsonFile_(DriveApp.getFolderById(project.folders.documents),DOCUMENT_INDEX_FILE,index);
+  });
 }
 
 function assignDocumentLevels_(nodes) {
@@ -723,10 +744,7 @@ function updateControlEntityNote_(project, sheetName, entityId, note) {
 }
 
 function countGeneratedDocuments_(project) {
-  var documents = listFilesRecursive_(DriveApp.getFolderById(project.folders.documents), [], 500)
-    .filter(function(file) { return file.name !== DOCUMENT_INDEX_FILE; }).length;
-  var pdfs = project.folders.pdfs ? listFilesRecursive_(DriveApp.getFolderById(project.folders.pdfs), [], 500).length : 0;
-  return documents + pdfs;
+  return readDocumentIndex_(project).documents.filter(function(r){return r.status!=='removed' && !r.missing;}).length;
 }
 
 function incrementGeneratedDocumentCount_(projectId, project) {

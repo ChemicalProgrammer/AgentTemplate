@@ -1,321 +1,292 @@
-# Docs Assistant v0.8.2
+> Versión actual: Hotfix 10.5. Consulta README_HOTFIX10_5.md en el paquete para los cambios de Resources, exportación, selección de workflows y tareas pendientes. El contenido siguiente describe la arquitectura y configuración heredadas.
 
-Google Docs bound/add-on Apps Script starter project.
+# Agent Console para Google Apps Script
 
-## Included
-- Sidebar with Formatting and Gemini tabs.
-- Applies existing Google Docs named paragraph styles; it does not redefine them.
-- Paragraph spacing and Keep with Next.
-- Bullet / number / letter / Roman list presets.
-- UI checkbox reserved for continue/restart numbering.
-- Page break insertion.
-- Gemini assistant with preview before applying.
-- Insert at cursor or replace current selection.
-- Quick translate, summarize, expand, technical and concise actions.
-- Per-user Gemini API key in UserProperties.
-- Settings dialog.
+Versión de revisión 2.0.0-review.4-hotfix.7.
 
-## Important MVP limitations
-1. Section breaks are exposed in the UI but need implementation through the advanced Google Docs API.
-2. Exact continuation/restart behavior for complex numbered lists needs the Google Docs API; DocumentApp alone is limited.
-3. Gemini replacement currently targets textual selections. Rich multi-paragraph/table formatting preservation should be implemented as a dedicated document-range engine.
-4. "Intelligent formatting" (Gemini classifying headings/tables/normal text and then applying styles) is intentionally left for the next module rather than letting Gemini directly mutate the document.
+Consola web para construir agentes autocontenidos y versionados, y cargarlos dentro de proyectos que conservan su propio contexto, historial y entregables.
 
-## Install
-Create or open an Apps Script project attached to a Google Doc, copy these files, save, reload the document, and use:
-Add-ons / Extensions → Docs Assistant → Open Docs Assistant.
+## Hotfix 7 sobre 2.0.0-review.4
 
-For a published Workspace Add-on, manifest/deployment configuration will need to be adapted to the chosen deployment model.
+- La pantalla inicial usa una tarjeta visual de Agent Console, progreso animado, etapas de carga y transición de salida.
+- Un watchdog independiente muestra un error recuperable con `Try again` si la interfaz tarda demasiado o el script falla antes de inicializarse.
+- Chats, Documents, Templates y Flows usan un nuevo selector segmentado con identidad cromática e iconos más claros.
+- Los controles de regresar, abrir panel, abrir en Drive y Settings comparten botones circulares y gradientes consistentes con el botón de envío.
+- Los paneles incorporan espacio inferior adicional y scrollbars más delgados con margen de pista para evitar que el extremo inferior se vea cortado.
 
-## API key
-Open Settings from the add-on menu or sidebar. The key is stored with:
-PropertiesService.getUserProperties()
+## Hotfix 6 sobre 2.0.0-review.4
 
-It is not written into the document or source code.
+- La barra de nivel ignora completamente el efecto global de presión de los botones y ya no se encoge al hacer clic.
+- Las tarjetas de Agents y Projects pueden reordenarse con desplazamiento animado en vivo, igual que las tarjetas de Documents.
+- El orden de ambos catálogos se guarda por usuario y se recupera al refrescar la consola.
+- Reordenar una vista filtrada conserva la posición de las tarjetas que no están visibles por la búsqueda o el filtro activo.
+- Cancelar el arrastre restaura suavemente el orden anterior; hacer clic después de soltar no abre accidentalmente la tarjeta.
 
+## Hotfix 5 sobre 2.0.0-review.4
 
-## v0.2.0 UI
-- Workspace-inspired card UI and gradient Gemini accent.
-- Global execution lock: only one task can run at a time.
-- All controls disabled during server/Gemini operations.
-- Animated busy overlay and active-button shimmer.
-- Success/error micro-interactions.
-- Reduced-motion accessibility support.
+- La barra de cada nivel conserva exactamente su altura, bordes y sombra al expandir o colapsar.
+- El contenido del nivel aparece y desaparece con una transición sutil de altura y opacidad, sin volver a renderizar todo el grafo documental.
+- Durante el drag-and-drop, las demás tarjetas se desplazan en vivo con animación para mostrar con claridad la posición de destino.
+- Cancelar un arrastre fuera del nivel devuelve las tarjetas suavemente a su orden anterior; soltar conserva el orden con la persistencia existente.
 
+## Hotfix 4 sobre 2.0.0-review.4
 
-## v0.3.0 UI
-- Removed global loading overlay.
-- Only active button animates during execution.
-- All other controls are disabled until completion.
-- Colored functional button families.
-- Colored white-text tabs for Formatting and Gemini.
-- Inline spinner, shimmer, Done/Error feedback in active button.
+- Toda la barra de un nivel documental funciona como control de expandir o colapsar, sin checkbox ni indicador independiente.
+- Las tarjetas pueden reordenarse mediante drag-and-drop dentro de su mismo nivel; no pueden cambiar de nivel jerárquico.
+- El orden se conserva en User Properties por usuario, proyecto y nivel, y se restaura después de refrescar o volver a abrir el proyecto.
+- Arrastrar una tarjeta no cambia su selección, sus relaciones ni sus parents.
 
+## Hotfix 3 sobre 2.0.0-review.4
 
-## v0.4.0
-- Smart Insert / Replace: pasted text is semantically classified by Gemini and applied with native Docs headings, normal paragraphs, lists, and tables.
-- Selection automatically means replace; otherwise cursor means insert. No instruction is required.
-- Settings dialog redesigned to match sidebar styling, colors and button execution animations.
+- Cada nivel documental usa una barra visual independiente con identidad para agent knowledge, project sources y documentos generados.
+- Cada nivel puede colapsarse o expandirse desde su chevron; el estado se conserva por proyecto en el navegador.
+- Los encabezados de nivel dejan de ser sticky, evitando que las tarjetas se desplacen visualmente por debajo de la barra al hacer scroll.
+- Seleccionar o deseleccionar todo el nivel continúa funcionando independientemente de su estado visual.
 
+## Hotfix 2 sobre 2.0.0-review.4
 
-## v0.4.1
-- Fixed multi-paragraph selection detection. Normal text and Heading 1–6 now apply to every paragraph touched by the selection.
+- La creación y edición de agentes permite decidir si las fuentes mandatorias se muestran en los proyectos.
+- La preferencia queda congelada en cada release; los releases antiguos conservan el comportamiento visible.
+- Las fuentes mandatorias ocultas continúan seleccionadas, indexándose y formando parte de todas las consultas, pero no aparecen en Documents ni en los chips del chat.
 
+## Hotfix 1 sobre 2.0.0-review.4
 
-## v0.5.0
-- Added Format selected table.
-- Black 1 pt borders, no background, 0.49 in minimum row height, 0.028 in padding, middle vertical alignment.
-- First row: Arial 9, bold, 1.5 line spacing, centered.
-- Body: Arial 9, regular, 1.5 line spacing, left aligned, vertically centered.
-- Column widths are left automatic by not forcing a width.
-- Properties not exposed reliably by DocumentApp are not simulated.
+- Los refrescos del grafo documental conservan las fuentes heredadas del agente y los documentos del proyecto, usando el mismo endpoint que la carga inicial.
 
+## Qué cambia en 2.0.0-review.4
 
-## v0.5.1
-- List formatting now first applies the document's current Normal text named style.
-- Existing list items are reused instead of recreated.
-- Bullet/number/letter/Roman list items use:
-  - Left indent: 0.06 in
-  - Hanging indent: 0.25 in
-- Hanging indent is implemented as first-line position 0.06 in and wrapped-line start 0.31 in.
+- El proyecto referencia la copia inmutable de las fuentes del release del agente; no las duplica dentro de `Project Sources`.
+- El índice del conocimiento del agente se conserva por usuario, llave y versión, y se reutiliza entre todos los proyectos que cargan esa misma versión.
+- Al abrir un proyecto se inicia o continúa automáticamente la indexación de conocimiento heredado, primero las fuentes obligatorias y después las opcionales.
+- Una fuente binaria que todavía se indexa ya no bloquea una consulta combinada. Gemini responde con la evidencia disponible y el mensaje registra una advertencia de disponibilidad.
+- Los encabezados de Documents, chat y visor comparten una altura única de 68 px.
+- El encabezado del chat queda limitado al selector de modelo, identidad del agente y control de colapso; edición y borrado permanecen junto a cada mensaje o chat correspondiente.
+- Los controles de colapso usan flechas direccionales y el contador de contexto se trasladó junto a las tarjetas sobre el compositor.
+- Las tarjetas de contexto usan el color semántico del formato: PDF rojo, documentos azul, hojas verde, presentaciones naranja y demás tipos según su familia.
+- Regresar a la portada usa la misma animación sutil aplicada al resto de las transiciones de vista.
 
+## Base conservada de 2.0.0-review.3
 
-## v0.5.2
-- Heading/Normal buttons now read the document's current named-style attributes with `Body.getHeadingAttributes()`.
-- The selected paragraphs receive those attributes explicitly after applying the named style, including the named style's current indentation and paragraph spacing.
-- Rich-text attributes from the current named style are also reapplied to prevent prior direct character formatting from overriding the style visually.
-- Heading 1–6 text is converted to sentence case automatically: first alphabetic character uppercase, remaining text lowercase.
-- Normal text does not change capitalization.
+- Los tres paneles conservan anchos mínimos, pero los grips ya no usan máximos fijos: se adaptan al ancho disponible.
+- El chat puede colapsarse desde su encabezado o desde el panel izquierdo. Documents ocupa todo el workspace cuando no hay preview, y comparte el espacio con el visor cuando sí lo hay.
+- Cada mensaje del usuario ofrece ✏️ para ramificar y 🗑️ para rebobinar desde ese punto. El borrado elimina el tramo posterior y las ramas derivadas, sin borrar documentos generados.
+- Eliminar un chat completo elimina también sus descendientes para no dejar ramas huérfanas.
+- Las fuentes de Drive se registran antes de indexarse; la indexación continúa en segundo plano con hasta dos trabajos concurrentes.
+- Las cargas locales usan bloques de 8 MB y File Search avanza hasta tres bloques de 8 MB por llamada, reduciendo viajes entre navegador, Apps Script y Gemini.
+- Cada tarjeta muestra progreso lineal: porcentaje durante Drive/File Search y animación indeterminada durante embeddings.
+- Las fuentes en cola, transferencia o procesamiento se reanudan o verifican automáticamente al abrir el proyecto.
 
+## Base conservada de 2.0.0-review.2
 
-## v0.5.3
-- Heading indentation is now applied explicitly after the current named style:
-  - Heading 1: Left -0.12 in, Right 0 in, Special indent None.
-  - Heading 2: Left 0 in, Right 0 in, Special indent None.
-  - Heading 3: Left 0.19 in, Right 0 in, Special indent None.
-- Heading 1–3 are explicitly left aligned.
-- Numeric heading prefixes typed into the text are normalized to exactly one regular space after the number (for example `1.2.3   Title` -> `1.2.3 Title`).
-- Headings 4–6 keep their current named-style indentation until explicit values are defined.
+- Jerarquía unificada para todos los formatos: Project Sources es la raíz; un archivo generado queda en `max(level de parents) + 1` y, sin parents, comienza en Nivel 1.
+- Visor con animación de entrada/salida y grip persistente para distribuir el ancho entre chat y preview.
+- Exportación del documento visible a PDF con dos destinos: como documento generado del proyecto o en otra carpeta de Drive sin incorporarlo al grafo.
+- Controles por mensaje para ramificar una petición o rebobinar la conversación desde ese punto.
+- Acciones de copia, edición, exportación y eliminación con emojis coloridos.
+- Menús documentales elevados sobre las tarjetas y apertura automática hacia arriba cuando falta espacio inferior.
 
+## Base funcional conservada de 2.0.0-review.1
 
-## v0.5.4
-- Normal text and Heading 1–6 no longer require selecting the paragraph text.
-- With no selection, the paragraph containing the cursor is treated as the complete target line.
-- With a multi-paragraph selection, styles still apply to every selected paragraph.
-- Heading sentence case, current named-style attributes, and explicit heading indents continue to apply to the whole target paragraph.
+- Los entregables del agente pueden regresar mediante un contrato JSON de artefacto y guardarse como archivos Markdown sin insertar su contenido en el chat.
+- `Accept Canvas` guarda una instantánea de `Project Approval Canvas.md` como Nivel 1 y ofrece dos rutas: `Executive Decision Brief` o `Stakeholder Pitch Kit`.
+- Los artefactos de Nivel 2 se vinculan al Canvas aceptado mediante `parentIds`; el grafo calcula el nivel en forma recursiva.
+- Visor lateral colapsable para Markdown, HTML seguro, texto y vistas de Drive. La selección para contexto permanece independiente de la apertura del visor.
+- Selector de modelo Gemini por conversación; cada envío conserva el modelo elegido en el historial.
+- Ramificación desde mensajes del usuario: se copia el historial anterior, se modifica la petición y se continúa en un chat nuevo.
+- Copia de respuestas con icono más claro y copia independiente de bloques de código.
+- La generación de imágenes y la ejecución de código permanecen fuera de este incremento; se documentan como extensiones posteriores.
 
+## Base visual conservada de 1.9.0
 
-## v0.5.5
-- Added Figure/Table caption button.
-- Input format: `Figure X. Description` or `Table X. Description` (existing numeric values also accepted).
-- Caption formatting:
-  - Normal text named style as base.
-  - Arial 9.
-  - Centered paragraph.
-  - Only `Figure N.` / `Table N.` is bold.
-- Figure and Table numbering are independent integer sequences.
-- The correct number is calculated by scanning all prior captions of the same type in document order, rather than relying on the immediately previous caption.
+- Vista interior del proyecto reconstruida con el mismo sistema visual de Agents y Projects.
+- Encabezado tipo hero con identidad cromática, icono, estado, descripción y agente cargado.
+- Panel de herramientas y chat convertidos en superficies elevadas independientes, con mejor uso del espacio.
+- Pestañas segmentadas con iconos y estados activos derivados del color del proyecto.
+- Lista de conversaciones mediante tarjetas compactas, con franja de selección, elevación y acciones contextuales.
+- Barra contextual del chat con conversación, agente y versión; el resumen de selección vive junto al compositor.
+- Estado vacío renovado con identidad del agente y sugerencias de consulta más informativas.
+- Mensajes, citas, compositor y controles de envío alineados con la identidad visual del proyecto.
+- Título del chat y contador de contexto sincronizados en tiempo real con el estado funcional.
+- Diseño adaptable del nuevo workspace para paneles estrechos y pantallas móviles.
 
+## Base conservada de 1.8.1
 
-## v0.6.0
-- Fixed caption parsing: `Table 5.1. Overview` now becomes `Table N. Overview`; the complete old dotted identifier is removed.
-- Bullet, numeric, letter/inciso and Roman list buttons now share one formatting engine:
-  - current Normal text style first
-  - Left indent 0.06 in
-  - Hanging indent 0.25 in
-- Added `Format complete selection`.
-  - Gemini is called once to classify the selected paragraphs.
-  - Formatting is then applied locally with the existing deterministic functions.
-  - Detects Normal text, Heading 1–6, bullets, numeric lists, letter incisos, Roman lists and Figure/Table captions.
-  - Actual table-cell content is deliberately skipped in the full-format pass; use `Format selected table` for table objects.
-  - Figure/Table caption lines remain supported and are numbered using a single document scan for better performance.
+- Encabezados de Agents y Projects basados en la misma familia visual, con identidad de ruta, gradiente propio, búsqueda y acciones consistentes.
+- Filtros de Projects trasladados a una banda independiente para mejorar jerarquía, espacio y adaptación móvil.
+- Tarjetas de proyecto y agente con el mismo recorte, radio, franja interna, elevación y animación.
+- Corrección del desbordamiento de la franja superior en proyectos: la tarjeta solo permite `overflow` mientras su menú contextual está abierto.
+- Tarjetas de recursos más coloridas mediante fondo, borde, franja lateral, halo, icono sólido y etiqueta de formato derivados del tipo de archivo.
+- Identidad cromática preservada en conocimiento del agente, fuentes originales y documentos generados, sin perder sus etiquetas de origen e indexación.
 
+### Base conservada de 1.8.0
 
-## v0.6.1
-- Table formatting now applies Custom Spacing to all text inside all cells:
-  - Before: 0 pt
-  - After: 0 pt
-- Applies to header and body cells, including paragraph and list-item content.
+- Sistema de tarjetas unificado para agentes y proyectos: misma jerarquía, proporciones, acento, métricas, estados y pie contextual.
+- Catálogo de Projects rediseñado con el mismo nivel visual que Agents.
+- Tarjetas de fuentes y documentos más compactas, con nombre, metadatos, origen, indexación y relaciones en una estructura horizontal.
+- Colores por formato: PDF rojo; Sheets, Excel y CSV verde; Markdown amarillo-naranja; Docs y Word azul; Slides y PowerPoint naranja; imágenes violeta; JSON teal; archivos comprimidos y genéricos neutros.
+- Identificación visible de conocimiento del agente, fuentes originales del proyecto y documentos generados.
+- Icono o símbolo y color editables para cada agente desde Agent Builder.
+- Logo opcional importado desde Drive, copiado dentro de `Assets` y conservado mediante una ruta lógica portable.
+- Cada release publicado captura su propia identidad visual y copia del logo.
+- `Agent Manifest` y `Release Manifest` schema 2, con migración automática y compatible desde schema 1.
 
+### Base funcional de 1.7.0
 
-## v0.6.2
-- Table cells now use single line spacing (1.0) in both header and body cells.
-- Custom spacing remains 0 pt before and 0 pt after.
+- Portada con dos rutas: **Agents** para construir y **Projects** para usar.
+- Raíz de Drive separada en `Agents`, `Projects` y `_System`.
+- Migración automática de proyectos v1.6.0 sin perder chats ni fuentes.
+- `General Project Assistant 1.0.0` para proyectos heredados.
+- Un agente principal por proyecto, fijado a una versión publicada.
+- Agentes portables mediante una carpeta autocontenida.
+- Borrador editable y releases inmutables con versionado semántico.
+- Conocimiento obligatorio y opcional aislado por agente.
+- File Search Store separado por agente-versión y por proyecto.
+- Consultas multi-store limitadas al agente cargado y al proyecto actual.
+- Citas validadas contra los `source_id` autorizados.
+- Cambio explícito de agente o versión con creación de un chat nuevo.
+- Historial etiquetado con agente y versión.
+- Workflows y plantillas heredados del agente como recursos de solo lectura.
+- Estilo visual con gradientes funcionales, botones con estados activos y colores inspirados en Docs Assistant v0.4.0.
 
+## Estructura de Drive
 
-## v0.6.3
-- All table-cell paragraphs and list items now use:
-  - Left indent: 0.05 in
-  - Right indent: 0 in
-  - Special indent: None
-- Existing table rules remain:
-  - Single line spacing
-  - 0 pt before / 0 pt after
+```text
+Agent Console/
+├── Agents/
+│   ├── General Project Assistant/
+│   └── Technical Governance Agent/
+│       ├── Agent Manifest.json
+│       ├── Instructions/
+│       ├── Knowledge/
+│       │   ├── Mandatory Sources/
+│       │   └── Optional Sources/
+│       ├── Workflows/
+│       ├── Templates/
+│       ├── Output Formats/
+│       ├── Policies/
+│       ├── Examples/
+│       ├── Evaluations/
+│       ├── Assets/
+│       ├── Releases/
+│       └── _Runtime/
+├── Projects/
+│   └── Project A/
+│       ├── Project Manifest.json
+│       ├── Project Control
+│       ├── Sources/
+│       ├── Templates/
+│       ├── Flows/
+│       ├── Generated Documents/
+│       ├── Conversation Data/
+│       └── PDF Exports/
+└── _System/
+```
 
+## Ciclo de vida del agente
 
-## v0.6.4
-- Figure/Table caption detection is now fully case-insensitive (`FIGURE`, `Figure`, `figure`, `TABLE`, etc.).
-- A caption can begin with only the keyword; an existing X/number is optional.
-- Decimal/chapter-style identifiers are consumed as one complete old number:
-  - `Table 5.1. Overview` -> `Table N. Overview`
-  - `Table 5.1 Overview` -> `Table N. Overview`
-  - `Figure 5.1.3. Diagram` -> `Figure N. Diagram`
-- The parser also recovers from malformed prior output such as `Table 54. 1. Overview` by consuming `54. 1` as the old identifier.
+1. **Create:** genera la estructura completa del borrador.
+2. **Edit:** modifica identidad, instrucciones y recursos.
+3. **Publish:** copia todas las secciones a `Releases/{version}`.
+4. **Assign:** un proyecto selecciona `agentId + agentVersion`.
+5. **Run:** el chat recibe instrucciones y recursos de esa versión.
+6. **Update:** una versión posterior no modifica proyectos existentes.
+7. **Change:** el proyecto puede cargar otra versión y crear un chat separado.
 
+Copiar una carpeta de agente no copia embeddings ni secretos. **Scan agents** reconstruye referencias por rutas lógicas y el índice se crea nuevamente con la llave del usuario.
 
-## v0.6.5
-- Split the caption action into separate `Figure` and `Table` buttons.
-- A caption keyword is no longer required in the source line.
-  - `Overview of the process` + Figure -> `Figure N. Overview of the process`
-  - `5.1. Overview` + Table -> `Table N. Overview`
-- Existing Figure/Table prefixes and old dotted numbers are removed before applying the new consecutive number.
-- Button text is smaller throughout the sidebar.
-- Compact buttons now use a minimal `…` loading label instead of long labels such as `Applying…`.
+## Aislamiento del conocimiento
 
+La app nunca busca en un catálogo global de fuentes. Para una consulta se autorizan únicamente:
 
-## v0.7.0
-- Added a separate `Note` button.
-  - Accepts a line with or without Note/Notes/Nota/Notas.
-  - Output is `Note. Description`.
-  - Base Normal text style, Arial 9, centered.
-  - Only `Note.` is bold.
-  - No counter.
-- Rebuilt `Format complete selection` as a hybrid formatter:
-  - deterministic local detection first;
-  - Gemini only classifies ambiguous paragraphs;
-  - ambiguous paragraphs are processed in batches for long selections;
-  - a malformed Gemini JSON batch no longer aborts the whole operation;
-  - omitted Gemini items safely fall back to Normal text.
-- Full Format now detects existing native headings/lists, decimal section headings, bullets, letter incisos, Roman lists, Figure/Table captions and Notes locally.
-- Manual list prefixes such as `a)`, `i)`, `1.` and `•` are removed before converting text into native Google Docs lists, avoiding duplicated markers.
-- Actual table-cell content remains excluded from Full Format and continues to use the dedicated table formatter.
+- fuentes obligatorias de la versión cargada;
+- fuentes opcionales seleccionadas de esa misma versión;
+- fuentes y documentos seleccionados del proyecto actual.
 
+File Search recibe solo los dos stores correspondientes. El `metadata_filter` es obligatorio y las citas se validan antes de guardar la respuesta. Si un chat pertenece a otra versión del agente, el servidor exige iniciar uno nuevo.
 
-## v0.7.1
-- Note formatting now removes existing Note/Notes/Nota/Notas prefixes before applying the normalized `Note.` prefix.
-- Balanced outer parentheses are removed when the whole note is wrapped, e.g. `(Note: Abcdefg...)` -> `Note. Abcdefg...`.
-- If no Note/Nota prefix exists, the current line is preserved as the description and `Note.` is added.
-- Added spacing below the Figure/Table/Note button row so its description aligns visually with the other sections.
+## Funciones conservadas de 1.6.0
 
+- Dashboard de proyectos con búsqueda, filtros, favoritos, clonación y papelera.
+- Chat con historial JSON, memoria acumulativa y selección documental.
+- Fuentes de Drive y cargas reanudables de hasta 100 MB.
+- File Search con estados, progreso, diagnóstico, reintento y limpieza de huérfanos.
+- PDF, Docs, Sheets, Slides, TXT, Markdown, CSV, JSON y XML.
+- Templates de Google Workspace y generación de reportes.
+- Flows Markdown seleccionables.
+- Exportación PDF por conversación.
+- Compartición por dominio con roles y alcances.
+- Carga progresiva: shell inmediato, Chats/Documents en paralelo y paneles diferidos.
+- Grafo documental con niveles, relaciones, notas y selección por conversación.
+- API key y modelo por usuario.
 
-## v0.7.2
-- Note parser rebuilt:
-  - `(Note: Abcdefg...)` -> `Note. Abcdefg...`
-  - `(Nota: Abcdefg...)` -> `Note. Abcdefg...`
-  - existing Note/Notes/Nota/Notas plus wrappers/punctuation are removed;
-  - if no Note/Nota marker exists, the original line is preserved and only `Note.` is prepended.
-- Lists:
-  - letter incisos are rendered explicitly as `a)`, `b)`, `c)` to guarantee the required suffix;
-  - native numeric lists keep the `1.`, `2.`, `3.` convention;
-  - all list types keep Left 0.06 in / Hanging 0.25 in.
-- Continue previous numbering:
-  - native number/Roman/bullet lists search upward for the nearest compatible ListItem and reuse its list ID;
-  - letter incisos search upward for the previous letter and continue from it;
-  - Restart creates a new native list for numeric/Roman/bullet lists and starts letter incisos at `a)`.
-- Safety guards:
-  - Table formatting only runs when the cursor/selection is entirely inside one actual table.
-  - Figure/Table caption and Note formatting are blocked inside table cells.
-  - Full Smart Format continues to skip table-cell content.
+## Archivos
 
+| Archivo | Responsabilidad |
+|---|---|
+| `AgentService.gs` | Estructura, catálogo, portabilidad, edición, releases y ejecución de agentes |
+| `ProjectService.gs` | Proyectos, migración, asociación de agente y carga progresiva |
+| `ConversationService.gs` | Historial, aislamiento por selección y versión, contexto del agente |
+| `FileSearchService.gs` | Stores aislados, indexación, consultas multi-store y citas |
+| `SourceService.gs` | Fuentes del proyecto y fallback local |
+| `TemplateService.gs` | Templates del proyecto y heredados del agente |
+| `FlowService.gs` | Flows del proyecto y workflows heredados |
+| `DocumentService.gs` | Grafo de documentos y metadatos |
+| `ConfigService.gs` | Configuración de consola, usuario y límites |
+| `DriveService.gs` | Copia recursiva y operaciones Drive |
+| `SecurityService.gs` | Dominio, roles y alcances |
+| `SharingService.gs` | Miembros y permisos |
+| `GeminiService.gs` | API de Gemini |
+| `PdfService.gs` | Exportación PDF |
+| `Utils.gs` | Utilidades comunes |
+| `ConsoleView.html` | Portada, catálogo y editor de agentes |
+| `DashboardView.html` | Catálogo de proyectos |
+| `ProjectView.html` | Chat y paneles del proyecto |
+| `SettingsView.html` | Settings y modales |
+| `AppScripts.html` | Control del navegador |
+| `Styles.html` | Sistema visual responsivo |
 
-## v0.7.3
-- Fixed neighboring numbering/heading corruption when formatting bullets or native lists.
-- Root cause: a newly inserted Google Docs ListItem can temporarily inherit the listId of a nearby multilevel heading/outline list. Changing its glyph before detaching it can modify that shared list scheme.
-- Native list workflow now:
-  1. finds the intended compatible previous list when Continue is enabled, or creates an isolated temporary listId when restarting;
-  2. assigns the safe listId first;
-  3. only then applies Bullet/Number/Roman glyph and indentation.
-- Continue numbering now also checks the expected Add-on indentation (Left 0.06 in / Hanging 0.25 in), preventing numbered headings from being mistaken for the preceding list.
-- Full Smart Format's native-list helper uses the same isolation safeguard.
+## Instalación
 
+Consulta [SETUP.md](SETUP.md). El despliegue debe ejecutarse como **usuario que accede** y limitarse al dominio.
 
-## v0.7.4
-- Replaced native-list mutation with a safe manual-list engine.
-- The Add-on no longer calls `setGlyphType()` or `setListId()` when applying Bullet, Number, Letter or Roman formatting.
-- This prevents list formatting from changing the shared multilevel-list definition used by nearby numbered headings.
-- Visual list prefixes are explicit:
-  - Bullet: `•`
-  - Number: `1.`, `2.`, `3.`
-  - Letter: `a)`, `b)`, `c)`
-  - Roman: `i.`, `ii.`, `iii.`
-- Continue numbering scans upward for the previous matching visible prefix.
-- Older native lists created by previous versions are supported read-only for continuation when they match the Add-on indentation.
-- Selected native ListItems are converted only into plain paragraphs; neighboring list definitions are never modified.
+## Límites
 
+- 100 MB por fuente de conocimiento o del proyecto.
+- Bloques de 8 MB hacia Drive y File Search; hasta tres bloques de File Search por llamada.
+- Dos fuentes nuevas por ámbito y por ejecución de **Sync index**; la cola del navegador trabaja con hasta dos fuentes simultáneas.
+- 50 archivos por importación de carpeta.
+- 90,000 caracteres de contexto local de fuentes.
+- 120,000 caracteres de workflows.
+- 24 mensajes recientes completos antes de usar memoria resumida.
+- Apps Script y Gemini mantienen sus cuotas propias.
 
-## v0.7.5
-- Fixed the first manually formatted list paragraph inheriting bold from the line above.
-- Manual list formatting now reapplies the document's current Normal text style after replacing the paragraph text.
-- If Normal text is not itself bold, any inherited whole-paragraph bold is explicitly cleared.
-- The same fix is used by Full Smart Format.
+Los límites se concentran en `ConfigService.gs`.
 
+## Seguridad
 
-## v0.7.7
-- Built from the stable v0.7.5 list engine; v0.7.6 list/indent changes were rolled back.
-- List buttons now work with only the cursor in the current line.
-- If the target is already a compatible native Google Docs list item:
-  - it is NOT converted to a paragraph;
-  - listId is untouched;
-  - glyph type is untouched;
-  - existing native-list indentation is untouched;
-  - automatic sequence below it is preserved.
-- Plain paragraphs still use the stable v0.7.5 manual-list fallback and its existing Left 0.06 in / Hanging 0.25 in behavior.
-- Full Smart Format uses the same native-list preservation rule.
+- Las llaves se guardan en `UserProperties` y nunca dentro de agentes o proyectos.
+- Los stores y estados de indexación también están aislados por usuario.
+- Drive es la fuente de verdad; File Search es una copia derivada reconstruible.
+- Un agente o release faltante bloquea la apertura; nunca se sustituye silenciosamente.
+- Las acciones de servidor vuelven a validar dominio, proyecto, rol y alcance.
+- La eliminación normal usa la papelera de Drive.
 
+## Versión
 
-## v0.7.8
-- Existing native Google Docs list items now receive the required local indentation while preserving automatic numbering:
-  - Left: 0.06 in
-  - Hanging: 0.25 in
-  - Right: 0 in
-- The ListItem itself is preserved: listId and glyph type are not changed.
-- Cursor-only formatting remains supported.
+`2.0.0-review.4` — reutiliza e indexa automáticamente conocimiento heredado, elimina el bloqueo de consultas mixtas y alinea encabezados, controles, chips y transiciones.
 
+`2.0.0-review.3` — agrega layout de tres paneles adaptable, colapso del chat, borrado desde mensajes con poda de ramas e indexación no bloqueante con progreso por tarjeta.
 
-## v0.7.9
-- Fixed Table/Figure caption counters using document child indexes instead of JavaScript object identity.
-- Root cause: comparing Apps Script document element wrappers with `===` is not reliable; the target caption was not always detected in document order.
-- Table captions now derive their number from the nearest ACTUAL Google Docs table element and that table's ordinal in the document.
-- Table caption may be above or below the table.
-- If no actual table exists, Table numbering falls back to prior Table captions.
-- Figure numbering continues to count prior Figure captions.
-- Full Smart Format caption numbering uses the same corrected counter.
+`2.0.0-review.2` — generaliza niveles por parents, agrega grip y animación al visor, exportación PDF con destino, controles de chat visibles y corrige menús documentales.
 
+`2.0.0-review.1` — agrega artefactos Markdown silenciosos, niveles documentales, visor lateral, rutas de aprobación, ramas y modelo por chat.
 
-## v0.8.0
-- Figure captions now derive their consecutive number from actual visual objects, similar to Table captions.
-- A standalone Figure block is a body-level paragraph/list item containing:
-  - InlineImage
-  - InlineDrawing
-  - PositionedImage anchored to the paragraph
-- Multiple visual objects in one paragraph count as one composite Figure.
-- Graphics inside tables are not counted as standalone Figures.
-- The Figure caption is associated with the nearest visual block; on equal distance, the visual block above the caption is preferred.
-- If no actual visual object is found, numbering falls back to prior Figure captions.
-- Table numbering remains based on actual TABLE elements.
+`1.9.0` — renueva por completo la vista interior de proyectos: encabezado, navegación, panel lateral, chat, mensajes, estado vacío y compositor.
 
+`1.8.1` — renueva el encabezado de Projects, corrige el desbordamiento de tarjetas y refuerza el color semántico de todos los recursos.
 
-## v0.8.1
-- Bullet formatting now creates REAL Google Docs `ListItem` bullets instead of inserting the `•` text character.
-- Existing native bullet items are preserved; their listId/glyph are not changed.
-- Plain paragraphs are converted to native bullets with an isolation workflow that prevents inheriting or mutating nearby numbered-heading list definitions.
-- Required bullet indentation remains Left 0.06 in / Hanging 0.25 in / Right 0.
-- Continue previous numbering/list for bullets joins the nearest safe native bullet list above.
-- Full Smart Format also uses real native bullets.
+`1.8.0` — estandariza tarjetas, compacta fuentes y documentos, agrega colores por formato e identidad de agente mediante icono/logo y color portable.
 
+`1.7.0` — introduce Agent Console, agentes autocontenidos y portables, releases inmutables, raíz Agents/Projects, asociación agente-versión por proyecto y stores aislados.
 
-## v0.8.2
-- Added configurable caption numbering anchors for Tables and Figures.
-- New sidebar controls under CAPTIONS & NOTES:
-  - Start at [N]
-  - Set here
-  - Clear
-  - Renumber captions
-- `Set here` finds the nearest actual Table/Figure object to the cursor and stores a Named Range anchor in the document.
-- Start values are stored in Document Properties.
-- Tables/Figures before an anchor are excluded from the custom sequence.
-- `Clear` removes the anchor and returns that counter to document-start counting at 1.
-- `Renumber captions` updates all existing body-level Figure/Table captions; captions before a configured anchor are left unchanged.
-- Table counting uses actual TABLE elements.
-- Figure counting uses actual standalone image/drawing blocks.
-- This solves cover/layout tables being counted before the real report content.
+`1.6.0` — corrige eliminación incompleta y contaminación entre fuentes; agrega aislamiento por selección/citas, limpieza de huérfanos, caché y carga progresiva.

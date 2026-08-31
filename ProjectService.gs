@@ -89,7 +89,7 @@ function getProjectShell(projectId) {
     project: publicProject_(access.project, access.member, getFavoriteIds_().indexOf(projectId) !== -1),
     permissions: access.allowed,
     agent: publicProjectAgent_(agentRelease),
-    availableAgents: listAgents().filter(function(agent) { return Boolean(agent.publishedVersion); })
+    availableAgents: []
   };
 }
 
@@ -112,7 +112,7 @@ function getProjectChatPanel(projectId) {
 
 function getProjectDocumentsPanel(projectId) {
   var access = assertProjectAccess_(projectId);
-  var graph = listAgentKnowledgeNodesForProject_(access.project).concat(listProjectDocuments(projectId));
+  var graph = (access.allowed.sources?listAgentKnowledgeNodesForProject_(access.project):[]).concat(listProjectDocuments(projectId));
   return {documentGraph: applyProjectDocumentOrder_(projectId, graph)};
 }
 
@@ -120,7 +120,7 @@ function saveProjectDocumentOrder(projectId, level, orderedNodeIds) {
   var access = assertProjectAccess_(projectId);
   level = Number(level);
   if (!isFinite(level)) throw new Error('Document level is invalid.');
-  var graph = listAgentKnowledgeNodesForProject_(access.project).concat(listProjectDocuments(projectId));
+  var graph = (access.allowed.sources?listAgentKnowledgeNodesForProject_(access.project):[]).concat(listProjectDocuments(projectId));
   var valid = {};
   graph.forEach(function(node) {
     if (Number(node.level || 0) === level && !node.hiddenInProject) valid[String(node.nodeId)] = true;

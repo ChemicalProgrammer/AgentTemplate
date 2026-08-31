@@ -30,8 +30,7 @@
       <div class="side-tabs" role="tablist" aria-label="Project sections">
         <button class="side-tab active" data-side-tab="chats" role="tab" aria-selected="true"><span aria-hidden="true">◫</span><b>Chats</b></button>
         <button class="side-tab" data-side-tab="documents" role="tab" aria-selected="false"><span aria-hidden="true">▤</span><b>Documents</b></button>
-        <button class="side-tab" data-side-tab="templates" role="tab" aria-selected="false"><span aria-hidden="true">▧</span><b>Templates</b></button>
-        <button class="side-tab" data-side-tab="flows" role="tab" aria-selected="false"><span aria-hidden="true">⇄</span><b>Flows</b></button>
+        <button class="side-tab" data-side-tab="resources" role="tab" aria-selected="false"><span aria-hidden="true">◈</span><b>Resources</b></button>
       </div>
 
       <section id="side-panel-chats" class="side-panel-content active" role="tabpanel">
@@ -58,6 +57,7 @@
             <p id="document-count-label">0 items</p>
           </div>
           <div class="toolbar-actions compact-actions">
+            <button id="refresh-document-catalog" class="tonal-icon-btn" title="Synchronize files changed directly in Drive" aria-label="Synchronize Drive folder">↻</button>
             <button id="sync-source-index" class="tonal-icon-btn" aria-label="Sync File Search index" title="Index or repair agent knowledge and project sources">⌁</button>
             <button id="add-source-link" class="tonal-icon-btn" aria-label="Import from Drive" title="Import from Drive">＋</button>
             <label class="tonal-icon-btn file-button" aria-label="Upload file" title="Upload file">↑<input id="source-upload" type="file"></label>
@@ -73,18 +73,24 @@
         </div>
       </section>
 
-      <section id="side-panel-templates" class="side-panel-content hidden" role="tabpanel">
+      <section id="side-panel-resources" class="side-panel-content hidden" role="tabpanel">
+        <div class="panel-toolbar"><div><h2>Resources</h2><p>Agent capabilities and project additions</p></div></div>
+        <p class="panel-help">Required knowledge stays available. Procedures are chosen for each request; their instructions apply when selected.</p>
+        <details class="workspace-timings"><summary>Recent loading times</summary><p class="panel-help">Measured browser-to-server round trips for this session.</p><div id="workspace-load-timings"></div></details>
+        <div id="workspace-operation-status" class="workspace-operation-status" aria-live="polite"></div>
+        <details class="resource-group" open><summary>Agent knowledge</summary><div id="agent-resource-list"></div></details>
+      <section id="side-panel-templates" class="resource-group" role="tabpanel">
         <div class="panel-toolbar">
           <div><h2>Templates</h2><p id="template-count-label">0 formats</p></div>
           <button id="add-template-link" class="tonal-icon-btn" aria-label="Import template from Drive" title="Import Google Docs, Sheets, or Slides template">＋</button>
         </div>
-        <p class="panel-help">Choose one output format for reports. The template is copied; the original stays unchanged.</p>
+        <p class="panel-help">Agent and project templates. Use Choose template in the JSON viewer to change only its presentation.</p>
         <div id="templates-panel-loader" class="panel-loader" role="status" aria-label="Loading templates"><span class="spinner"></span></div>
         <div id="template-list" class="asset-list"></div>
         <div id="empty-templates" class="panel-empty hidden"><span>▧</span><strong>No templates yet</strong><p>Import a Google Docs, Sheets, or Slides file from Drive.</p></div>
       </section>
 
-      <section id="side-panel-flows" class="side-panel-content hidden" role="tabpanel">
+      <section id="side-panel-flows" class="resource-group" role="tabpanel">
         <div class="panel-toolbar">
           <div><h2>Flows</h2><p id="flow-count-label">0 procedures</p></div>
           <div class="toolbar-actions compact-actions">
@@ -92,10 +98,11 @@
             <label class="tonal-icon-btn flow-file-button" aria-label="Upload Markdown flow" title="Upload .md flow">↑<input id="flow-upload" type="file" accept=".md,text/markdown,text/plain"></label>
           </div>
         </div>
-        <p class="panel-help">Select the Markdown procedures Gemini must follow for this chat.</p>
+        <p class="panel-help">Agent procedures are selected automatically. Select a project procedure to require it for this chat, or mention its full filename.</p>
         <div id="flows-panel-loader" class="panel-loader" role="status" aria-label="Loading flows"><span class="spinner"></span></div>
         <div id="flow-list" class="asset-list"></div>
         <div id="empty-flows" class="panel-empty hidden"><span>⇄</span><strong>No flows yet</strong><p>Add a .md file with ordered instructions or a processing workflow.</p></div>
+      </section>
       </section>
     </aside>
 
@@ -153,7 +160,7 @@
     <aside id="document-viewer" class="document-viewer hidden" aria-label="Document preview">
       <header class="document-viewer-header">
         <div><span>Document preview</span><strong id="document-viewer-title">Document</strong></div>
-        <div class="document-viewer-actions"><button id="export-document-pdf" class="emoji-action-btn" title="Export to PDF" aria-label="Export document to PDF">📄</button><a id="document-viewer-drive-link" class="emoji-action-btn" target="_blank" rel="noopener" title="Open in Drive" aria-label="Open in Drive">📂</a><button id="close-document-viewer" class="emoji-action-btn" title="Close preview" aria-label="Close preview">❌</button></div>
+        <div class="document-viewer-actions"><button id="download-document-original" class="emoji-action-btn" title="Download original file" aria-label="Download original file">⬇</button><button id="export-document-pdf" class="emoji-action-btn" title="Export to PDF" aria-label="Export document to PDF">📄</button><a id="document-viewer-drive-link" class="emoji-action-btn" target="_blank" rel="noopener" title="Open in Drive" aria-label="Open in Drive">📂</a><button id="close-document-viewer" class="emoji-action-btn" title="Close preview" aria-label="Close preview">❌</button></div>
       </header>
       <div id="document-viewer-tabs" class="document-viewer-tabs">
         <div class="document-viewer-tab-buttons" role="tablist" aria-label="Document representations">

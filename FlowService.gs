@@ -79,30 +79,7 @@ function removeFlow(projectId, flowId) {
   return {removed: true, flowId: flowId};
 }
 
-function buildFlowContext_(project, selectedFlowIds) {
-  var requested = (selectedFlowIds || []).map(String);
-  if (!requested.length) return {text: '', flowsUsed: []};
-  var total = 0;
-  var sections = [];
-  var used = [];
-  readFlowIndex_(project).flows.filter(function(flow) {
-    return flow.status === 'active' && requested.indexOf(flow.flowId) !== -1;
-  }).forEach(function(flow, index) {
-    if (total >= APP.MAX_FLOW_CONTEXT_CHARS) return;
-    try {
-      var text = DriveApp.getFileById(flow.driveId).getBlob().getDataAsString('UTF-8');
-      var section = '[F' + (index + 1) + '] ' + flow.name + '\n' + text;
-      section = truncate_(section, APP.MAX_FLOW_CONTEXT_CHARS - total);
-      total += section.length;
-      sections.push(section);
-      used.push({flowId: flow.flowId, label: 'F' + (index + 1), name: flow.name});
-    } catch (error) {
-      throw new Error('The selected flow “' + flow.name + '” could not be read: ' + readableErrorMessage_(error));
-    }
-  });
-  var inherited = buildAgentFlowContextForProject_(project, requested);
-  return {text: [inherited.text, sections.join('\n\n---\n\n')].filter(Boolean).join('\n\n=== PROJECT PROCEDURES ===\n\n'), flowsUsed: (inherited.flowsUsed || []).concat(used)};
-}
+function buildFlowContext_(project,selectedFlowIds) { return buildSelectedWorkflowContext_(project,selectedFlowIds||[]); }
 
 function readFlowIndex_(project) {
   var folder = DriveApp.getFolderById(project.folders.flows);

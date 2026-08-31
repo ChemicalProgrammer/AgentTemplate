@@ -43,7 +43,7 @@
       <label>Name<input id="new-agent-name" required maxlength="120"></label>
       <label>Description<textarea id="new-agent-description" rows="4" maxlength="1000"></textarea></label>
       <div class="form-grid"><label>Icon or symbol<input id="new-agent-icon" maxlength="8" value="✦" placeholder="✦"></label><label>Color<select id="new-agent-color"><option value="violet">Violet</option><option value="blue">Ocean</option><option value="indigo">Indigo</option><option value="teal">Teal</option><option value="green">Fern</option><option value="amber">Amber</option><option value="orange">Orange</option><option value="coral">Coral</option><option value="rose">Rose</option><option value="plum">Plum</option><option value="cyan">Cyan</option><option value="lime">Lime</option><option value="slate">Slate</option><option value="graphite">Graphite</option></select></label></div>
-      <label class="knowledge-visibility-option compact"><input id="new-agent-show-mandatory-knowledge" type="checkbox" checked><span><strong>Show mandatory sources in projects</strong><small>When hidden, mandatory knowledge still remains active, indexed, and included automatically in every request.</small></span></label>
+      <label class="knowledge-visibility-option compact hidden"><input id="new-agent-show-mandatory-knowledge" type="checkbox" checked><span><strong>Show mandatory sources in projects</strong><small>When hidden, mandatory knowledge still remains active, indexed, and included automatically in every request.</small></span></label>
       <p class="form-note">A complete folder structure will be created in Agents. You can import a logo and refine the identity in Agent Builder before publishing.</p>
       <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn btn-gemini">Create agent</button></div>
     </form>
@@ -123,9 +123,10 @@
       <label>PDF file name<input id="pdf-export-file-name" required maxlength="160"></label>
       <fieldset class="destination-options"><legend>Save destination</legend>
         <label class="destination-choice"><input type="radio" name="pdf-export-destination" value="project" checked><span><b>📚 Save as a generated project source</b><small>The PDF becomes a child of the current document and appears at the next generated level.</small></span></label>
-        <label class="destination-choice"><input type="radio" name="pdf-export-destination" value="external"><span><b>📤 Export outside this project</b><small>Save it in another Drive folder without adding it to this project's document graph.</small></span></label>
+        <label class="destination-choice"><input type="radio" name="pdf-export-destination" value="download"><span><b>⬇ Download to this device</b><small>Your browser chooses the save location or shows Save as.</small></span></label>
+        <label class="destination-choice"><input type="radio" name="pdf-export-destination" value="external"><span><b>📁 Save in another Drive folder</b><small>Save it in another Drive folder without adding it to this project's document graph.</small></span></label>
       </fieldset>
-      <label id="pdf-external-folder-field" class="hidden">Destination Drive folder URL or ID<input id="pdf-export-folder" placeholder="Paste the destination folder URL or ID"><small>You must have permission to create files in this folder.</small></label>
+      <div id="pdf-external-folder-field" class="hidden"><label>Destination Drive folder<input id="pdf-export-folder" placeholder="Select a folder or paste its URL / ID"></label><div class="folder-actions"><button type="button" id="pdf-browse-folder" class="secondary-btn">Browse folders</button><span id="pdf-selected-folder" class="muted"></span></div><small>You need permission to create files here. To browse a shared folder, paste its URL first.</small><div id="pdf-folder-browser" class="folder-browser hidden"></div></div>
       <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Export PDF</button></div>
     </form>
   </section>
@@ -150,9 +151,10 @@
       <p class="muted">All placeholders are replaced with the current JSON values. Raw JSON remains unchanged.</p>
       <fieldset class="destination-options"><legend>Save destination</legend>
         <label class="destination-choice"><input type="radio" name="html-export-destination" value="project" checked><span><b>📚 Save as a generated project document</b><small>The filled HTML becomes a child of the JSON artifact in the document graph.</small></span></label>
-        <label class="destination-choice"><input type="radio" name="html-export-destination" value="external"><span><b>📤 Export outside this project</b><small>Save it in another Drive folder without adding it to this project's document graph.</small></span></label>
+        <label class="destination-choice"><input type="radio" name="html-export-destination" value="download"><span><b>⬇ Download to this device</b><small>Your browser chooses the save location or shows Save as.</small></span></label>
+        <label class="destination-choice"><input type="radio" name="html-export-destination" value="external"><span><b>📁 Save in another Drive folder</b><small>Save it in another Drive folder without adding it to this project's document graph.</small></span></label>
       </fieldset>
-      <label id="html-external-folder-field" class="hidden">Destination Drive folder URL or ID<input id="html-export-folder" placeholder="Paste the destination folder URL or ID"><small>You must have permission to create files in this folder.</small></label>
+      <div id="html-external-folder-field" class="hidden"><label>Destination Drive folder<input id="html-export-folder" placeholder="Select a folder or paste its URL / ID"></label><div class="folder-actions"><button type="button" id="html-browse-folder" class="secondary-btn">Browse folders</button><span id="html-selected-folder" class="muted"></span></div><small>You need permission to create files here. To browse a shared folder, paste its URL first.</small><div id="html-folder-browser" class="folder-browser hidden"></div></div>
       <div class="modal-actions"><button type="button" class="secondary-btn" data-close-modal>Cancel</button><button type="submit" class="primary-btn">Export HTML</button></div>
     </form>
   </section>

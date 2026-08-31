@@ -1,0 +1,92 @@
+<script>
+const workspace105 = {chats:new Map(),documents:new Map(),pending:new Map(),conversationToken:0,chatRevalidating:false,folderTokens:{},folders:{},metrics:[],workerProjects:new Set(),visibleMessages:80};
+function workspaceKey_(projectId,id) {return projectId+'|'+id;}
+function rememberChat105_() {
+  if(!state.currentConversation || !state.currentProjectId)return;
+  const key=workspaceKey_(state.currentProjectId,state.currentConversation.conversationId);
+  const old=workspace105.chats.get(key);
+  workspace105.chats.set(key,{conversation:JSON.parse(JSON.stringify(state.currentConversation)),version:old&&old.version||''});
+  if(workspace105.chats.size>12)workspace105.chats.delete(workspace105.chats.keys().next().value);
+}
+function applyConversation105_(conversation) {
+  state.currentConversation=conversation;state.currentConversationId=conversation.conversationId;
+  state.currentChatModel=conversation.model||state.currentChatModel;syncChatModelPicker_();
+  state.selectedSources=new Set(normalizeSelectedDocumentIds(conversation.explicitSourceSelection||conversation.sourceSelection||[]));
+  state.selectedFlows=new Set(conversation.explicitFlowSelection||conversation.flowSelection||[]);
+  rememberCurrentSelection();rememberCurrentFlowSelection();renderDocumentGraph();renderFlows();renderConversationList();renderMessages();
+}
+function visibleWorkspaceNodes_(nodes,projectId) {
+  return (nodes||[]).filter(n=>!workspace105.pending.has(workspaceKey_(projectId,n.nodeId)));
+}
+function renderAgentResources105_() {
+  const container=document.getElementById('agent-resource-list');if(!container||!state.projectDetails)return;
+  const nodes=state.documentNodes.filter(n=>n.kind==='agent-source');
+  container.innerHTML=nodes.map(n=>`<article class="resource-card"><div><strong>${escapeHtml(n.name)}</strong><small>${n.mandatory?'Required knowledge':'Available to automatic selection'} · ${escapeHtml(n.indexStatus||'not_indexed')}</small></div><div class="asset-actions">${n.url?`<a href="${escapeHtml(n.url)}" target="_blank" rel="noopener" title="Open source">↗</a>`:''}${state.projectDetails.permissions.edit?`<button type="button" data-resource-repair="${escapeHtml(n.nodeId)}" title="Repair knowledge index">↻</button>`:''}</div>${n.indexError?`<p class="resource-error">${escapeHtml(n.indexError)}</p>`:''}</article>`).join('')||'<p class="muted">No inherited knowledge sources.</p>';
+  const timing=document.getElementById('workspace-load-timings');if(timing)timing.innerHTML=workspace105.metrics.slice(-12).map(m=>`<div><code>${escapeHtml(m.action)}</code><span>${m.ms} ms</span></div>`).join('');
+  container.querySelectorAll('[data-resource-repair]').forEach(b=>b.addEventListener('click',()=>repairProjectAgentSource_(b.dataset.resourceRepair,b)));
+}
+async function refreshWorkspaceCatalog105_(button) {
+  const projectId=state.currentProjectId,token=state.projectLoadToken;setBusy(button,true);
+  try {
+    const data=await server('syncProjectDocumentCatalog',projectId);
+    if(projectId!==state.currentProjectId||token!==state.projectLoadToken)return;
+    state.documentNodes=visibleWorkspaceNodes_(data.documentGraph,projectId);workspace105.documents.set(projectId,data.documentGraph);
+    state.projectDetails.documentGraph=state.documentNodes;renderDocumentGraph();renderAgentResources105_();showToast('Drive folder synchronized.');
+  } catch(error){showToast(error.message,true);}finally{setBusy(button,false);}
+}
+async function resumeWorkspaceOperations105_(projectId,retry=false) {
+  if(workspace105.workerProjects.has(projectId))return;
+  workspace105.workerProjects.add(projectId);
+  try {
+    await server('processWorkspaceOperations',projectId,retry);
+    const jobs=await server('listWorkspaceOperations',projectId);
+    if(state.currentProjectId!==projectId)return;
+    const box=document.getElementById('workspace-operation-status');
+    box.innerHTML=jobs.length?`<p>${jobs.length} cleanup operation(s) pending. Removed documents remain excluded.</p>${jobs.map(j=>`<p><b>${escapeHtml(j.name)}</b>: ${escapeHtml(j.error||j.status)}</p>`).join('')}<button type="button" id="retry-workspace-operations" class="secondary-btn">Retry cleanup</button>`:'';
+    const retryButton=document.getElementById('retry-workspace-operations');if(retryButton)retryButton.onclick=()=>resumeWorkspaceOperations105_(projectId,true);
+  }catch(error){if(state.currentProjectId===projectId)showToast('Cleanup pending: '+error.message,true);}
+  finally{workspace105.workerProjects.delete(projectId);}
+}
+function downloadBlob105_(result) {
+  const binary=atob(result.base64),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([bytes],{type:result.mimeType||'application/octet-stream'}));
+  const link=document.createElement('a');link.href=url;link.download=result.name||'download';document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);showToast('Download started. The destination is controlled by your browser.');
+}
+async function downloadOriginal105_(button) {
+  if(!state.previewNodeId)return;const p=state.currentProjectId,id=state.previewNodeId;setBusy(button,true);
+  try{downloadBlob105_(await server('downloadProjectDocument',p,id));}catch(e){showToast(e.message,true);}finally{setBusy(button,false);}
+}
+async function browseExportFolders105_(kind,id='',more=false) {
+  const projectId=state.currentProjectId, token=(workspace105.folderTokens[kind]||0)+1;workspace105.folderTokens[kind]=token;
+  const box=document.getElementById(kind+'-folder-browser');box.classList.remove('hidden');
+  const previous=workspace105.folders[kind];box.innerHTML='<p role="status">Loading folders…</p>';
+  try{
+    const data=await server('listExportFolders',projectId,id,more&&previous?previous.cursor:'');
+    if(token!==workspace105.folderTokens[kind]||projectId!==state.currentProjectId)return;
+    if(more&&previous&&data.id===previous.id)data.folders=previous.folders.concat(data.folders);
+    workspace105.folders[kind]=data;
+    box.innerHTML=`<div class="folder-browser-heading"><button type="button" data-folder-home title="My Drive">⌂</button><strong>${escapeHtml(data.name)}</strong><button type="button" data-folder-use class="primary-btn">Use this folder</button></div><div class="folder-browser-list">${data.folders.map(f=>`<button type="button" data-folder-id="${escapeHtml(f.id)}">📁 ${escapeHtml(f.name)}</button>`).join('')||'<p>No subfolders.</p>'}</div>${data.cursor?'<button type="button" data-folder-more class="secondary-btn">More folders</button>':''}`;
+    box.querySelector('[data-folder-home]').onclick=()=>browseExportFolders105_(kind);
+    box.querySelector('[data-folder-use]').onclick=()=>{document.getElementById(kind+'-export-folder').value=data.id;document.getElementById(kind+'-selected-folder').textContent=data.name;box.classList.add('hidden');};
+    box.querySelectorAll('[data-folder-id]').forEach(b=>b.onclick=()=>browseExportFolders105_(kind,b.dataset.folderId));
+    const next=box.querySelector('[data-folder-more]');if(next)next.onclick=()=>browseExportFolders105_(kind,data.id,true);
+  }catch(e){if(token===workspace105.folderTokens[kind])box.innerHTML=`<p class="resource-error">${escapeHtml(e.message)} You can also paste a folder URL above.</p>`;}
+}
+function upsertGeneratedNode105_(artifact) {
+  if(!artifact || !(artifact.nodeId||artifact.id))return;
+  const id=artifact.nodeId||'document:'+artifact.id;
+  const parents=artifact.parentIds||[];
+  const level=parents.reduce((max,parent)=>Math.max(max,(state.documentNodes.find(n=>n.nodeId===parent)||{}).level||0),0)+1;
+  const node=Object.assign({},artifact,{nodeId:id,driveId:artifact.id||id.replace(/^document:/,''),kind:artifact.kind||'generated',status:'active',level,parentIds:parents,createdAt:artifact.createdAt||new Date().toISOString()});
+  const index=state.documentNodes.findIndex(n=>n.nodeId===id);if(index<0)state.documentNodes.push(node);else state.documentNodes[index]=node;
+  state.projectDetails.documentGraph=state.documentNodes;workspace105.documents.set(state.currentProjectId,state.documentNodes.slice());
+  updateProjectCount('documentCount',state.documentNodes.filter(n=>n.kind!=='source'&&n.kind!=='agent-source').length);renderDocumentGraph();
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('refresh-document-catalog').onclick=e=>refreshWorkspaceCatalog105_(e.currentTarget);
+  document.getElementById('download-document-original').onclick=e=>downloadOriginal105_(e.currentTarget);
+  ['pdf','html'].forEach(kind=>document.getElementById(kind+'-browse-folder').onclick=()=>browseExportFolders105_(kind,document.getElementById(kind+'-export-folder').value));
+  const refreshAgent=document.getElementById('refresh-agent-resources');if(refreshAgent)refreshAgent.onclick=async()=>{const id=state.currentAgentId;setBusy(refreshAgent,true);try{const d=await server('getAgentDetails',id,true);if(id===state.currentAgentId){state.currentAgentDetails=d;renderAgentEditor();}}catch(e){showToast(e.message,true);}finally{setBusy(refreshAgent,false);}};
+});
+</script>
