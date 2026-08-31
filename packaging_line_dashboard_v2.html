@@ -1,98 +1,22 @@
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>Line Design · {{metadata.line_name}}</title>
-  <style>
-    *{box-sizing:border-box}html{background:#f3f5f7}body{margin:0;padding:24px;font-family:Arial,"Segoe UI",sans-serif;color:#243746;line-height:1.5;font-size:14px}.page{max-width:1240px;margin:auto}.card{background:#fff;border:1px solid #dce4e9;border-radius:18px;padding:25px;margin-bottom:20px}.header{border-top:5px solid #b92d44}.eyebrow{color:#a62c40;font-size:11px;letter-spacing:1.7px;font-weight:700;text-transform:uppercase;margin:0 0 10px}h1{font-size:30px;line-height:1.15;color:#182b3b;margin:0 0 12px;letter-spacing:-.6px}h2{font-size:17px;line-height:1.3;margin:0 0 7px;color:#223745}h3{font-size:14px;margin:0 0 8px}.subtitle,.muted{color:#647786;margin:0}.header-bottom{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}.tag{display:inline-block;border-radius:20px;padding:5px 11px;background:#fbedef;color:#9c3042;font-size:11px;font-weight:700}.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.kpi{padding:24px}.kpi-label{font-size:11px;letter-spacing:.8px;color:#627484;font-weight:700;text-transform:uppercase;margin:0 0 11px}.kpi-value{font-size:32px;line-height:1.15;font-weight:700;letter-spacing:-.6px;margin:0 0 10px;overflow-wrap:anywhere}.teal{color:#00828b}.purple{color:#7450b0}.caption{font-size:12px;color:#71808e;margin:0}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:750px;margin-top:18px;font-size:13px}th{text-align:left;padding:14px 12px;background:#f2f5f8;color:#53697c;font-size:10px;letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid #dce4e9}td{padding:15px 12px;border-bottom:1px solid #edf1f4;vertical-align:middle}tbody tr:last-child td{border-bottom:0}.num{text-align:right;font-variant-numeric:tabular-nums}.machine{font-weight:700;color:#304959}.seq{color:#9aabb5;font-size:11px;margin-right:8px}.role{font-size:11px;color:#6f7f8d}.badge{display:inline-block;padding:4px 9px;border-radius:20px;color:#ad2e44;background:#fbecef;font-size:10px;font-weight:700}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.alert{border-left:3px solid #c78d28;background:#fffbf2;border-radius:0 10px 10px 0;padding:16px 18px;margin-top:12px}.alert-type{font-size:10px;letter-spacing:1px;font-weight:bold;color:#996918;margin-bottom:6px}.alert p{margin:0;color:#5e6266;white-space:pre-wrap;overflow-wrap:anywhere}.list{padding-left:22px;margin:14px 0 0}.list li{padding:7px 0;color:#4d6575;white-space:pre-wrap;overflow-wrap:anywhere}.list li::marker{color:#9aaab4}.empty{padding:18px;color:#7c8993;font-style:italic}.notice{margin:12px 0 0;font-size:11px;color:#788894}.report-text{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.7 Arial,sans-serif;background:#f6f8fa;border-radius:10px;padding:18px}.footer{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;padding:6px 2px 20px;color:#89949d;font-size:11px}summary{cursor:pointer;color:#55677c;font-weight:bold}details[open] summary{margin-bottom:12px}@media(max-width:760px){body{padding:12px}.card{padding:19px}.kpis,.grid{grid-template-columns:1fr;gap:0}h1{font-size:25px}.kpi-value{font-size:29px}}@media print{html,body{background:#fff}body{padding:0}.card{break-inside:avoid;box-shadow:none}.table-scroll{overflow:visible}table{min-width:0}.page{max-width:none}}
-  </style>
-</head>
-<body>
-<main class="page">
-  <header class="card header">
-    <p class="eyebrow">Engineering · Datos del proyecto</p>
-    <h1>Line Design Co-Pilot Report</h1>
-    <div class="header-bottom">
-      <p class="subtitle">Línea: <strong>{{metadata.line_name}}</strong> · Formato: <strong>{{metadata.format}}</strong></p>
-      <span class="tag">Presentación del JSON · Revisión técnica pendiente</span>
-    </div>
-  </header>
-
-  <section class="kpis" aria-label="Indicadores informados">
-    <div class="card kpi">
-      <p class="kpi-label">Pacemaker informado</p>
-      <p class="kpi-value">{{metadata.pacemaker_machine}}</p>
-      <p class="caption">Designación tomada del JSON.</p>
-    </div>
-    <div class="card kpi">
-      <p class="kpi-label">Techo OEE informado</p>
-      <p class="kpi-value teal">{{number metadata.oee_ceiling 1}}%</p>
-      <p class="caption">Valor proporcionado por el análisis.</p>
-    </div>
-    <div class="card kpi">
-      <p class="kpi-label">Eficiencia base informada</p>
-      <p class="kpi-value purple">{{number metadata.baseline_efficiency 1}}%</p>
-      <p class="caption">Diferencia: {{difference metadata.oee_ceiling metadata.baseline_efficiency 1}} puntos porcentuales.</p>
-      <p class="notice">La diferencia no representa una mejora garantizada.</p>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>Secuencia de equipos y velocidades</h2>
-    <p class="muted">Una fila por cada elemento de v_graph, en el orden del JSON.</p>
-    <div class="table-scroll">
-      <table>
-        <thead><tr><th>Secuencia / máquina</th><th class="num">Nominal (BPM)</th><th class="num">Operativa (BPM)</th><th class="num">Variación (%)</th><th>Rol informado</th></tr></thead>
-        <tbody>
-          {{#each v_graph}}
-          <tr>
-            <td class="machine"><span class="seq">{{@number}}</span>{{machine}}</td>
-            <td class="num">{{number rated_speed 1}}</td>
-            <td class="num"><strong>{{number actual_speed 1}}</strong></td>
-            <td class="num">{{percent_change actual_speed rated_speed 1}}%</td>
-            <td>{{#if is_pacemaker}}<span class="badge">PACEMAKER</span>{{else}}<span class="role">Otra máquina</span>{{/if}}</td>
-          </tr>
-          {{else}}
-          <tr><td colspan="5" class="empty">No se proporcionaron máquinas.</td></tr>
-          {{/each}}
-        </tbody>
-      </table>
-    </div>
-    <p class="notice">Variación = (operativa − nominal) / nominal × 100. Es una comparación matemática; no valida límites ni setpoints del equipo.</p>
-  </section>
-
-  <section class="card">
-    <h2>Perfil de velocidades · V-Graph</h2>
-    <p class="muted">Comparación visual de los valores del JSON. SVG generado por la consola.</p>
-    {{chart v_graph type="line" label="machine" series="rated_speed,actual_speed" names="Velocidad nominal,Velocidad operativa" highlight="is_pacemaker" unit="BPM"}}
-  </section>
-
-  <section class="card">
-    <h2>Alertas del análisis</h2>
-    <p class="muted">Se presenta el contenido recibido; no se infiere cumplimiento por palabras clave.</p>
-    {{#each critical_alerts}}
-    <article class="alert"><div class="alert-type">{{type}}</div><h3>{{component}}</h3><p>{{message}}</p></article>
-    {{else}}
-    <p class="empty">No se proporcionaron alertas. Esto no confirma cumplimiento técnico.</p>
-    {{/each}}
-  </section>
-
-  <div class="grid">
-    <section class="card">
-      <h2>Acciones sin CAPEX informadas</h2>
-      <ul class="list">{{#each action_plan.zero_capex}}<li>{{this}}</li>{{else}}<li>No se proporcionaron acciones en esta categoría.</li>{{/each}}</ul>
-    </section>
-    <section class="card">
-      <h2>Acciones con CAPEX informadas</h2>
-      <ul class="list">{{#each action_plan.capex_required}}<li>{{this}}</li>{{else}}<li>No se proporcionaron acciones en esta categoría.</li>{{/each}}</ul>
-    </section>
-  </div>
-
-  {{#if report_markdown}}
-  <section class="card"><details><summary>Informe adicional · texto original</summary><pre class="report-text">{{report_markdown}}</pre></details></section>
-  {{/if}}
-
-  <footer class="footer"><span>Agent Console · JSON renderer v2</span><span>Sin datos de demostración automáticos · Sin JavaScript en la plantilla</span></footer>
-</main>
-</body>
-</html>
+<!-- Sustituir el bloque gráfico anterior completo; no conservar bindings *_points, x_pos o y_pos_*. -->
+<style>
+.vgraph-auto{background:#fff;color:#172033;border:1px solid #e2e8f0;border-radius:18px;padding:24px;margin:20px 0;font:14px/1.5 Arial,sans-serif}.vgraph-auto h2{font-size:21px;margin:0 0 6px}.vgraph-auto .description{margin:0;color:#64748b}.vgraph-auto .native-chart svg polyline[stroke="#008c95"]{stroke:#1d4ed8}.vgraph-auto .native-chart svg circle[fill="#008c95"]{fill:#1d4ed8}.vgraph-auto .native-chart>section>div:last-child{display:none!important}.vgraph-auto .legend{display:flex;flex-wrap:wrap;gap:20px;justify-content:center;font-size:12px;color:#475569;margin:0 0 20px}.vgraph-auto .legend span{display:inline-flex;align-items:center;gap:7px}.vgraph-auto .line{display:inline-block;width:22px;border-top:3px solid #1d4ed8}.vgraph-auto .rated{border-top:2px dashed #64748b}.vgraph-auto .red{display:inline-block;width:10px;height:10px;background:#be3144;border-radius:50%}.vgraph-auto .data-scroll{overflow-x:auto}.vgraph-auto table{border-collapse:collapse;width:100%;min-width:560px;font-size:12px}.vgraph-auto th{background:#f8fafc;color:#64748b;font-size:10px;text-transform:uppercase;text-align:left;padding:11px;border-bottom:1px solid #e2e8f0}.vgraph-auto td{padding:11px;border-bottom:1px solid #f1f5f9}.vgraph-auto .num{text-align:right;font-variant-numeric:tabular-nums}.vgraph-auto .actual{color:#1d4ed8;font-weight:700}.vgraph-auto .badge{color:#b91c1c;background:#fef2f2;border-radius:20px;padding:4px 8px;font-size:10px;font-weight:700}.vgraph-auto .note{font-size:11px;color:#64748b;margin:16px 0 0}.vgraph-auto .data-status{color:#9a3412;background:#fff7ed;border-radius:8px;padding:9px 12px;font-size:12px}@media print{.vgraph-auto{padding:14px;break-inside:avoid}.vgraph-auto .native-chart svg{min-width:0!important}.vgraph-auto .native-chart>section>div:first-child,.vgraph-auto .data-scroll{overflow:visible!important}.vgraph-auto table{min-width:0}}
+</style>
+<section class="vgraph-auto">
+<h2>Perfil de velocidades · V-Graph</h2>
+<p class="description">Velocidad operativa y capacidad nominal por máquina. Posiciones y escala calculadas por la consola.</p>
+{{#if metadata.data_status}}<p class="data-status">{{metadata.data_status}}</p>{{/if}}
+<div class="native-chart">
+{{chart v_graph type="line" label="machine" series="rated_speed,actual_speed" names="Capacidad nominal,Velocidad operativa" highlight="is_pacemaker" unit="BPM"}}
+</div>
+<div class="legend"><span><i class="line"></i>Velocidad operativa</span><span><i class="red"></i>Pacemaker informado</span><span><i class="line rated"></i>Capacidad nominal</span></div>
+<div class="data-scroll"><table>
+<thead><tr><th>Máquina</th><th class="num">Nominal · BPM</th><th class="num">Operativa · BPM</th><th>Rol informado</th></tr></thead>
+<tbody>
+{{#each v_graph}}
+<tr><td>{{machine}}</td><td class="num">{{number rated_speed 1}}</td><td class="num actual">{{number actual_speed 1}}</td><td>{{#if is_pacemaker}}<span class="badge">PACEMAKER</span>{{else}}—{{/if}}</td></tr>
+{{else}}<tr><td colspan="4">No se proporcionaron máquinas.</td></tr>{{/each}}
+</tbody>
+</table></div>
+<p class="note">Los valores se consultan en la tabla o al situar el cursor sobre los puntos. El punto rojo representa la designación recibida en el JSON; no determina automáticamente el cuello de botella.</p>
+</section>
